@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 — Operator decision core (shadow planning)
+
+- Added a deterministic, server-local decision engine that converts accumulated player observations into a proposed intervention.
+- Added behaviour scoring for miners, explorers and cave-focused players, with mixed/unknown fallbacks.
+- Added four evidence-gated shadow plans: TUNNEL_FOLD, PATH_ECHO, DEPTH_LURE and DIMENSION_DRIFT.
+- Kept the two independent 24,000-tick gates: world observation and each player's active observation.
+- Evaluates the decision core every 200 game ticks and applies a 6,000-tick cooldown before switching a player's plan.
+- Persists planner phase, archetype, current plan, confidence, reason and decision counters per player.
+- Migrated world-memory schema 4 to schema 5 without discarding routes, mining history or tunnel cells.
+- Added `/operator brain` diagnostics and aggregate planner counts to `/operator status`.
+- Added unit tests for observation gates, evidence thresholds, plan selection, cooldown and schema migration.
+- **No world mutations are executed in 0.7.0.** This release creates the decision/planning layer only; execution, validation and rollback remain separate future work.
+
+Known limitations:
+- The planner is deterministic heuristic logic, not a remote or generative LLM.
+- It can only reason about movement, mining, dimensions and locally mapped air currently recorded by the observer.
+- It does not yet detect built structures, player homes, biome history or general entity lifecycles.
+- Planned intervention names are strategy proposals, not implemented world-changing effects.
+
 ## 0.6.0 — Nearby underground-air discovery
 
 - Added a bounded, per-player flood-fill scanner for pre-existing connected underground air spaces near the player.
