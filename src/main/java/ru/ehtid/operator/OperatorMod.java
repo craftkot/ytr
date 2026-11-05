@@ -30,6 +30,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.4.0 loaded. Passive observation, per-player learning, mined-tunnel mapping, placement invalidation and horizontal tunnel-network reconstruction are enabled; world mutation remains disabled.");
+        LOGGER.info("Operator: Reality 0.5.0 loaded. Passive observation, per-player learning, height-aware 3D tunnel networks and round-robin loaded-voxel auditing are enabled; world mutation remains disabled.");
     }
 }
