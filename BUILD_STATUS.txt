@@ -1,44 +1,25 @@
-Operator: Reality 0.3.0
+Operator: Reality 0.4.0
 
-Verified source commit:
-- d261286a8191447fc1b7c6edd6908e235cf37504
-- GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42050887342
-
-Build and runtime verification:
-- Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.x.
-- Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
-- gradle clean test build completed successfully.
-- 27 JUnit test methods passed: 14 PlayerMemory, 3 OperatorWorldData, 10 TunnelAnalyzer.
-- Dedicated Fabric server started and loaded Operator 0.3.0 without a crash.
-- UseBlockCallback placement-invalidation registration did not break server startup.
-- RCON /operator status returned the expected Operator 0.3 passive-observation status.
-- World memory JSON was written and schemaVersion 3 was verified.
-- RCON stop command shut down the dedicated server cleanly.
-- JAR and source snapshot were uploaded as CI artifacts.
-
-Verified distributable:
-- operator-reality-0.3.0.jar
-- Size: 37,772 bytes.
-- SHA-256: ba6d06034f7892d0ef95fe32d2aadf889ce38082f929796a15aa8511f257207b
-- Contains OperatorMod, TunnelAnalyzer, OperatorCommands, PlayerMemory, ObservationEngine and pending voxel-check classes.
-
-Implemented in 0.3.0:
-- Bounded per-player map of 4,096 unique mined terrain voxels.
-- Terrain material classification.
-- Six-face connected-component analysis.
-- Dimension-aware tunnel reconstruction.
-- Preliminary linear/chamber/irregular/small area classification.
-- Bounding coordinates for the largest component.
-- /operator tunnels for the current dimension.
-- Delayed block-use verification: if a player fills a recorded mined cell, the voxel is removed from all affected player profiles on the next server tick.
-- Pending placement checks are capped at 256 and flushed before server shutdown.
-- Schema migration from 2 to 3, preserving existing player profiles.
-- Chronological voxel eviction order restored after JSON load.
+Implementation status:
+- Added TunnelNetworkAnalyzer with X/Z footprint projection.
+- Added Zhang-Suen centerline thinning with a hard limit of 128 iterations.
+- Added graph compression into corridor edges and topology nodes.
+- Added dead-end, junction, isolated-area and loop detection.
+- Added junction coordinates and estimated centerline segment lengths.
+- Added /operator network and retained /operator tunnels.
+- Added 11 topology tests covering straight/thick corridors, T and four-way junctions, loops, disconnected areas, dimension separation, vertical projection and diagonal-only contact.
+- Kept world mutation disabled.
+- Existing world memory schema remains 3; no migration is required for 0.3 saves.
 
 Known limitations:
-- Only suitable blocks mined by a player after installing 0.3 are mapped.
+- Network analysis uses horizontal X/Z projection; vertical layers collapse.
+- Stacked tunnels may merge in the network graph.
+- Centerline segment lengths are estimates after thinning, not exact block-path lengths.
+- Only suitable blocks mined after installing the mod are mapped.
 - Existing tunnels and air spaces are not scanned.
-- Explosions, pistons, fluid flow, dispensers and block changes from other mods are not fully tracked.
-- The map retains at most 4,096 most recently mined unique positions per player across dimensions.
-- Geometry classes are heuristics, not a full skeleton or branch reconstruction.
-- World mutation is intentionally disabled. Operator does not yet create, extend or alter tunnels.
+- Explosions, pistons, fluids, dispensers and other mods' block changes are not fully tracked.
+- World mutation is intentionally disabled.
+
+Verification:
+- Pending GitHub Actions for the current operator-dev head.
+- Required: gradle clean test build, dedicated Fabric server startup, /operator status RCON check, schema-3 persistence and clean server shutdown.
