@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "A persistent adaptive observer for Minecraft. Version 0.4 reconstructs horizontal tunnel centerlines, junctions, dead ends, corridor segments and loops.",
+  "description": "A persistent adaptive observer for Minecraft. Version 0.5 reconstructs height-aware 3D tunnel networks, vertical shafts, junctions and stale mapped-cell invalidation.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
