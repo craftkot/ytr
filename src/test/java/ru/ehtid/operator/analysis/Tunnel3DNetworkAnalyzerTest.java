@@ -125,7 +125,7 @@ class Tunnel3DNetworkAnalyzerTest {
         assertEquals(0, result.mappedVoxels);
         assertEquals(0, result.verticalLayers);
         assertEquals(0, result.networkComponents);
-        assertTrue(result.describe().contains("No mined tunnel voxels"));
+        assertTrue(result.describe().contains("No mapped tunnel voxels"));
     }
 
     private static PlayerMemory.TunnelCell cell(int x, int y, int z, String dimension) {
