@@ -5,7 +5,7 @@
 - Added a bounded, per-player flood-fill scanner for pre-existing connected underground air spaces near the player.
 - Scanner starts only when the player's feet or head cell is enclosed by at least two movement-blocking neighbours.
 - Scan bounds: 12 blocks horizontally, 6 blocks below and 3 blocks above the player's starting position.
-- Maximum 4,096 visited positions per scan and 128 block checks per server tick globally.
+- Maximum 4,096 visited positions per scan, 16 concurrent scan sessions and 128 block checks per server tick globally.
 - Scanner reads only already loaded chunks and never force-loads terrain.
 - Added explicit tunnel-cell provenance: mined vs locally discovered air.
 - Discovered air never overwrites mined evidence or increments mined-terrain totals.
