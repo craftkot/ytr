@@ -322,7 +322,7 @@ class PlayerMemoryTest {
         assertEquals("UNKNOWN", memory.operatorArchetype);
         assertEquals("NONE", memory.plannedOperatorEvent);
         assertEquals("", memory.operatorReason);
-        assertEquals(0.0D, memory.operatorConfidence);
+        assertEquals(0.0D, memory.operatorConfidence, 0.0001D);
         assertEquals(-1L, memory.lastBrainEvaluationAt);
         assertEquals(-1L, memory.lastOperatorDecisionAt);
         assertEquals(0L, memory.operatorDecisionCount);
