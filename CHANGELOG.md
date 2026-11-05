@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — Tunnel network topology
+
+- Added a horizontal X/Z footprint projection for recorded mined terrain voxels.
+- Added bounded Zhang-Suen centerline thinning for tunnel footprints.
+- Added graph compression into corridor segments and topology nodes.
+- Added dead-end and junction detection, including branch exit counts.
+- Added loop detection using graph cycle rank.
+- Added junction coordinate reporting and centerline length estimates.
+- Added /operator network for the current dimension.
+- Added topology tests for straight and thick corridors, T-junctions, four-way crossings, loops, disconnected networks, dimension separation, vertical projection and diagonal-only contacts.
+- Kept world mutations disabled; the graph is an observation and analysis feature only.
+- Known limitation: vertical layers are projected onto X/Z and can merge stacked passages.
+
+
 ## 0.3.0 — Tunnel Intelligence foundation
 
 - Added a bounded per-player voxel map of mined terrain cells (up to 4,096 most recent unique positions).
