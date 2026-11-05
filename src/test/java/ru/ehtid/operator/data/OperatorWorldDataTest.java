@@ -21,7 +21,7 @@ class OperatorWorldDataTest {
         data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(4, data.schemaVersion);
+        assertEquals(5, data.schemaVersion);
         assertNotNull(data.players);
     }
 
@@ -39,7 +39,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(4, data.schemaVersion);
+        assertEquals(5, data.schemaVersion);
         assertEquals(1, memory.getTunnelCellCount());
         assertEquals(1, memory.getMinedTunnelCellCount());
         assertEquals(0, memory.getObservedAirCellCount());
