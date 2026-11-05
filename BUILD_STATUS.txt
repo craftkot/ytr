@@ -1,50 +1,45 @@
-Operator: Reality 0.5.0
+Operator: Reality 0.6.0
 
-Verified implementation commit:
-- c1a37b69689cd150bfead7f448667b3994626e11
-- GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42066275226
-- Final result: SUCCESS
+Verified implementation:
+- Commit: def6eb74b491a03adb67fe424b7f5273e49ffc9e
+- GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42093666305
+- CI result: SUCCESS
 
-Build and runtime verification:
-- Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.3.
-- Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
+Build and server verification:
+- Minecraft Java 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
+- Java 25 / Gradle 9.8.2.
 - gradle clean test build: PASS.
-- 46 JUnit tests completed, 46 passed.
+- 52 JUnit tests across five test classes: PASS.
 - Dedicated Fabric server startup: PASS.
-- Operator 0.5.0 loaded without crash.
-- RCON /operator status: PASS; reports passive observation and 128-cell loaded-chunk audit budget.
-- World-memory JSON persisted with schemaVersion 3: PASS.
+- Operator 0.6.0 loaded without crash.
+- RCON /operator status: PASS.
+- Status reports 128-cell scan budget and 128-cell loaded-voxel audit budget.
+- World-memory JSON persisted with schemaVersion 4: PASS.
 - RCON stop and clean server shutdown: PASS.
 - Mod JAR and source snapshot artifacts uploaded successfully.
 
-Verified distributables:
-- operator-reality-0.5.0.jar — 87,018 bytes.
-- SHA-256: 1d3b98404b754235721a85204dac5ff902467d89aecf77b2995752099c07d51d
-- operator-reality-0.5.0-sources.jar — 26,783 bytes.
-- GitHub artifact: operator-reality-0.5.0, ID 13434237379.
-- Source artifact: operator-reality-0.5.0-source, ID 13433027887.
-
-Implemented:
-- Height-aware 3D tunnel graph reconstructed from per-Y centerlines.
-- Vertical bands up to three blocks high are treated as normal tunnel clearance.
-- Taller vertical runs are retained as shaft segments.
-- Stacked passages at different heights remain separate networks.
-- 3D dead-end, junction, corridor, vertical-shaft and loop analysis.
-- 3D junction coordinates, corridor endpoints and estimated route lengths.
-- /operator network now uses the height-aware graph.
-- /operator network2d preserves the 0.4 horizontal projection.
-- Round-robin audit of up to 128 previously mapped cells per server tick.
-- Audit checks only loaded chunks and never force-loads terrain.
-- Filled recorded cells are removed from all player profiles.
-- World-memory schema remains 3; no migration is required for 0.4 saves.
-- World mutation remains disabled.
+Implemented in 0.6.0:
+- Bounded nearby scan for pre-existing connected underground air.
+- Scan trigger uses full-collision neighbours and local no-leaves heightmap depth, allowing both narrow tunnels and large underground chambers to be discovered.
+- Flood-fill bounds: 12 blocks in each horizontal direction, 6 below and 3 above the player's feet position.
+- Up to 4,096 visited positions per scan.
+- Maximum 16 concurrent sessions and 128 block checks per server tick globally.
+- Scanner only inspects already loaded chunks and never force-loads terrain.
+- Explicit cell provenance: mined vs observed_air.
+- Scanned air never overwrites mined evidence and never increments mined-block totals.
+- When memory is full, old scanned-air cells are evicted before mined cells; a full mined-only map blocks new scanned-air entries.
+- Status and player/tunnel reports distinguish mined cells from locally discovered air.
+- World-memory schema migrated from 3 to 4; legacy cells without source are treated as mined.
+- Removed duplicate /operator network2d registration.
+- Height-aware 3D network analysis and 2D compatibility command retained.
+- Automatic world mutation remains disabled.
 
 Known limitations:
-- 3D reconstruction is layer-wise: centerlines are computed per Y layer and linked afterward. It is not a full 3D medial-axis transform.
-- Vertical bands of up to three blocks are collapsed as tunnel clearance; unusually tall rooms may be represented approximately.
-- Only suitable blocks mined after installing the mod are mapped.
-- Existing tunnels and air spaces are not scanned.
-- Audit can invalidate filled mapped cells but does not discover new air cells created by explosions or other non-player destruction.
-- Audit examines loaded chunks only; unloaded chunks are skipped without being loaded.
-- Audit budget is 128 mapped cells per server tick across all player profiles.
+- This is local discovery around a player, not a full-world or remote-chunk scan.
+- Large connected spaces can be truncated by the 4,096-position scan cap.
+- Player must be inside or sufficiently below the local surface in an accessible air space for a scan to start.
+- Unloaded chunks are skipped without being loaded.
+- Explosion-created air is detected only if a player later enters/approaches the affected space and a local scan reaches it; there is no direct explosion event hook yet.
+- The scanner records air geometry and does not infer whether a cave is natural or player-built.
+- 3D reconstruction remains layer-wise and approximate, not a full 3D medial-axis transform.
 - World mutation is intentionally disabled.
