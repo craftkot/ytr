@@ -773,9 +773,10 @@ public final class ObservationEngine {
                         + Math.round(structure.floorCoverage() * 100.0D) + "/"
                         + Math.round(structure.roofCoverage() * 100.0D) + "/"
                         + Math.round(structure.wallCoverage() * 100.0D) + "%"
-                        + " | enclosed void: "
+                        + " | unoccupied/enclosed cells: "
                         + (structure.interiorScanComplete()
-                                ? structure.enclosedVoidCells() + " cells" : "scan capped")
+                                ? structure.unoccupiedCells() + "/" + structure.enclosedVoidCells()
+                                        + " cells" : "scan capped")
                         + " | doors/windows/stairs/slabs "
                         + structure.doorCount() + "/" + structure.windowBlockCount() + "/"
                         + structure.stairBlockCount() + "/" + structure.slabBlockCount()
