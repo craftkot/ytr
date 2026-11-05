@@ -58,7 +58,7 @@ public final class PlayerMemory {
 
     public List<RouteSample> route = new ArrayList<>();
     public List<MineSample> mineHistory = new ArrayList<>();
-    /** Recent mined terrain voxels, keyed by dimension and block coordinates. */
+    /** Recent mined and locally discovered air voxels, keyed by dimension and block coordinates. */
     public Map<String, TunnelCell> tunnelCells = new LinkedHashMap<>();
     public Map<String, Long> brokenBlockTypes = new LinkedHashMap<>();
     public Map<String, Long> minedBlockTypes = new LinkedHashMap<>();
@@ -383,15 +383,6 @@ public final class PlayerMemory {
 
     private static <T> void trim(List<T> list, int maximum) {
         while (list.size() > maximum) list.remove(0);
-    }
-
-    private static <K, V> void trimOldest(Map<K, V> map, int maximum) {
-        while (map.size() > maximum) {
-            var iterator = map.keySet().iterator();
-            if (!iterator.hasNext()) return;
-            iterator.next();
-            iterator.remove();
-        }
     }
 
     private static void trimMap(Map<String, Long> map, int maximum) {
