@@ -35,6 +35,16 @@ public final class PlayerMemory {
     /** Number of terrain cells cleared while tunnel mapping was active. */
     public long tunnelBlocksCleared = 0L;
 
+    /** Persisted output of the Operator's non-mutating decision planner. */
+    public String operatorPhase = "OBSERVING";
+    public String operatorArchetype = "UNKNOWN";
+    public String plannedOperatorEvent = "NONE";
+    public String operatorReason = "Waiting for the observation gates.";
+    public double operatorConfidence = 0.0D;
+    public long lastBrainEvaluationAt = -1L;
+    public long lastOperatorDecisionAt = -1L;
+    public long operatorDecisionCount = 0L;
+
     public boolean hasLastPosition = false;
     public double lastX;
     public double lastY;
@@ -112,6 +122,15 @@ public final class PlayerMemory {
         distanceTravelled = Math.max(0.0D, distanceTravelled);
         currentMiningChain = Math.max(0, currentMiningChain);
         longestMiningChain = Math.max(currentMiningChain, longestMiningChain);
+        if (operatorPhase == null || operatorPhase.isBlank()) operatorPhase = "OBSERVING";
+        if (operatorArchetype == null || operatorArchetype.isBlank()) operatorArchetype = "UNKNOWN";
+        if (plannedOperatorEvent == null || plannedOperatorEvent.isBlank()) plannedOperatorEvent = "NONE";
+        if (operatorReason == null) operatorReason = "";
+        if (!Double.isFinite(operatorConfidence)) operatorConfidence = 0.0D;
+        operatorConfidence = Math.max(0.0D, Math.min(1.0D, operatorConfidence));
+        lastBrainEvaluationAt = Math.max(-1L, lastBrainEvaluationAt);
+        lastOperatorDecisionAt = Math.max(-1L, lastOperatorDecisionAt);
+        operatorDecisionCount = Math.max(0L, operatorDecisionCount);
     }
 
     public void recordActiveTick(long gameTick) {
