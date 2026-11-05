@@ -24,6 +24,10 @@ class TunnelAnalyzerTest {
         assertEquals(TunnelAnalyzer.ComponentType.LINEAR, result.largest.type);
         assertEquals(TunnelAnalyzer.Axis.X, result.largest.axis);
         assertEquals(8, result.largest.length);
+        assertEquals(0, result.largest.minX);
+        assertEquals(7, result.largest.maxX);
+        assertEquals(20, result.largest.minY);
+        assertEquals(0, result.largest.minZ);
     }
 
     @Test
