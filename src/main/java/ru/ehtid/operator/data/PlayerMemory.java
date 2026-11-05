@@ -1,6 +1,7 @@
 package ru.ehtid.operator.data;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,10 +67,21 @@ public final class PlayerMemory {
     public void normalize() {
         if (route == null) route = new ArrayList<>();
         if (mineHistory == null) mineHistory = new ArrayList<>();
-        if (tunnelCells == null) tunnelCells = new LinkedHashMap<>();
-        else tunnelCells = new LinkedHashMap<>(tunnelCells);
-        tunnelCells.entrySet().removeIf(entry -> entry.getKey() == null
-                || entry.getValue() == null || entry.getValue().dimension == null);
+        if (tunnelCells == null) {
+            tunnelCells = new LinkedHashMap<>();
+        } else {
+            // Gson's generic Map adapter does not guarantee insertion order.
+            // Rebuild oldest-to-newest from the stored game ticks before applying the cap.
+            List<Map.Entry<String, TunnelCell>> orderedCells = new ArrayList<>(tunnelCells.entrySet());
+            orderedCells.removeIf(entry -> entry.getKey() == null
+                    || entry.getValue() == null || entry.getValue().dimension == null);
+            orderedCells.sort(Comparator.comparingLong(entry -> entry.getValue().gameTick));
+            Map<String, TunnelCell> ordered = new LinkedHashMap<>();
+            for (Map.Entry<String, TunnelCell> entry : orderedCells) {
+                ordered.put(entry.getKey(), entry.getValue());
+            }
+            tunnelCells = ordered;
+        }
         if (brokenBlockTypes == null) brokenBlockTypes = new LinkedHashMap<>();
         if (minedBlockTypes == null) minedBlockTypes = new LinkedHashMap<>();
         if (miningDirections == null) miningDirections = new LinkedHashMap<>();
