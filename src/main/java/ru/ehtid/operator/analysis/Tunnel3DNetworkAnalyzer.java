@@ -13,7 +13,7 @@ import java.util.Set;
 import ru.ehtid.operator.data.PlayerMemory;
 
 /**
- * Height-aware tunnel topology reconstructed from mined voxels.
+ * Height-aware tunnel topology reconstructed from mapped air voxels.
  * Horizontal centerlines are thinned independently for each Y layer and then
  * linked using their real heights. Vertical runs up to three cells high are
  * treated as tunnel clearance; taller runs are retained as vertical shafts.
@@ -485,8 +485,8 @@ public final class Tunnel3DNetworkAnalyzer {
         }
 
         public String describe() {
-            if (mappedVoxels == 0) return "No mined tunnel voxels recorded in " + dimension
-                    + ". Mine natural terrain while Operator is active.";
+            if (mappedVoxels == 0) return "No mapped tunnel voxels recorded in " + dimension
+                    + ". Explore enclosed underground spaces while Operator is active.";
             StringBuilder out = new StringBuilder("3D tunnel network (").append(dimension).append(')')
                     .append(" | mapped voxels: ").append(mappedVoxels)
                     .append(" | Y layers: ").append(verticalLayers)
