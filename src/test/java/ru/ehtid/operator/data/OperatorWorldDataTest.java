@@ -26,6 +26,28 @@ class OperatorWorldDataTest {
     }
 
     @Test
+    void schemaThreeSavePreservesMinedCellsAndMigratesTheirSource() {
+        OperatorWorldData data = new OperatorWorldData();
+        data.schemaVersion = 3;
+        PlayerMemory memory = new PlayerMemory();
+        PlayerMemory.TunnelCell legacy = new PlayerMemory.TunnelCell(
+                12, 24, -8, "minecraft:overworld", "minecraft:stone", 123L
+        );
+        legacy.source = null;
+        memory.tunnelCells.put("minecraft:overworld|12,24,-8", legacy);
+        data.players.put("player-uuid", memory);
+
+        data.normalize();
+
+        assertEquals(4, data.schemaVersion);
+        assertEquals(1, memory.getTunnelCellCount());
+        assertEquals(1, memory.getMinedTunnelCellCount());
+        assertEquals(0, memory.getObservedAirCellCount());
+        assertEquals(PlayerMemory.TUNNEL_SOURCE_MINED,
+                memory.tunnelCells.values().iterator().next().source);
+    }
+
+    @Test
     void normalizeRepairsLegacyPlayerCollections() {
         OperatorWorldData data = new OperatorWorldData();
         PlayerMemory memory = new PlayerMemory();
