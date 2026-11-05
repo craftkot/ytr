@@ -131,6 +131,30 @@ class OperatorBrainTest {
         assertTrue(decision.confidence() >= 0.30D);
     }
 
+
+    @Test
+    void enclosedBuildingEvidenceStrengthensHomeEchoReasoning() {
+        PlayerMemory memory = readyPlayer();
+        memory.blocksPlaced = 160L;
+        memory.recognizedStructureCount = 1;
+        memory.recognizedBuildingCount = 1;
+        memory.recognizedEnclosedBuildingCount = 1;
+        memory.largestStructureBlockCount = 96;
+        memory.largestBuildingBlockCount = 96;
+        memory.largestEnclosedVoidCells = 72;
+        memory.largestFloorCoverage = 1.0D;
+        memory.largestRoofCoverage = 0.9D;
+        memory.largestWallCoverage = 0.95D;
+        memory.constructionComplexity = 0.8D;
+
+        OperatorBrain.Decision decision = OperatorBrain.evaluate(memory, true, 24_000L);
+
+        assertEquals("READY", decision.phase());
+        assertEquals("BUILDER", decision.archetype());
+        assertEquals("HOME_ECHO", decision.event());
+        assertTrue(decision.reason().contains("enclosed geometric void"));
+    }
+
     private static PlayerMemory readyPlayer() {
         PlayerMemory memory = new PlayerMemory();
         memory.observedTicks = OperatorBrain.REQUIRED_PERSONAL_TICKS;
