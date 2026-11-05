@@ -7,7 +7,7 @@
 - Added graph compression into corridor segments and topology nodes.
 - Added dead-end and junction detection, including branch exit counts.
 - Added loop detection using graph cycle rank.
-- Added junction coordinate reporting and centerline length estimates.
+- Added junction coordinate reporting, corridor segment endpoints and centerline length estimates.
 - Added /operator network for the current dimension.
 - Added topology tests for straight and thick corridors, T-junctions, four-way crossings, loops, disconnected networks, dimension separation, vertical projection and diagonal-only contacts.
 - Kept world mutations disabled; the graph is an observation and analysis feature only.
