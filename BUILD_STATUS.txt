@@ -1,45 +1,26 @@
-Operator: Reality 0.6.0
+Operator: Reality 0.7.0
 
-Verified implementation:
-- Commit: def6eb74b491a03adb67fe424b7f5273e49ffc9e
-- GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42093666305
-- CI result: SUCCESS
+Verification state: PENDING GitHub Actions for the 0.7.0 commit.
+Previous verified baseline: Operator 0.6.0, commit 790cb329dfe1906d7fdde273475a79a52d721fec.
 
-Build and server verification:
+Target build:
 - Minecraft Java 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
 - Java 25 / Gradle 9.8.2.
-- gradle clean test build: PASS.
-- 52 JUnit tests across five test classes: PASS.
-- Dedicated Fabric server startup: PASS.
-- Operator 0.6.0 loaded without crash.
-- RCON /operator status: PASS.
-- Status reports 128-cell scan budget and 128-cell loaded-voxel audit budget.
-- World-memory JSON persisted with schemaVersion 4: PASS.
-- RCON stop and clean server shutdown: PASS.
-- Mod JAR and source snapshot artifacts uploaded successfully.
+- Required: gradle clean test build.
+- Required: dedicated Fabric server startup, RCON /operator status and persisted world-memory schemaVersion 5.
+- Required: JUnit tests for decision gates, archetype scoring, plan selection, cooldown and schema migration.
 
-Implemented in 0.6.0:
-- Bounded nearby scan for pre-existing connected underground air.
-- Scan trigger uses full-collision neighbours and local no-leaves heightmap depth, allowing both narrow tunnels and large underground chambers to be discovered.
-- Flood-fill bounds: 12 blocks in each horizontal direction, 6 below and 3 above the player's feet position.
-- Up to 4,096 visited positions per scan.
-- Maximum 16 concurrent sessions and 128 block checks per server tick globally.
-- Scanner only inspects already loaded chunks and never force-loads terrain.
-- Explicit cell provenance: mined vs observed_air.
-- Scanned air never overwrites mined evidence and never increments mined-block totals.
-- When memory is full, old scanned-air cells are evicted before mined cells; a full mined-only map blocks new scanned-air entries.
-- Status and player/tunnel reports distinguish mined cells from locally discovered air.
-- World-memory schema migrated from 3 to 4; legacy cells without source are treated as mined.
-- Removed duplicate /operator network2d registration.
-- Height-aware 3D network analysis and 2D compatibility command retained.
-- Automatic world mutation remains disabled.
+Implemented in 0.7.0:
+- Deterministic server-local decision planner; no remote AI dependency.
+- Player archetypes: MINER, EXPLORER, CAVER, MIXED and UNKNOWN.
+- Evidence-gated plans: TUNNEL_FOLD, PATH_ECHO, DEPTH_LURE and DIMENSION_DRIFT.
+- Independent world and per-player observation gates of 24,000 ticks each.
+- Decision evaluation every 200 game ticks; 6,000-tick plan-switch cooldown.
+- Per-player persisted planner state and schema 4 -> 5 migration.
+- /operator brain diagnostics and aggregate planner status.
+- World mutations remain disabled; planned events are not executed.
 
 Known limitations:
-- This is local discovery around a player, not a full-world or remote-chunk scan.
-- Large connected spaces can be truncated by the 4,096-position scan cap.
-- Player must be inside or sufficiently below the local surface in an accessible air space for a scan to start.
-- Unloaded chunks are skipped without being loaded.
-- Explosion-created air is detected only if a player later enters/approaches the affected space and a local scan reaches it; there is no direct explosion event hook yet.
-- The scanner records air geometry and does not infer whether a cave is natural or player-built.
-- 3D reconstruction remains layer-wise and approximate, not a full 3D medial-axis transform.
-- World mutation is intentionally disabled.
+- The planner uses deterministic heuristics and current observer data only.
+- Structure/home detection, biome history, general entity tracking and actual intervention execution are not implemented.
+- No world-changing behaviour is enabled in this version.
