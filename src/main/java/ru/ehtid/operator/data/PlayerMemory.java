@@ -15,6 +15,8 @@ public final class PlayerMemory {
     public static final int MAX_MINE_SAMPLES = 2048;
     public static final int MAX_TUNNEL_CELLS = 4096;
     public static final int MAX_COUNTER_KEYS = 256;
+    public static final String TUNNEL_SOURCE_MINED = "mined";
+    public static final String TUNNEL_SOURCE_OBSERVED_AIR = "observed_air";
 
     public String uuid = "";
     public String name = "Unknown";
@@ -78,7 +80,13 @@ public final class PlayerMemory {
             orderedCells.sort(Comparator.comparingLong(entry -> entry.getValue().gameTick));
             Map<String, TunnelCell> ordered = new LinkedHashMap<>();
             for (Map.Entry<String, TunnelCell> entry : orderedCells) {
-                ordered.put(entry.getKey(), entry.getValue());
+                TunnelCell cell = entry.getValue();
+                if (cell.source == null || cell.source.isBlank()) cell.source = TUNNEL_SOURCE_MINED;
+                if (!TUNNEL_SOURCE_MINED.equals(cell.source)
+                        && !TUNNEL_SOURCE_OBSERVED_AIR.equals(cell.source)) {
+                    cell.source = TUNNEL_SOURCE_MINED;
+                }
+                ordered.put(entry.getKey(), cell);
             }
             tunnelCells = ordered;
         }
@@ -89,7 +97,7 @@ public final class PlayerMemory {
         if (miningDepthBands == null) miningDepthBands = new LinkedHashMap<>();
         trim(route, MAX_ROUTE_SAMPLES);
         trim(mineHistory, MAX_MINE_SAMPLES);
-        trimOldest(tunnelCells, MAX_TUNNEL_CELLS);
+        trimTunnelCells();
         trimMap(brokenBlockTypes, MAX_COUNTER_KEYS);
         trimMap(minedBlockTypes, MAX_COUNTER_KEYS);
         trimMap(miningDirections, MAX_COUNTER_KEYS);
@@ -211,6 +219,34 @@ public final class PlayerMemory {
         return tunnelCells == null ? 0 : tunnelCells.size();
     }
 
+    public int getMinedTunnelCellCount() {
+        if (tunnelCells == null) return 0;
+        return (int) tunnelCells.values().stream()
+                .filter(cell -> cell != null && TUNNEL_SOURCE_MINED.equals(cell.source))
+                .count();
+    }
+
+    public int getObservedAirCellCount() {
+        if (tunnelCells == null) return 0;
+        return (int) tunnelCells.values().stream()
+                .filter(cell -> cell != null && TUNNEL_SOURCE_OBSERVED_AIR.equals(cell.source))
+                .count();
+    }
+
+    /**
+     * Adds an air voxel found by the bounded nearby-world scanner.
+     * Scanned cells never overwrite mined evidence and never increment mined-block totals.
+     */
+    public boolean recordDiscoveredAir(int x, int y, int z, String dimension, long gameTick) {
+        String key = tunnelCellKey(dimension, x, y, z);
+        if (tunnelCells.containsKey(key)) return false;
+        if (tunnelCells.size() >= MAX_TUNNEL_CELLS && !evictOldestObservedAirCell()) return false;
+        tunnelCells.put(key, new TunnelCell(
+                x, y, z, dimension, "minecraft:air", gameTick, TUNNEL_SOURCE_OBSERVED_AIR
+        ));
+        return true;
+    }
+
     public boolean hasTunnelCell(String dimension, int x, int y, int z) {
         return tunnelCells != null && tunnelCells.containsKey(tunnelCellKey(dimension, x, y, z));
     }
@@ -223,12 +259,38 @@ public final class PlayerMemory {
         return dimension + "|" + x + "," + y + "," + z;
     }
 
+    private boolean evictOldestObservedAirCell() {
+        var iterator = tunnelCells.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, TunnelCell> entry = iterator.next();
+            if (entry.getValue() != null
+                    && TUNNEL_SOURCE_OBSERVED_AIR.equals(entry.getValue().source)) {
+                iterator.remove();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void trimTunnelCells() {
+        while (tunnelCells.size() > MAX_TUNNEL_CELLS) {
+            if (!evictOldestObservedAirCell()) {
+                var iterator = tunnelCells.keySet().iterator();
+                if (!iterator.hasNext()) return;
+                iterator.next();
+                iterator.remove();
+            }
+        }
+    }
+
     private void recordTunnelCell(int x, int y, int z, String dimension, String blockId, long gameTick) {
         String key = tunnelCellKey(dimension, x, y, z);
         tunnelCells.remove(key);
-        tunnelCells.put(key, new TunnelCell(x, y, z, dimension, blockId, gameTick));
+        tunnelCells.put(key, new TunnelCell(
+                x, y, z, dimension, blockId, gameTick, TUNNEL_SOURCE_MINED
+        ));
         tunnelBlocksCleared++;
-        trimOldest(tunnelCells, MAX_TUNNEL_CELLS);
+        trimTunnelCells();
     }
 
     public boolean personalObservationComplete(long requiredActiveTicks) {
@@ -368,16 +430,24 @@ public final class PlayerMemory {
         public String dimension;
         public String blockId;
         public long gameTick;
+        /** mined or observed_air; null legacy values are normalized to mined. */
+        public String source;
 
         public TunnelCell() { }
 
         public TunnelCell(int x, int y, int z, String dimension, String blockId, long gameTick) {
+            this(x, y, z, dimension, blockId, gameTick, TUNNEL_SOURCE_MINED);
+        }
+
+        public TunnelCell(int x, int y, int z, String dimension, String blockId,
+                          long gameTick, String source) {
             this.x = x;
             this.y = y;
             this.z = z;
             this.dimension = dimension;
             this.blockId = blockId;
             this.gameTick = gameTick;
+            this.source = source;
         }
     }
 
