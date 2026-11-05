@@ -1,15 +1,22 @@
 package ru.ehtid.operator.observe;
 
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.core.BlockPos;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 
 import ru.ehtid.operator.OperatorMod;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
@@ -21,7 +28,9 @@ public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
     private static final long MOVEMENT_SAMPLE_INTERVAL = 20L;
     private static final long SAVE_INTERVAL = 600L;
+    private static final int MAX_PENDING_VOXEL_CHECKS = 256;
 
+    private final Map<String, PendingVoxelCheck> pendingVoxelChecks = new LinkedHashMap<>();
     private OperatorWorldData data = new OperatorWorldData();
     private boolean loaded = false;
     private boolean dirty = false;
@@ -54,6 +63,7 @@ public final class ObservationEngine {
 
         long now = server.overworld().getGameTime();
         updateWorldObservationPhase(now);
+        processPendingVoxelChecks();
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player.isSpectator()) continue;
@@ -87,8 +97,71 @@ public final class ObservationEngine {
         dirty = true;
     }
 
+    /**
+     * Schedules a one-tick-later check for a mined voxel adjacent to a block interaction.
+     * If the interaction placed a block into that recorded air cell, the stale voxel is removed.
+     */
+    public InteractionResult onBlockUse(Player player, Level level, InteractionHand hand, BlockHitResult hitResult) {
+        if (!(player instanceof ServerPlayer serverPlayer) || player.isSpectator() || !loaded) {
+            return InteractionResult.PASS;
+        }
+
+        PlayerMemory memory = data.players.get(serverPlayer.getUUID().toString());
+        if (memory == null) return InteractionResult.PASS;
+
+        BlockPos target = hitResult.getBlockPos().relative(hitResult.getDirection()).immutable();
+        String dimension = level.dimension().toString();
+        if (!memory.hasTunnelCell(dimension, target.getX(), target.getY(), target.getZ())) {
+            return InteractionResult.PASS;
+        }
+
+        String playerId = serverPlayer.getUUID().toString();
+        String key = playerId + "|" + dimension + "|" + target.getX() + "," + target.getY() + "," + target.getZ();
+        pendingVoxelChecks.remove(key);
+        pendingVoxelChecks.put(key, new PendingVoxelCheck(
+                playerId, level, target, dimension, level.getGameTime() + 1L
+        ));
+        while (pendingVoxelChecks.size() > MAX_PENDING_VOXEL_CHECKS) {
+            Iterator<String> iterator = pendingVoxelChecks.keySet().iterator();
+            if (!iterator.hasNext()) break;
+            iterator.next();
+            iterator.remove();
+        }
+        return InteractionResult.PASS;
+    }
+
+    private void processPendingVoxelChecks() {
+        if (pendingVoxelChecks.isEmpty()) return;
+
+        Iterator<Map.Entry<String, PendingVoxelCheck>> iterator = pendingVoxelChecks.entrySet().iterator();
+        while (iterator.hasNext()) {
+            PendingVoxelCheck check = iterator.next().getValue();
+            if (check.level().getGameTime() < check.dueGameTick()) continue;
+            iterator.remove();
+
+            if (!check.level().getBlockState(check.position()).isAir()) {
+                PlayerMemory memory = data.players.get(check.playerId());
+                if (memory != null && memory.removeTunnelCell(
+                        check.dimension(), check.position().getX(),
+                        check.position().getY(), check.position().getZ()
+                )) {
+                    dirty = true;
+                }
+            }
+        }
+    }
+
+    private record PendingVoxelCheck(
+            String playerId,
+            Level level,
+            BlockPos position,
+            String dimension,
+            long dueGameTick
+    ) { }
+
     public void onServerStopping(MinecraftServer server) {
         if (loaded) save(server);
+        pendingVoxelChecks.clear();
         loaded = false;
     }
 
