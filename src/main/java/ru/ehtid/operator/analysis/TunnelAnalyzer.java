@@ -116,15 +116,15 @@ public final class TunnelAnalyzer {
         int edges = 0;
         int axisEdges = 0;
         for (BlockPos pos : cells) {
-            if (cells.contains(new BlockPos(pos.x + 1, pos.y, pos.z))) {
+            if (cells.contains(new BlockPos(pos.dimension, pos.x + 1, pos.y, pos.z))) {
                 edges++;
                 if (axis == Axis.X) axisEdges++;
             }
-            if (cells.contains(new BlockPos(pos.x, pos.y + 1, pos.z))) {
+            if (cells.contains(new BlockPos(pos.dimension, pos.x, pos.y + 1, pos.z))) {
                 edges++;
                 if (axis == Axis.Y) axisEdges++;
             }
-            if (cells.contains(new BlockPos(pos.x, pos.y, pos.z + 1))) {
+            if (cells.contains(new BlockPos(pos.dimension, pos.x, pos.y, pos.z + 1))) {
                 edges++;
                 if (axis == Axis.Z) axisEdges++;
             }
