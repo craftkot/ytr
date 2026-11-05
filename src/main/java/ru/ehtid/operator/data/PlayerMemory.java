@@ -122,7 +122,7 @@ public final class PlayerMemory {
         setLastPosition(x, y, z, dimension);
 
         if (!hasLastRouteSample || !dimension.equals(lastRouteDimension)
-                || squaredDistance(x, y, z, lastRouteX, lastRouteY, lastRouteZ) >= 6.25D) {
+                || squaredDistance(x, y, z, lastRouteX, lastRouteY, lastRouteZ) >= 1.0D) {
             addRouteSample(x, y, z, dimension, gameTick);
         }
     }
@@ -136,6 +136,9 @@ public final class PlayerMemory {
 
         if (!rockLike) {
             currentMiningChain = 0;
+            hasLastMinePosition = false;
+            lastMineTick = -1L;
+            lastMineDimension = "";
             return;
         }
 
