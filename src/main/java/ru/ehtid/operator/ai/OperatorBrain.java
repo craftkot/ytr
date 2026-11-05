@@ -107,9 +107,13 @@ public final class OperatorBrain {
                 + 0.35D * ratio(memory.getObservedAirCellCount(), 256.0D)
                 + 0.10D * ratio(memory.miningSessions, 20.0D);
 
-        double builder = 0.60D * ratio(memory.largestBuildingBlockCount, 64.0D)
-                + 0.25D * ratio(memory.recognizedBuildingCount, 3.0D)
-                + 0.15D * ratio(memory.constructionComplexity, 1.0D);
+        double shellQuality = (memory.largestFloorCoverage
+                + memory.largestRoofCoverage + memory.largestWallCoverage) / 3.0D;
+        double builder = 0.45D * ratio(memory.largestBuildingBlockCount, 64.0D)
+                + 0.15D * ratio(memory.recognizedBuildingCount, 3.0D)
+                + 0.10D * ratio(memory.constructionComplexity, 1.0D)
+                + 0.20D * ratio(memory.largestEnclosedVoidCells, 128.0D)
+                + 0.10D * shellQuality;
 
         return new BehaviourScores(mining, exploration, caving, builder);
     }
@@ -155,9 +159,14 @@ public final class OperatorBrain {
 
         if (memory.recognizedBuildingCount > 0 && memory.largestBuildingBlockCount >= 24) {
             double placementCoverage = ratio(memory.blocksPlaced, 128.0D);
-            double score = 0.75D * scores.builder() + 0.25D * placementCoverage;
-            candidates.add(new Candidate("HOME_ECHO", score,
-                    "A connected player-placed 3D component matches building-candidate geometry; the planner can target the player's constructed spaces."));
+            double enclosureEvidence = ratio(memory.largestEnclosedVoidCells, 128.0D);
+            double score = 0.65D * scores.builder()
+                    + 0.20D * placementCoverage
+                    + 0.15D * enclosureEvidence;
+            String reason = memory.recognizedEnclosedBuildingCount > 0
+                    ? "A player-placed structure has an enclosed geometric void with floor, roof and wall coverage; the shadow planner can target a measured constructed space."
+                    : "A connected player-placed 3D component matches building-candidate geometry, but an enclosed interior has not been confirmed.";
+            candidates.add(new Candidate("HOME_ECHO", score, reason));
         }
 
         int dimensions = memory.dimensionVisits == null ? 0 : memory.dimensionVisits.size();
