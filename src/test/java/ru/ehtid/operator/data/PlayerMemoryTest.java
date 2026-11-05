@@ -328,4 +328,58 @@ class PlayerMemoryTest {
         assertEquals(0L, memory.operatorDecisionCount);
     }
 
+
+    @Test
+    void recordsAndRemovesPlayerPlacedConstructionBlocks() {
+        PlayerMemory memory = new PlayerMemory();
+        assertTrue(memory.recordPlacedBlock(
+                10, 64, -4, "minecraft:overworld", "minecraft:oak_planks", 100L
+        ));
+        assertEquals(1, memory.getConstructionBlockCount());
+        assertEquals(1L, memory.blocksPlaced);
+        assertTrue(memory.constructionAnalysisDirty);
+
+        assertTrue(memory.removePlacedBlock(10, 64, -4, "minecraft:overworld", 120L));
+        assertEquals(0, memory.getConstructionBlockCount());
+        assertEquals(1L, memory.constructionBlocksRemoved);
+        assertEquals(120L, memory.lastConstructionChangeAt);
+        assertTrue(memory.constructionAnalysisDirty);
+    }
+
+    @Test
+    void constructionHistoryIsDimensionSpecificAndBounded() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordPlacedBlock(1, 64, 1, "minecraft:overworld", "minecraft:stone", 1L);
+        memory.recordPlacedBlock(1, 64, 1, "minecraft:the_nether", "minecraft:stone", 2L);
+
+        assertTrue(memory.removePlacedBlock(1, 64, 1, "minecraft:overworld", 3L));
+        assertEquals(1, memory.getConstructionBlockCount());
+        assertTrue(memory.constructionBlocks.containsKey("minecraft:the_nether|1,64,1"));
+
+        for (int i = 0; i < PlayerMemory.MAX_CONSTRUCTION_BLOCKS + 5; i++) {
+            memory.recordPlacedBlock(i, 70, 0, "minecraft:overworld", "minecraft:stone", 10L + i);
+        }
+        assertEquals(PlayerMemory.MAX_CONSTRUCTION_BLOCKS, memory.getConstructionBlockCount());
+        assertFalse(memory.constructionBlocks.containsKey("minecraft:the_nether|1,64,1"));
+    }
+
+    @Test
+    void normalizeRepairsAndTrimsConstructionMemory() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.constructionBlocks = null;
+        memory.constructionComplexity = Double.NaN;
+        memory.recognizedBuildingCount = -1;
+        memory.normalize();
+        assertNotNull(memory.constructionBlocks);
+        assertEquals(0.0D, memory.constructionComplexity, 0.0001D);
+        assertEquals(0, memory.recognizedBuildingCount);
+
+        for (int i = 0; i < PlayerMemory.MAX_CONSTRUCTION_BLOCKS + 2; i++) {
+            memory.recordPlacedBlock(i, 64, 0, "minecraft:overworld", "minecraft:stone", i);
+        }
+        memory.normalize();
+        assertEquals(PlayerMemory.MAX_CONSTRUCTION_BLOCKS, memory.getConstructionBlockCount());
+        assertFalse(memory.constructionBlocks.containsKey("minecraft:overworld|0,64,0"));
+    }
+
 }
