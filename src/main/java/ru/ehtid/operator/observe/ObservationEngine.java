@@ -216,13 +216,17 @@ public final class ObservationEngine {
     }
 
     private void processPendingPlacementChecks() {
+        processPendingPlacementChecks(false);
+    }
+
+    private void processPendingPlacementChecks(boolean force) {
         if (pendingPlacementChecks.isEmpty()) return;
 
         Iterator<Map.Entry<String, PendingPlacementCheck>> iterator =
                 pendingPlacementChecks.entrySet().iterator();
         while (iterator.hasNext()) {
             PendingPlacementCheck check = iterator.next().getValue();
-            if (check.level().getGameTime() < check.dueGameTick()) continue;
+            if (!force && check.level().getGameTime() < check.dueGameTick()) continue;
             iterator.remove();
 
             if (!check.level().hasChunkAt(check.position())) continue;
@@ -509,6 +513,7 @@ public final class ObservationEngine {
     public void onServerStopping(MinecraftServer server) {
         if (loaded) {
             processPendingVoxelChecks(true);
+            processPendingPlacementChecks(true);
             save(server);
         }
         pendingVoxelChecks.clear();
