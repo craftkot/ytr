@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "operator_reality",
+  "version": "${version}",
+  "name": "Operator: Reality",
+  "description": "A persistent adaptive observer for Minecraft. Version 0.2 improves per-player training and mining-behaviour memory.",
+  "authors": ["EHTID project"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "ru.ehtid.operator.OperatorMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.20.1",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
