@@ -40,6 +40,10 @@ public final class OperatorModelSmokeTest {
         check(tunnelAnalysis.largest != null
                 && tunnelAnalysis.largest.type == TunnelAnalyzer.ComponentType.LINEAR,
                 "eight adjacent mined blocks should classify as a linear tunnel");
+        check(tunnelMemory.removeTunnelCell("minecraft:overworld", 3, -20, 0),
+                "placing a block in a mined voxel should invalidate that cell");
+        check(tunnelMemory.getTunnelCellCount() == 7,
+                "voxel invalidation should update the map without erasing mining totals");
 
         PlayerMemory bounded = new PlayerMemory();
         for (int i = 0; i < 700; i++) {
