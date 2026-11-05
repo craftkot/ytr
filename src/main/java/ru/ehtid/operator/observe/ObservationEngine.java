@@ -264,7 +264,7 @@ public final class ObservationEngine {
         if (lastScan != null && now - lastScan < AIR_SCAN_INTERVAL) return;
         lastAirScanAt.put(playerKey, now);
 
-        ServerLevel level = player.serverLevel();
+        ServerLevel level = (ServerLevel) player.level();
         BlockPos feet = player.blockPosition();
         BlockPos head = new BlockPos(feet.getX(), feet.getY() + 1, feet.getZ());
         if (!level.hasChunkAt(feet) || !level.hasChunkAt(head)) return;
