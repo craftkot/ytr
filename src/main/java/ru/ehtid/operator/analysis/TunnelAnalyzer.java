@@ -145,8 +145,8 @@ public final class TunnelAnalyzer {
         }
 
         return new ComponentSummary(
-                cells.size(), extentX, extentY, extentZ, axis, longest,
-                density, axisEdgeRatio, type
+                cells.size(), minX, minY, minZ, maxX, maxY, maxZ,
+                extentX, extentY, extentZ, axis, longest, density, axisEdgeRatio, type
         );
     }
 
@@ -174,6 +174,12 @@ public final class TunnelAnalyzer {
 
     public static final class ComponentSummary {
         public final int cells;
+        public final int minX;
+        public final int minY;
+        public final int minZ;
+        public final int maxX;
+        public final int maxY;
+        public final int maxZ;
         public final int extentX;
         public final int extentY;
         public final int extentZ;
@@ -183,10 +189,18 @@ public final class TunnelAnalyzer {
         public final double axisEdgeRatio;
         public final ComponentType type;
 
-        private ComponentSummary(int cells, int extentX, int extentY, int extentZ,
+        private ComponentSummary(int cells, int minX, int minY, int minZ,
+                                 int maxX, int maxY, int maxZ,
+                                 int extentX, int extentY, int extentZ,
                                  Axis axis, int length, double density,
                                  double axisEdgeRatio, ComponentType type) {
             this.cells = cells;
+            this.minX = minX;
+            this.minY = minY;
+            this.minZ = minZ;
+            this.maxX = maxX;
+            this.maxY = maxY;
+            this.maxZ = maxZ;
             this.extentX = extentX;
             this.extentY = extentY;
             this.extentZ = extentZ;
@@ -232,7 +246,10 @@ public final class TunnelAnalyzer {
             String largestDescription = largest == null
                     ? "none"
                     : largest.type + ", " + largest.cells + " cells, axis " + largest.axis
-                    + ", extent " + largest.length + " blocks";
+                    + ", extent " + largest.length + " blocks"
+                    + ", bounds X[" + largest.minX + ".." + largest.maxX + "]"
+                    + " Y[" + largest.minY + ".." + largest.maxY + "]"
+                    + " Z[" + largest.minZ + ".." + largest.maxZ + "]";
             return "Tunnel map (" + dimension + ")"
                     + " | mapped dug cells: " + mappedCells
                     + " | connected areas: " + components
