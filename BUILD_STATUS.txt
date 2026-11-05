@@ -1,31 +1,44 @@
 Operator: Reality 0.4.0
 
-Implementation:
-- Added TunnelNetworkAnalyzer with X/Z footprint projection.
-- Added Zhang-Suen centerline thinning with a hard limit of 128 iterations.
-- Added graph compression into corridor edges and topology nodes.
-- Added dead-end, junction, isolated-area and loop detection.
-- Added junction coordinates, approximate corridor segment endpoints and estimated centerline segment lengths.
-- Added /operator network and retained /operator tunnels.
-- Added 11 topology tests covering straight/thick corridors, T and four-way junctions, loops, disconnected areas, dimension separation, vertical projection and diagonal-only contact.
-- Existing world memory schema remains 3; no migration is required for 0.3 saves.
+Verified implementation commit:
+- 9e6aafb9ac78a37d16e1ffb493f687457abbdbb1
+- GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42054765276
+
+Build and runtime verification:
+- Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.x.
+- Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
+- gradle clean test build completed successfully.
+- 38 JUnit test methods are present and the Gradle test task passed: 14 PlayerMemory, 3 OperatorWorldData, 10 TunnelAnalyzer, 11 TunnelNetworkAnalyzer.
+- Dedicated Fabric server started and loaded Operator 0.4.0 without a crash.
+- RCON /operator status returned the expected Operator 0.4 passive-observation status.
+- World memory JSON was written and schemaVersion 3 was verified.
+- RCON stop command shut down the dedicated server cleanly.
+- Mod JAR and source snapshot artifacts were both uploaded successfully.
+
+Verified distributable:
+- operator-reality-0.4.0.jar
+- Size: 59,872 bytes.
+- SHA-256: 2ede813ca9fba35710baee0ec7fedbb2c6ec1fc8a5b8addf19b8237077c25208
+- Sources JAR size: 20,001 bytes.
+
+Implemented in 0.4.0:
+- Bounded per-player map of 4,096 unique mined terrain voxels.
+- Delayed invalidation when a player fills a recorded mined cell.
+- Six-face 3D connected-component reconstruction.
+- Preliminary linear/chamber/irregular/small area classification and bounds.
+- Horizontal X/Z footprint projection.
+- Zhang-Suen centerline thinning with a 128-iteration cap.
+- Graph compression into corridor segments and topology nodes.
+- Dead-end, junction, isolated-area and loop detection.
+- Junction coordinates and approximate corridor segment endpoints.
+- /operator network and /operator tunnels commands.
+- Existing world memory schema 3 retained; 0.3 saves do not require migration.
 - World mutation remains disabled.
 
-Verification on source commit 03095e6cdd10905312495538abfc019f16b8be8b:
-- Java 25 / Gradle 9.8.2 compile, JUnit and build: PASS.
-- Dedicated Fabric server startup: PASS.
-- RCON /operator status: PASS.
-- Schema-3 world-memory persistence: PASS.
-- Clean dedicated server shutdown: PASS.
-- Mod JAR artifact uploaded successfully.
-- CI source-snapshot upload failed because workflow path still referenced operator-reality-0.3.0-source.zip; the archive is now generated as operator-reality-0.4.0-source.zip and workflow upload path has been corrected.
-- Full CI rerun is required after this workflow fix.
-
 Known limitations:
-- Network analysis uses horizontal X/Z projection; vertical layers collapse.
-- Stacked tunnels may merge in the network graph.
+- Network analysis uses horizontal X/Z projection; vertical layers collapse and stacked tunnels may merge.
 - Centerline segment lengths are estimates after thinning, not exact block-path lengths.
 - Only suitable blocks mined after installing the mod are mapped.
 - Existing tunnels and air spaces are not scanned.
-- Explosions, pistons, fluids, dispensers and other mods' block changes are not fully tracked.
+- Explosions, pistons, fluid flow, dispensers and other mods' block changes are not fully tracked.
 - World mutation is intentionally disabled.
