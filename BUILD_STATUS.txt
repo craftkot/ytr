@@ -1,20 +1,26 @@
 Operator: Reality 0.3.0
 
-Verified build:
-- Source commit: 97159981c1027e40583468004ac73f202f74081c.
-- GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42049469920
+Verified source commit:
+- d261286a8191447fc1b7c6edd6908e235cf37504
+- GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42050887342
+
+Build and runtime verification:
 - Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.x.
 - Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
 - gradle clean test build completed successfully.
-- 25 JUnit test methods passed: 12 PlayerMemory, 3 OperatorWorldData, 10 TunnelAnalyzer.
-- Dedicated Fabric server launched; Operator 0.3.0 initialized.
-- RCON command /operator status returned the expected Operator 0.3 passive-observation status.
+- 27 JUnit test methods passed: 14 PlayerMemory, 3 OperatorWorldData, 10 TunnelAnalyzer.
+- Dedicated Fabric server started and loaded Operator 0.3.0 without a crash.
+- UseBlockCallback placement-invalidation registration did not break server startup.
+- RCON /operator status returned the expected Operator 0.3 passive-observation status.
 - World memory JSON was written and schemaVersion 3 was verified.
 - RCON stop command shut down the dedicated server cleanly.
-- Built mod JAR and sources JAR were uploaded as CI artifacts.
-- Main JAR was downloaded and inspected: contains OperatorMod, TunnelAnalyzer, OperatorCommands, PlayerMemory and schema-3 storage classes.
-- Built JAR size: 34,792 bytes.
-- SHA-256: e8014384b54284d0fe9c4b257f517df646ebdcf0d61aa8a5e7eac3a0274e70b1
+- JAR and source snapshot were uploaded as CI artifacts.
+
+Verified distributable:
+- operator-reality-0.3.0.jar
+- Size: 37,772 bytes.
+- SHA-256: ba6d06034f7892d0ef95fe32d2aadf889ce38082f929796a15aa8511f257207b
+- Contains OperatorMod, TunnelAnalyzer, OperatorCommands, PlayerMemory, ObservationEngine and pending voxel-check classes.
 
 Implemented in 0.3.0:
 - Bounded per-player map of 4,096 unique mined terrain voxels.
@@ -22,15 +28,17 @@ Implemented in 0.3.0:
 - Six-face connected-component analysis.
 - Dimension-aware tunnel reconstruction.
 - Preliminary linear/chamber/irregular/small area classification.
-- Largest component bounding coordinates.
+- Bounding coordinates for the largest component.
 - /operator tunnels for the current dimension.
+- Delayed block-use verification: if a player fills a recorded mined cell, the voxel is removed from all affected player profiles on the next server tick.
+- Pending placement checks are capped at 256 and flushed before server shutdown.
 - Schema migration from 2 to 3, preserving existing player profiles.
-- Chronological eviction order restored after JSON load.
+- Chronological voxel eviction order restored after JSON load.
 
 Known limitations:
 - Only suitable blocks mined by a player after installing 0.3 are mapped.
 - Existing tunnels and air spaces are not scanned.
-- Placed blocks, explosions and changes by other mods are not removed from the mined-voxel map.
-- The map stores the 4,096 most recently mined unique positions per player across dimensions.
-- Geometry classes are heuristics, not a full skeleton/branch reconstruction.
+- Explosions, pistons, fluid flow, dispensers and block changes from other mods are not fully tracked.
+- The map retains at most 4,096 most recently mined unique positions per player across dimensions.
+- Geometry classes are heuristics, not a full skeleton or branch reconstruction.
 - World mutation is intentionally disabled. Operator does not yet create, extend or alter tunnels.
