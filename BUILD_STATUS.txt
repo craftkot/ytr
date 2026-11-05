@@ -7,7 +7,7 @@ GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42121017075
 Successful checks:
 - gradle clean test build --no-daemon.
 - Java 25 / Gradle 9.8.2 toolchain.
-- All JUnit tests passed, including closed/open/solid shell classification, room-adjacent geometry metrics, per-component and aggregate flood-fill budgets, block-state persistence/refresh, schema migration and builder-aware planning.
+- All JUnit tests passed, including closed/open/solid shell classification, internal floor-plane metrics, per-component and aggregate flood-fill budgets, block-state persistence/refresh, schema migration and builder-aware planning.
 - Dedicated Fabric server reached the ready state.
 - RCON /operator status returned the expected passive-observation state.
 - Operator world memory was persisted with schemaVersion 7.
