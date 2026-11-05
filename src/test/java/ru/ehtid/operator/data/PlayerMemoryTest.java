@@ -157,6 +157,94 @@ class PlayerMemoryTest {
     }
 
     @Test
+    void discoveredAirIsTrackedSeparatelyFromMinedCells() {
+        PlayerMemory memory = new PlayerMemory();
+        assertTrue(memory.recordDiscoveredAir(2, 18, -4, "minecraft:overworld", 700L));
+        assertFalse(memory.recordDiscoveredAir(2, 18, -4, "minecraft:overworld", 701L));
+
+        assertEquals(1, memory.getTunnelCellCount());
+        assertEquals(0, memory.getMinedTunnelCellCount());
+        assertEquals(1, memory.getObservedAirCellCount());
+        assertEquals(0L, memory.tunnelBlocksCleared);
+        PlayerMemory.TunnelCell cell = memory.tunnelCells.values().iterator().next();
+        assertEquals("minecraft:air", cell.blockId);
+        assertEquals(PlayerMemory.TUNNEL_SOURCE_OBSERVED_AIR, cell.source);
+    }
+
+    @Test
+    void discoveredAirDoesNotOverwriteMinedEvidence() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                2, 18, -4, "minecraft:overworld", "minecraft:deepslate",
+                true, true, 700L
+        );
+
+        assertFalse(memory.recordDiscoveredAir(2, 18, -4, "minecraft:overworld", 701L));
+        assertEquals(1, memory.getMinedTunnelCellCount());
+        assertEquals(0, memory.getObservedAirCellCount());
+        assertEquals("minecraft:deepslate", memory.tunnelCells.values().iterator().next().blockId);
+    }
+
+    @Test
+    void airDiscoveryCannotEvictMinedCellsWhenMemoryIsFull() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                0, 20, 0, "minecraft:overworld", "minecraft:stone",
+                true, true, 1L
+        );
+        for (int i = 1; i < PlayerMemory.MAX_TUNNEL_CELLS; i++) {
+            memory.recordBrokenBlock(
+                    i, 20, 0, "minecraft:overworld", "minecraft:stone",
+                    true, true, i + 1L
+            );
+        }
+
+        assertFalse(memory.recordDiscoveredAir(10_000, 20, 0, "minecraft:overworld", 9_000L));
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS, memory.getTunnelCellCount());
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS, memory.getMinedTunnelCellCount());
+        assertTrue(memory.hasTunnelCell("minecraft:overworld", 0, 20, 0));
+    }
+
+    @Test
+    void minedEvidenceEvictsObservedAirBeforeOtherMinedCells() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                0, 20, 0, "minecraft:overworld", "minecraft:stone",
+                true, true, 1L
+        );
+        for (int i = 1; i < PlayerMemory.MAX_TUNNEL_CELLS; i++) {
+            assertTrue(memory.recordDiscoveredAir(i, 20, 0, "minecraft:overworld", i + 1L));
+        }
+
+        memory.recordBrokenBlock(
+                10_000, 20, 0, "minecraft:overworld", "minecraft:deepslate",
+                true, true, 9_000L
+        );
+
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS, memory.getTunnelCellCount());
+        assertEquals(2, memory.getMinedTunnelCellCount());
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS - 2, memory.getObservedAirCellCount());
+        assertTrue(memory.hasTunnelCell("minecraft:overworld", 0, 20, 0));
+        assertFalse(memory.hasTunnelCell("minecraft:overworld", 1, 20, 0));
+    }
+
+    @Test
+    void normalizeTreatsLegacyCellsWithoutSourceAsMined() {
+        PlayerMemory memory = new PlayerMemory();
+        PlayerMemory.TunnelCell legacy = new PlayerMemory.TunnelCell(
+                1, 20, 2, "minecraft:overworld", "minecraft:stone", 5L
+        );
+        legacy.source = null;
+        memory.tunnelCells.put("legacy", legacy);
+
+        memory.normalize();
+
+        assertEquals(PlayerMemory.TUNNEL_SOURCE_MINED, memory.tunnelCells.get("legacy").source);
+        assertEquals(1, memory.getMinedTunnelCellCount());
+        assertEquals(0, memory.getObservedAirCellCount());
+    }
+
+    @Test
     void tunnelVoxelHistoryRemainsBounded() {
         PlayerMemory memory = new PlayerMemory();
         for (int x = 0; x < PlayerMemory.MAX_TUNNEL_CELLS + 10; x++) {
