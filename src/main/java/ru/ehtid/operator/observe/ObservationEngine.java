@@ -254,7 +254,7 @@ public final class ObservationEngine {
             String blockId = BuiltInRegistries.BLOCK.getKey(placedState.getBlock()).toString();
             if (memory.recordPlacedBlock(
                     check.position().getX(), check.position().getY(), check.position().getZ(),
-                    check.dimension(), blockId, check.level().getGameTime()
+                    check.dimension(), blockId, placedState.toString(), check.level().getGameTime()
             )) {
                 dirty = true;
             }
@@ -418,11 +418,15 @@ public final class ObservationEngine {
 
             BlockPos position = new BlockPos(cell.x, cell.y, cell.z);
             if (!level.hasChunkAt(position)) continue;
+            BlockState actualState = level.getBlockState(position);
             String actualBlockId = BuiltInRegistries.BLOCK
-                    .getKey(level.getBlockState(position).getBlock()).toString();
-            if (!cell.blockId.equals(actualBlockId)
-                    && owner.removePlacedBlock(cell.x, cell.y, cell.z,
-                            cell.dimension, level.getGameTime())) {
+                    .getKey(actualState.getBlock()).toString();
+            if (!cell.blockId.equals(actualBlockId)) {
+                if (owner.removePlacedBlock(cell.x, cell.y, cell.z,
+                        cell.dimension, level.getGameTime())) dirty = true;
+            } else if (owner.updatePlacedBlockState(
+                    cell.x, cell.y, cell.z, cell.dimension,
+                    actualState.toString(), level.getGameTime())) {
                 dirty = true;
             }
         }
@@ -502,6 +506,26 @@ public final class ObservationEngine {
                     analysis.structureCount(), analysis.buildingCandidateCount(),
                     analysis.largestStructureBlockCount(), analysis.largestBuildingBlockCount(),
                     analysis.complexity(), now
+            );
+            ConstructionAnalyzer.Structure bestBuilding = analysis.structures().stream()
+                    .filter(ConstructionAnalyzer.Structure::buildingCandidate)
+                    .max(java.util.Comparator
+                            .comparingInt(ConstructionAnalyzer.Structure::enclosedVoidCells)
+                            .thenComparingInt(ConstructionAnalyzer.Structure::blockCount))
+                    .orElse(null);
+            int enclosedBuildings = (int) analysis.structures().stream()
+                    .filter(ConstructionAnalyzer.Structure::enclosedBuildingCandidate).count();
+            memory.updateConstructionSemanticsSummary(
+                    enclosedBuildings,
+                    bestBuilding == null ? 0 : bestBuilding.enclosedVoidCells(),
+                    bestBuilding == null ? 0 : bestBuilding.doorCount(),
+                    bestBuilding == null ? 0 : bestBuilding.windowBlockCount(),
+                    bestBuilding == null ? 0 : bestBuilding.stairBlockCount(),
+                    bestBuilding == null ? 0 : bestBuilding.slabBlockCount(),
+                    bestBuilding == null ? 0 : bestBuilding.floorLayerCount(),
+                    bestBuilding == null ? 0.0D : bestBuilding.floorCoverage(),
+                    bestBuilding == null ? 0.0D : bestBuilding.roofCoverage(),
+                    bestBuilding == null ? 0.0D : bestBuilding.wallCoverage()
             );
             dirty = true;
             analysed++;
@@ -737,7 +761,18 @@ public final class ObservationEngine {
                 .map(structure -> structure.kind()
                         + " " + structure.blockCount() + " blocks"
                         + " | " + structure.bounds()
-                        + " | " + structure.uniqueBlockTypes() + " block types"
+                        + " | floor/roof/walls "
+                        + Math.round(structure.floorCoverage() * 100.0D) + "/"
+                        + Math.round(structure.roofCoverage() * 100.0D) + "/"
+                        + Math.round(structure.wallCoverage() * 100.0D) + "%"
+                        + " | enclosed void: "
+                        + (structure.interiorScanComplete()
+                                ? structure.enclosedVoidCells() + " cells" : "scan capped")
+                        + " | doors/windows/stairs/slabs "
+                        + structure.doorCount() + "/" + structure.windowBlockCount() + "/"
+                        + structure.stairBlockCount() + "/" + structure.slabBlockCount()
+                        + " | floors: " + structure.floorLayerCount()
+                        + " | block states: " + structure.uniqueBlockStates()
                         + " | ticks " + structure.firstPlacedAt() + "-" + structure.lastPlacedAt()
                         + " | " + Math.round(structure.confidence() * 100.0D) + "%")
                 .collect(java.util.stream.Collectors.joining(" ; "));
@@ -747,17 +782,27 @@ public final class ObservationEngine {
                 + " | tracked placed blocks: " + analysis.trackedBlockCount()
                 + " | connected structures: " + analysis.structureCount()
                 + " | building candidates: " + analysis.buildingCandidateCount()
+                + " | enclosed building candidates: " + analysis.structures().stream()
+                        .filter(ConstructionAnalyzer.Structure::enclosedBuildingCandidate).count()
                 + " | largest structure: " + analysis.largestStructureBlockCount()
                 + " blocks"
                 + " | largest building candidate: " + analysis.largestBuildingBlockCount()
                 + " blocks"
                 + " | lifetime placements: " + memory.blocksPlaced
                 + " | tracked removals: " + memory.constructionBlocksRemoved
-                + " | last change tick: " + memory.lastConstructionChangeAt
+                + " | best enclosed void: " + memory.largestEnclosedVoidCells + " cells"
+                + " | doors/windows/stairs/slabs: " + memory.largestDoorCount + "/"
+                + memory.largestWindowBlockCount + "/" + memory.largestStairBlockCount + "/"
+                + memory.largestSlabBlockCount
+                + " | floor levels: " + memory.largestFloorLayerCount
+                + " | best floor/roof/wall coverage: "
+                + Math.round(memory.largestFloorCoverage * 100.0D) + "/"
+                + Math.round(memory.largestRoofCoverage * 100.0D) + "/"
+                + Math.round(memory.largestWallCoverage * 100.0D) + "%"
                 + (details.isBlank() ? " | no connected structure has reached "
                         + ConstructionAnalyzer.MIN_STRUCTURE_BLOCKS + " blocks yet"
                         : " | largest components: " + details)
-                + " | note: geometry-based candidates only; interiors, block-entity contents and command/world-editor changes are not captured.";
+                + " | note: enclosed voids are inferred only from recorded placements; this is not a complete world scan and does not capture block-entity NBT.";
     }
 
     public String getTunnelProfile(ServerPlayer player) {
