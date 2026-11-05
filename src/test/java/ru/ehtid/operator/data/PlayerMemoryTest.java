@@ -91,10 +91,60 @@ class PlayerMemoryTest {
     }
 
     @Test
+    void recordsDirtAsTunnelTerrainWithoutCountingItAsRock() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                4, 30, -2, "minecraft:overworld", "minecraft:dirt",
+                false, true, 100L
+        );
+
+        assertEquals(1, memory.getTunnelCellCount());
+        assertEquals(1L, memory.tunnelBlocksCleared);
+        assertEquals(0L, memory.rockBlocksBroken);
+        assertEquals("minecraft:dirt", memory.tunnelCells.values().iterator().next().blockId);
+    }
+
+    @Test
+    void replacesPreviouslyRecordedCellAtSamePosition() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                4, 30, -2, "minecraft:overworld", "minecraft:dirt",
+                false, true, 100L
+        );
+        memory.recordBrokenBlock(
+                4, 30, -2, "minecraft:overworld", "minecraft:stone",
+                true, true, 200L
+        );
+
+        assertEquals(1, memory.getTunnelCellCount());
+        assertEquals(2L, memory.tunnelBlocksCleared);
+        assertEquals("minecraft:stone", memory.tunnelCells.values().iterator().next().blockId);
+    }
+
+    @Test
+    void tunnelVoxelHistoryRemainsBounded() {
+        PlayerMemory memory = new PlayerMemory();
+        for (int x = 0; x < PlayerMemory.MAX_TUNNEL_CELLS + 10; x++) {
+            memory.recordBrokenBlock(
+                    x, 20, 0, "minecraft:overworld", "minecraft:stone",
+                    true, true, x
+            );
+        }
+
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS, memory.getTunnelCellCount());
+        assertFalse(memory.tunnelCells.containsKey("minecraft:overworld|0,20,0"));
+        assertTrue(memory.tunnelCells.containsKey(
+                "minecraft:overworld|" + (PlayerMemory.MAX_TUNNEL_CELLS + 9) + ",20,0"
+        ));
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS + 10L, memory.tunnelBlocksCleared);
+    }
+
+    @Test
     void normalizeTrimsHistoriesAndRepairsNullCollections() {
         PlayerMemory memory = new PlayerMemory();
         memory.route = null;
         memory.mineHistory = null;
+        memory.tunnelCells = null;
         memory.brokenBlockTypes = null;
         memory.minedBlockTypes = null;
         memory.miningDirections = null;
@@ -104,6 +154,7 @@ class PlayerMemoryTest {
 
         assertNotNull(memory.route);
         assertNotNull(memory.mineHistory);
+        assertNotNull(memory.tunnelCells);
         assertNotNull(memory.brokenBlockTypes);
         assertNotNull(memory.minedBlockTypes);
         assertNotNull(memory.miningDirections);
