@@ -21,6 +21,7 @@ public final class ConstructionAnalyzer {
     public static final int MIN_STRUCTURE_BLOCKS = 8;
     public static final int MIN_BUILDING_BLOCKS = 24;
     public static final long MAX_INTERIOR_SCAN_CELLS = 32_768L;
+    public static final long MAX_TOTAL_INTERIOR_SCAN_CELLS_PER_ANALYSIS = 65_536L;
 
     private static final int[][] DIRECTIONS = {
             {1, 0, 0}, {-1, 0, 0},
@@ -48,6 +49,7 @@ public final class ConstructionAnalyzer {
         }
 
         int trackedBlocks = remaining.size();
+        long interiorBudget = MAX_TOTAL_INTERIOR_SCAN_CELLS_PER_ANALYSIS;
         List<Structure> structures = new ArrayList<>();
         while (!remaining.isEmpty()) {
             Map.Entry<CellKey, PlayerMemory.ConstructionBlock> first =
@@ -77,7 +79,12 @@ public final class ConstructionAnalyzer {
             }
 
             if (component.blockCount >= MIN_STRUCTURE_BLOCKS) {
-                structures.add(component.toStructure());
+                Structure structure = component.toStructure(interiorBudget);
+                structures.add(structure);
+                if (structure.interiorScanComplete()) {
+                    interiorBudget = Math.max(0L, interiorBudget
+                            - (long) structure.spanX() * structure.spanY() * structure.spanZ());
+                }
             }
         }
 
@@ -130,7 +137,8 @@ public final class ConstructionAnalyzer {
 
     private static boolean isWindow(String blockId) {
         String path = blockPath(blockId);
-        return path.equals("glass") || path.equals("tinted_glass")
+        return path.equals("glass") || path.equals("glass_pane")
+                || path.equals("tinted_glass")
                 || path.endsWith("_glass") || path.endsWith("_glass_pane");
     }
 
@@ -150,10 +158,12 @@ public final class ConstructionAnalyzer {
             List<PlayerMemory.ConstructionBlock> blocks,
             int minX, int minY, int minZ,
             int maxX, int maxY, int maxZ,
-            int spanX, int spanY, int spanZ
+            int spanX, int spanY, int spanZ,
+            long remainingBudget
     ) {
         long volume = (long) spanX * spanY * spanZ;
-        if (volume <= 0L || volume > MAX_INTERIOR_SCAN_CELLS) {
+        if (volume <= 0L || volume > MAX_INTERIOR_SCAN_CELLS
+                || volume > remainingBudget) {
             return new InteriorMetrics(false, 0);
         }
 
@@ -280,7 +290,6 @@ public final class ConstructionAnalyzer {
         private final Set<String> blockTypes = new HashSet<>();
         private final Set<String> blockStates = new HashSet<>();
         private final List<PlayerMemory.ConstructionBlock> blocks = new ArrayList<>();
-        private final Map<Integer, Integer> blocksByY = new LinkedHashMap<>();
         private int blockCount;
         private int doorCount;
         private int windowBlockCount;
@@ -312,7 +321,6 @@ public final class ConstructionAnalyzer {
             if (block.blockState != null && !block.blockState.isBlank()) {
                 blockStates.add(block.blockState);
             }
-            blocksByY.merge(block.y, 1, Integer::sum);
             if (isDoor(block.blockId) && !isUpperDoorHalf(block.blockState)) doorCount++;
             if (isWindow(block.blockId)) windowBlockCount++;
             if (isStair(block.blockId)) stairBlockCount++;
@@ -321,7 +329,7 @@ public final class ConstructionAnalyzer {
             lastPlacedAt = Math.max(lastPlacedAt, block.gameTick);
         }
 
-        private Structure toStructure() {
+        private Structure toStructure(long interiorBudget) {
             int spanX = maxX - minX + 1;
             int spanY = maxY - minY + 1;
             int spanZ = maxZ - minZ + 1;
@@ -366,7 +374,8 @@ public final class ConstructionAnalyzer {
                     : Math.min(1.0D, occupiedWallFaceCells / (double) wallArea);
 
             InteriorMetrics interior = estimateEnclosedVoid(
-                    blocks, minX, minY, minZ, maxX, maxY, maxZ, spanX, spanY, spanZ
+                    blocks, minX, minY, minZ, maxX, maxY, maxZ,
+                    spanX, spanY, spanZ, interiorBudget
             );
             boolean enclosedBuilding = buildingCandidate
                     && interior.complete() && interior.enclosedVoidCells() > 0
