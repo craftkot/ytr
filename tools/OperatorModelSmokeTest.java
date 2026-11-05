@@ -1,5 +1,8 @@
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
+import ru.ehtid.operator.analysis.TunnelNetworkAnalyzer;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class OperatorModelSmokeTest {
     public static void main(String[] args) {
@@ -45,6 +48,23 @@ public final class OperatorModelSmokeTest {
         check(tunnelMemory.getTunnelCellCount() == 7,
                 "voxel invalidation should update the map without erasing mining totals");
 
+        List<PlayerMemory.TunnelCell> networkCells = new ArrayList<>();
+        for (int x = -5; x <= 5; x++) {
+            networkCells.add(new PlayerMemory.TunnelCell(
+                    x, 20, 0, "minecraft:overworld", "minecraft:stone", 30_000L + x
+            ));
+        }
+        for (int z = -5; z <= 0; z++) {
+            networkCells.add(new PlayerMemory.TunnelCell(
+                    0, 20, z, "minecraft:overworld", "minecraft:stone", 31_000L + z
+            ));
+        }
+        TunnelNetworkAnalyzer.Analysis network =
+                TunnelNetworkAnalyzer.analyze(networkCells, "minecraft:overworld");
+        check(network.deadEnds == 3, "T-shaped tunnel should have three dead ends");
+        check(network.junctions == 1, "T-shaped tunnel should have one junction");
+        check(network.corridorSegments == 3, "T-shaped tunnel should have three corridor segments");
+
         PlayerMemory bounded = new PlayerMemory();
         for (int i = 0; i < 700; i++) {
             bounded.recordMovement(i * 3.0D, 64, 0, "minecraft:overworld", i * 100L);
@@ -56,7 +76,7 @@ public final class OperatorModelSmokeTest {
         check(bounded.mineHistory.size() == PlayerMemory.MAX_MINE_SAMPLES, "mining history must remain bounded");
         check(bounded.minedBlockTypes.size() <= PlayerMemory.MAX_COUNTER_KEYS, "mined block counters must remain bounded");
 
-        System.out.println("PASS: player learning, movement, mining chain, bounded memory, and tunnel voxel geometry.");
+        System.out.println("PASS: player learning, movement, mining chain, bounded memory, tunnel voxel geometry, and tunnel network topology.");
     }
 
     private static void check(boolean condition, String message) {
