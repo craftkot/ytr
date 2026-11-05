@@ -765,6 +765,12 @@ public final class ObservationEngine {
         String dimension = player.level().dimension().toString();
         ConstructionAnalyzer.Analysis analysis =
                 ConstructionAnalyzer.analyze(memory.constructionBlocks.values(), dimension);
+        ConstructionAnalyzer.Structure bestBuilding = analysis.structures().stream()
+                .filter(ConstructionAnalyzer.Structure::buildingCandidate)
+                .max(java.util.Comparator
+                        .comparingInt(ConstructionAnalyzer.Structure::enclosedVoidCells)
+                        .thenComparingInt(ConstructionAnalyzer.Structure::blockCount))
+                .orElse(null);
         String details = analysis.structures().stream().limit(3)
                 .map(structure -> structure.kind()
                         + " " + structure.blockCount() + " blocks"
@@ -799,15 +805,17 @@ public final class ObservationEngine {
                 + " blocks"
                 + " | lifetime placements: " + memory.blocksPlaced
                 + " | tracked removals: " + memory.constructionBlocksRemoved
-                + " | best enclosed void: " + memory.largestEnclosedVoidCells + " cells"
-                + " | doors/windows/stairs/slabs: " + memory.largestDoorCount + "/"
-                + memory.largestWindowBlockCount + "/" + memory.largestStairBlockCount + "/"
-                + memory.largestSlabBlockCount
-                + " | floor levels: " + memory.largestFloorLayerCount
+                + " | best enclosed void: "
+                + (bestBuilding == null ? 0 : bestBuilding.enclosedVoidCells()) + " cells"
+                + " | doors/windows/stairs/slabs: "
+                + (bestBuilding == null ? "0/0/0/0"
+                        : bestBuilding.doorCount() + "/" + bestBuilding.windowBlockCount() + "/"
+                                + bestBuilding.stairBlockCount() + "/" + bestBuilding.slabBlockCount())
+                + " | floor levels: " + (bestBuilding == null ? 0 : bestBuilding.floorLayerCount())
                 + " | best floor/roof/wall coverage: "
-                + Math.round(memory.largestFloorCoverage * 100.0D) + "/"
-                + Math.round(memory.largestRoofCoverage * 100.0D) + "/"
-                + Math.round(memory.largestWallCoverage * 100.0D) + "%"
+                + Math.round((bestBuilding == null ? 0.0D : bestBuilding.floorCoverage()) * 100.0D) + "/"
+                + Math.round((bestBuilding == null ? 0.0D : bestBuilding.roofCoverage()) * 100.0D) + "/"
+                + Math.round((bestBuilding == null ? 0.0D : bestBuilding.wallCoverage()) * 100.0D) + "%"
                 + (details.isBlank() ? " | no connected structure has reached "
                         + ConstructionAnalyzer.MIN_STRUCTURE_BLOCKS + " blocks yet"
                         : " | largest components: " + details)
