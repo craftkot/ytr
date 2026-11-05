@@ -679,7 +679,9 @@ public final class ObservationEngine {
                 .mapToInt(PlayerMemory::getConstructionBlockCount).sum();
         int buildingCandidates = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedBuildingCount).sum();
-        return "Operator 0.8 | " + phase
+        int enclosedBuildings = data.players.values().stream()
+                .mapToInt(memory -> memory.recognizedEnclosedBuildingCount).sum();
+        return "Operator 0.9 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -694,6 +696,7 @@ public final class ObservationEngine {
                 + " | recorded decisions: " + decisions
                 + " | player-placed blocks: " + constructionBlocks
                 + " | building candidates: " + buildingCandidates
+                + " | enclosed buildings: " + enclosedBuildings
                 + " | world mutations: disabled (shadow planning only)";
     }
 
@@ -744,6 +747,11 @@ public final class ObservationEngine {
                 + " | building candidates: " + memory.recognizedBuildingCount
                 + " | largest structure: " + memory.largestStructureBlockCount + " blocks"
                 + " | largest building candidate: " + memory.largestBuildingBlockCount + " blocks"
+                + " | enclosed void estimate: " + memory.largestEnclosedVoidCells + " cells"
+                + " | shell coverage floor/roof/walls: "
+                + Math.round(memory.largestFloorCoverage * 100.0D) + "/"
+                + Math.round(memory.largestRoofCoverage * 100.0D) + "/"
+                + Math.round(memory.largestWallCoverage * 100.0D) + "%"
                 + " | operator readiness: " + (isPlayerReadyForOperator(player) ? "ready" : "still observing")
                 + " | world tick: " + now;
     }
