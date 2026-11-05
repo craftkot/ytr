@@ -26,6 +26,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.core.BlockPos;
 
 import ru.ehtid.operator.OperatorMod;
+import ru.ehtid.operator.ai.OperatorBrain;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
 import ru.ehtid.operator.analysis.TunnelNetworkAnalyzer;
 import ru.ehtid.operator.analysis.Tunnel3DNetworkAnalyzer;
@@ -110,6 +111,12 @@ public final class ObservationEngine {
                 );
             }
             maybeStartNearbyAirScan(player, memory, now);
+            if (now % OperatorBrain.EVALUATION_INTERVAL_TICKS == 0L) {
+                OperatorBrain.Decision decision = OperatorBrain.evaluate(
+                        memory, data.observationComplete, now
+                );
+                if (OperatorBrain.apply(memory, decision, now)) dirty = true;
+            }
             dirty = true;
         }
 
@@ -429,7 +436,14 @@ public final class ObservationEngine {
                 .filter(memory -> memory.personalObservationComplete(OBSERVATION_TICKS))
                 .count();
         String phase = data.observationComplete ? "WORLD OBSERVATION COMPLETE" : "PASSIVE OBSERVATION";
-        return "Operator 0.6 | " + phase
+        long plannedPlayers = data.players.values().stream()
+                .filter(memory -> memory.plannedOperatorEvent != null
+                        && !"NONE".equals(memory.plannedOperatorEvent))
+                .count();
+        long decisions = data.players.values().stream()
+                .mapToLong(memory -> memory.operatorDecisionCount)
+                .sum();
+        return "Operator 0.7 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -439,7 +453,26 @@ public final class ObservationEngine {
                 + " | nearby air-scan sessions: " + activeAirScans.size()
                 + " | scan budget: " + MAX_AIR_SCAN_WORK_PER_TICK + "/tick"
                 + " | loaded-cell audit: up to " + MAX_TRACKED_VOXEL_AUDITS_PER_TICK + "/tick"
-                + " | world mutations: disabled in 0.6";
+                + " | brain plans: " + plannedPlayers
+                + " | recorded decisions: " + decisions
+                + " | world mutations: disabled (shadow planning only)";
+    }
+
+    public String getBrainProfile(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) {
+            return "Operator Brain: no player profile yet. The planner remains passive until observation data is collected.";
+        }
+        return "Operator Brain"
+                + " | phase: " + memory.operatorPhase
+                + " | behaviour: " + memory.operatorArchetype
+                + " | planned intervention: " + memory.plannedOperatorEvent
+                + " | confidence: " + Math.round(memory.operatorConfidence * 100.0D) + "%"
+                + " | decisions recorded: " + memory.operatorDecisionCount
+                + " | last evaluation tick: " + memory.lastBrainEvaluationAt
+                + " | last decision tick: " + memory.lastOperatorDecisionAt
+                + " | reason: " + memory.operatorReason
+                + " | execution: disabled";
     }
 
     public String getPlayerProfile(ServerPlayer player, MinecraftServer server) {
@@ -511,7 +544,7 @@ public final class ObservationEngine {
         if (!data.observationComplete && data.worldObservationElapsed(now) >= OBSERVATION_TICKS) {
             data.observationComplete = true;
             dirty = true;
-            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.6.");
+            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. The decision planner may now evaluate individually trained players; world mutations remain disabled.");
         }
     }
 
