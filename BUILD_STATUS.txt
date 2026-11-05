@@ -16,7 +16,7 @@ Implemented in 0.9.0:
 - Floor, roof and four-wall shell coverage estimates.
 - Internal horizontal floor-plane detection that excludes the perimeter wall ring.
 - Door count (lower half counted once), glass/window blocks, stairs and slabs.
-- Enclosed void flood-fill inside the component bounding box, capped at 32,768 cells.
+- Enclosed void flood-fill inside the component bounding box, capped at 32,768 cells per component and 65,536 cells per player analysis.
 - Semantic geometry labels: ENCLOSED_BUILDING, OPEN_BUILDING, BUILDING_CANDIDATE and STRUCTURE.
 - Persisted shell and enclosed-volume summary metrics.
 - Schema 6 -> 7 migration, preserving construction records and scheduling semantic re-analysis.
