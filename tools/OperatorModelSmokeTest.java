@@ -1,4 +1,5 @@
 import ru.ehtid.operator.data.PlayerMemory;
+import ru.ehtid.operator.analysis.TunnelAnalyzer;
 
 public final class OperatorModelSmokeTest {
     public static void main(String[] args) {
@@ -25,6 +26,21 @@ public final class OperatorModelSmokeTest {
         check(memory.currentMiningChain == 1, "dimension change must start a new mining chain");
         check(memory.miningSessions == 2, "dimension change must start a new mining session");
 
+        PlayerMemory tunnelMemory = new PlayerMemory();
+        for (int x = 0; x < 8; x++) {
+            tunnelMemory.recordBrokenBlock(
+                    x, -20, 0, "minecraft:overworld", "minecraft:stone",
+                    true, true, 25_000L + x
+            );
+        }
+        TunnelAnalyzer.Analysis tunnelAnalysis =
+                TunnelAnalyzer.analyze(tunnelMemory.tunnelCells.values(), "minecraft:overworld");
+        check(tunnelAnalysis.mappedCells == 8, "mined voxel map should contain eight unique cells");
+        check(tunnelAnalysis.components == 1, "connected mined blocks should form one area");
+        check(tunnelAnalysis.largest != null
+                && tunnelAnalysis.largest.type == TunnelAnalyzer.ComponentType.LINEAR,
+                "eight adjacent mined blocks should classify as a linear tunnel");
+
         PlayerMemory bounded = new PlayerMemory();
         for (int i = 0; i < 700; i++) {
             bounded.recordMovement(i * 3.0D, 64, 0, "minecraft:overworld", i * 100L);
@@ -36,7 +52,7 @@ public final class OperatorModelSmokeTest {
         check(bounded.mineHistory.size() == PlayerMemory.MAX_MINE_SAMPLES, "mining history must remain bounded");
         check(bounded.minedBlockTypes.size() <= PlayerMemory.MAX_COUNTER_KEYS, "mined block counters must remain bounded");
 
-        System.out.println("PASS: active-time training, movement accumulation, route sampling, mining chain, direction, dimension reset, and bounded memory.");
+        System.out.println("PASS: player learning, movement, mining chain, bounded memory, and tunnel voxel geometry.");
     }
 
     private static void check(boolean condition, String message) {
