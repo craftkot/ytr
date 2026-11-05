@@ -124,6 +124,39 @@ class PlayerMemoryTest {
     }
 
     @Test
+    void placedBlockInvalidatesPreviouslyMinedTunnelCell() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                7, 18, -3, "minecraft:overworld", "minecraft:stone",
+                true, true, 500L
+        );
+
+        assertTrue(memory.hasTunnelCell("minecraft:overworld", 7, 18, -3));
+        assertTrue(memory.removeTunnelCell("minecraft:overworld", 7, 18, -3));
+        assertFalse(memory.hasTunnelCell("minecraft:overworld", 7, 18, -3));
+        assertEquals(0, memory.getTunnelCellCount());
+        assertEquals(1L, memory.tunnelBlocksCleared);
+    }
+
+    @Test
+    void tunnelCellInvalidationIsDimensionSpecific() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordBrokenBlock(
+                7, 18, -3, "minecraft:overworld", "minecraft:stone",
+                true, true, 500L
+        );
+        memory.recordBrokenBlock(
+                7, 18, -3, "minecraft:the_nether", "minecraft:netherrack",
+                true, true, 600L
+        );
+
+        assertTrue(memory.removeTunnelCell("minecraft:overworld", 7, 18, -3));
+        assertFalse(memory.hasTunnelCell("minecraft:overworld", 7, 18, -3));
+        assertTrue(memory.hasTunnelCell("minecraft:the_nether", 7, 18, -3));
+        assertEquals(1, memory.getTunnelCellCount());
+    }
+
+    @Test
     void tunnelVoxelHistoryRemainsBounded() {
         PlayerMemory memory = new PlayerMemory();
         for (int x = 0; x < PlayerMemory.MAX_TUNNEL_CELLS + 10; x++) {
