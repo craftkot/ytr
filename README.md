@@ -1,9 +1,12 @@
 # Operator: Reality
 
-Development repository for the Minecraft 26.3 Fabric mod.
+Minecraft Java 26.3 / Fabric mod under development.
 
-Active development branch: `operator-dev`.
+- Active development branch: operator-dev
+- Current prototype: 0.2.0
+- Build and dedicated-server smoke-test workflow: GitHub Actions on operator-dev
+- The workflow publishes the built JAR as an Actions artifact.
 
-The current source snapshot and build instructions are published as `operator-reality-0.2.0-source.zip` on the development branch. GitHub Actions builds the snapshot on Java 25 and runs the model tests.
+The 0.2.0 prototype observes player movement and mining behaviour and persists per-player profiles. It does not modify the world yet. World mutations will be introduced only after the observation and rollback systems are reliable.
 
-World mutation is intentionally disabled in 0.2.0. This release validates player observation, persistent memory and mining-behaviour statistics before any terrain-changing code is introduced.
+See the operator-dev branch for the source code and build instructions.
