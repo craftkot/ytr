@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — Height-aware tunnel networks and voxel audit
+
+- Added per-Y horizontal centerline reconstruction and 3D graph linking.
+- Kept stacked passages at different heights as separate networks.
+- Collapsed contiguous vertical bands up to three blocks high into normal tunnel clearance.
+- Preserved taller continuous vertical runs as vertical shaft segments.
+- Added 3D dead-end, junction, corridor, isolated-area and loop metrics.
+- Added 3D junction coordinates, segment endpoints and 3D path-length estimates.
+- Changed /operator network to the height-aware graph; retained the 0.4 projection as /operator network2d.
+- Added a round-robin audit of up to 128 mapped cells per server tick.
+- Audit checks only already loaded chunks and never force-loads terrain.
+- Any recorded cell that is no longer air is invalidated for all player profiles, including changes made by pistons, dispensers, fluids or other mods.
+- New air cells caused by explosions or other non-player destruction are not automatically discovered.
+- Preserved world memory schema 3 and kept all world mutation disabled.
+- Added tests for two-block-high passages, stacked tunnels, vertical shafts, ascending routes, 3D junctions, dimension separation and diagonal-only contact.
+
+
 ## 0.4.0 — Tunnel network topology
 
 - Added a horizontal X/Z footprint projection for recorded mined terrain voxels.
