@@ -107,14 +107,19 @@ public final class OperatorBrain {
                 + 0.35D * ratio(memory.getObservedAirCellCount(), 256.0D)
                 + 0.10D * ratio(memory.miningSessions, 20.0D);
 
-        return new BehaviourScores(mining, exploration, caving);
+        double builder = 0.60D * ratio(memory.largestBuildingBlockCount, 64.0D)
+                + 0.25D * ratio(memory.recognizedBuildingCount, 3.0D)
+                + 0.15D * ratio(memory.constructionComplexity, 1.0D);
+
+        return new BehaviourScores(mining, exploration, caving, builder);
     }
 
     private static String classify(BehaviourScores scores) {
         List<NamedScore> ordered = List.of(
                 new NamedScore("MINER", scores.mining()),
                 new NamedScore("EXPLORER", scores.exploration()),
-                new NamedScore("CAVER", scores.caving())
+                new NamedScore("CAVER", scores.caving()),
+                new NamedScore("BUILDER", scores.builder())
         ).stream().sorted(Comparator.comparingDouble(NamedScore::score).reversed()).toList();
 
         NamedScore first = ordered.get(0);
@@ -148,6 +153,13 @@ public final class OperatorBrain {
                     "Repeated mining and depth data support a plan that targets the player's familiar underground habits."));
         }
 
+        if (memory.recognizedBuildingCount > 0 && memory.largestBuildingBlockCount >= 24) {
+            double placementCoverage = ratio(memory.blocksPlaced, 128.0D);
+            double score = 0.75D * scores.builder() + 0.25D * placementCoverage;
+            candidates.add(new Candidate("HOME_ECHO", score,
+                    "A connected player-placed 3D component matches building-candidate geometry; the planner can target the player's constructed spaces."));
+        }
+
         int dimensions = memory.dimensionVisits == null ? 0 : memory.dimensionVisits.size();
         if (dimensions >= 2) {
             double dimensionCoverage = ratio(dimensions, 3.0D);
@@ -179,9 +191,9 @@ public final class OperatorBrain {
 
     public record Decision(String phase, String archetype, String event, double confidence, String reason) { }
 
-    private record BehaviourScores(double mining, double exploration, double caving) {
+    private record BehaviourScores(double mining, double exploration, double caving, double builder) {
         private double maximum() {
-            return Math.max(mining, Math.max(exploration, caving));
+            return Math.max(builder, Math.max(mining, Math.max(exploration, caving)));
         }
     }
 
