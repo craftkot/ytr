@@ -337,8 +337,8 @@ public final class ObservationEngine {
             this.dimension = dimension;
             this.minX = origin.getX() - AIR_SCAN_RADIUS;
             this.maxX = origin.getX() + AIR_SCAN_RADIUS;
-            this.minY = Math.max(level.getMinBuildHeight(), origin.getY() - AIR_SCAN_BELOW);
-            this.maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + AIR_SCAN_ABOVE);
+            this.minY = Math.max(level.getMinY(), origin.getY() - AIR_SCAN_BELOW);
+            this.maxY = Math.min(level.getMaxY(), origin.getY() + AIR_SCAN_ABOVE);
             this.minZ = origin.getZ() - AIR_SCAN_RADIUS;
             this.maxZ = origin.getZ() + AIR_SCAN_RADIUS;
         }
