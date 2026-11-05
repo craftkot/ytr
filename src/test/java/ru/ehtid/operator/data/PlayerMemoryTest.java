@@ -303,4 +303,29 @@ class PlayerMemoryTest {
         assertNotNull(memory.dimensionVisits);
         assertNotNull(memory.miningDepthBands);
     }
+
+    @Test
+    void normalizeRepairsDecisionPlannerState() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.operatorPhase = null;
+        memory.operatorArchetype = null;
+        memory.plannedOperatorEvent = null;
+        memory.operatorReason = null;
+        memory.operatorConfidence = Double.NaN;
+        memory.lastBrainEvaluationAt = -50L;
+        memory.lastOperatorDecisionAt = -20L;
+        memory.operatorDecisionCount = -10L;
+
+        memory.normalize();
+
+        assertEquals("OBSERVING", memory.operatorPhase);
+        assertEquals("UNKNOWN", memory.operatorArchetype);
+        assertEquals("NONE", memory.plannedOperatorEvent);
+        assertEquals("", memory.operatorReason);
+        assertEquals(0.0D, memory.operatorConfidence);
+        assertEquals(-1L, memory.lastBrainEvaluationAt);
+        assertEquals(-1L, memory.lastOperatorDecisionAt);
+        assertEquals(0L, memory.operatorDecisionCount);
+    }
+
 }
