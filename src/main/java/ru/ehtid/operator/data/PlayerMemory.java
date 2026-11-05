@@ -14,6 +14,7 @@ public final class PlayerMemory {
     public static final int MAX_ROUTE_SAMPLES = 512;
     public static final int MAX_MINE_SAMPLES = 2048;
     public static final int MAX_TUNNEL_CELLS = 4096;
+    public static final int MAX_CONSTRUCTION_BLOCKS = 8192;
     public static final int MAX_COUNTER_KEYS = 256;
     public static final String TUNNEL_SOURCE_MINED = "mined";
     public static final String TUNNEL_SOURCE_OBSERVED_AIR = "observed_air";
@@ -44,6 +45,19 @@ public final class PlayerMemory {
     public long lastBrainEvaluationAt = -1L;
     public long lastOperatorDecisionAt = -1L;
     public long operatorDecisionCount = 0L;
+
+    /** Event-derived player-placed block history and its latest geometric analysis. */
+    public Map<String, ConstructionBlock> constructionBlocks = new LinkedHashMap<>();
+    public long blocksPlaced = 0L;
+    public long constructionBlocksRemoved = 0L;
+    public long lastConstructionChangeAt = -1L;
+    public long lastConstructionAnalysisAt = -1L;
+    public boolean constructionAnalysisDirty = false;
+    public int recognizedStructureCount = 0;
+    public int recognizedBuildingCount = 0;
+    public int largestStructureBlockCount = 0;
+    public int largestBuildingBlockCount = 0;
+    public double constructionComplexity = 0.0D;
 
     public boolean hasLastPosition = false;
     public double lastX;
@@ -100,6 +114,20 @@ public final class PlayerMemory {
             }
             tunnelCells = ordered;
         }
+        if (constructionBlocks == null) {
+            constructionBlocks = new LinkedHashMap<>();
+        } else {
+            List<Map.Entry<String, ConstructionBlock>> orderedBlocks =
+                    new ArrayList<>(constructionBlocks.entrySet());
+            orderedBlocks.removeIf(entry -> entry.getKey() == null || entry.getValue() == null
+                    || entry.getValue().dimension == null || entry.getValue().blockId == null);
+            orderedBlocks.sort(Comparator.comparingLong(entry -> entry.getValue().gameTick));
+            Map<String, ConstructionBlock> ordered = new LinkedHashMap<>();
+            for (Map.Entry<String, ConstructionBlock> entry : orderedBlocks) {
+                ordered.put(entry.getKey(), entry.getValue());
+            }
+            constructionBlocks = ordered;
+        }
         if (brokenBlockTypes == null) brokenBlockTypes = new LinkedHashMap<>();
         if (minedBlockTypes == null) minedBlockTypes = new LinkedHashMap<>();
         if (miningDirections == null) miningDirections = new LinkedHashMap<>();
@@ -108,6 +136,7 @@ public final class PlayerMemory {
         trim(route, MAX_ROUTE_SAMPLES);
         trim(mineHistory, MAX_MINE_SAMPLES);
         trimTunnelCells();
+        trimConstructionBlocks();
         trimMap(brokenBlockTypes, MAX_COUNTER_KEYS);
         trimMap(minedBlockTypes, MAX_COUNTER_KEYS);
         trimMap(miningDirections, MAX_COUNTER_KEYS);
@@ -131,6 +160,16 @@ public final class PlayerMemory {
         lastBrainEvaluationAt = Math.max(-1L, lastBrainEvaluationAt);
         lastOperatorDecisionAt = Math.max(-1L, lastOperatorDecisionAt);
         operatorDecisionCount = Math.max(0L, operatorDecisionCount);
+        blocksPlaced = Math.max(0L, blocksPlaced);
+        constructionBlocksRemoved = Math.max(0L, constructionBlocksRemoved);
+        lastConstructionChangeAt = Math.max(-1L, lastConstructionChangeAt);
+        lastConstructionAnalysisAt = Math.max(-1L, lastConstructionAnalysisAt);
+        recognizedStructureCount = Math.max(0, recognizedStructureCount);
+        recognizedBuildingCount = Math.max(0, recognizedBuildingCount);
+        largestStructureBlockCount = Math.max(0, largestStructureBlockCount);
+        largestBuildingBlockCount = Math.max(0, largestBuildingBlockCount);
+        if (!Double.isFinite(constructionComplexity)) constructionComplexity = 0.0D;
+        constructionComplexity = Math.max(0.0D, Math.min(1.0D, constructionComplexity));
     }
 
     public void recordActiveTick(long gameTick) {
@@ -312,6 +351,64 @@ public final class PlayerMemory {
         trimTunnelCells();
     }
 
+    /** Records a block confirmed to have been placed by this player. */
+    public boolean recordPlacedBlock(int x, int y, int z, String dimension,
+                                     String blockId, long gameTick) {
+        if (dimension == null || blockId == null || blockId.isBlank()) return false;
+        String key = constructionBlockKey(dimension, x, y, z);
+        constructionBlocks.remove(key);
+        constructionBlocks.put(key, new ConstructionBlock(
+                x, y, z, dimension, blockId, gameTick
+        ));
+        blocksPlaced++;
+        lastConstructionChangeAt = gameTick;
+        constructionAnalysisDirty = true;
+        trimConstructionBlocks();
+        return true;
+    }
+
+    /** Invalidates a tracked placed block after any player breaks or replaces it. */
+    public boolean removePlacedBlock(int x, int y, int z, String dimension, long gameTick) {
+        if (constructionBlocks == null
+                || constructionBlocks.remove(constructionBlockKey(dimension, x, y, z)) == null) {
+            return false;
+        }
+        constructionBlocksRemoved++;
+        lastConstructionChangeAt = gameTick;
+        constructionAnalysisDirty = true;
+        return true;
+    }
+
+    public void updateConstructionSummary(int structureCount, int buildingCount,
+                                          int largestStructure, int largestBuilding,
+                                          double complexity, long gameTick) {
+        recognizedStructureCount = Math.max(0, structureCount);
+        recognizedBuildingCount = Math.max(0, buildingCount);
+        largestStructureBlockCount = Math.max(0, largestStructure);
+        largestBuildingBlockCount = Math.max(0, largestBuilding);
+        constructionComplexity = Double.isFinite(complexity)
+                ? Math.max(0.0D, Math.min(1.0D, complexity)) : 0.0D;
+        lastConstructionAnalysisAt = gameTick;
+        constructionAnalysisDirty = false;
+    }
+
+    public int getConstructionBlockCount() {
+        return constructionBlocks == null ? 0 : constructionBlocks.size();
+    }
+
+    private static String constructionBlockKey(String dimension, int x, int y, int z) {
+        return dimension + "|" + x + "," + y + "," + z;
+    }
+
+    private void trimConstructionBlocks() {
+        while (constructionBlocks.size() > MAX_CONSTRUCTION_BLOCKS) {
+            var iterator = constructionBlocks.keySet().iterator();
+            if (!iterator.hasNext()) return;
+            iterator.next();
+            iterator.remove();
+        }
+    }
+
     public boolean personalObservationComplete(long requiredActiveTicks) {
         return observedTicks >= requiredActiveTicks;
     }
@@ -458,6 +555,27 @@ public final class PlayerMemory {
             this.blockId = blockId;
             this.gameTick = gameTick;
             this.source = source;
+        }
+    }
+
+    public static final class ConstructionBlock {
+        public int x;
+        public int y;
+        public int z;
+        public String dimension;
+        public String blockId;
+        public long gameTick;
+
+        public ConstructionBlock() { }
+
+        public ConstructionBlock(int x, int y, int z, String dimension,
+                                 String blockId, long gameTick) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.dimension = dimension;
+            this.blockId = blockId;
+            this.gameTick = gameTick;
         }
     }
 
