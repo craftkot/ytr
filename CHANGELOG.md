@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.0 — Structural Semantics
+
+- Persist serialized Minecraft BlockState values for each confirmed player-placed block, including available orientation, half, shape, open and waterlogged properties.
+- Refresh stored block states during the loaded-chunk audit without incrementing lifetime placement counts.
+- Added bounded shell analysis for floor, roof and four wall faces.
+- Added estimates for internal horizontal floor planes, door blocks (counting the lower half once), glass blocks/panes, stairs and slabs.
+- Added a flood-fill estimate of enclosed void cells inside each connected component's bounding box, capped at 32,768 cells per component.
+- Added geometric classifications: ENCLOSED_BUILDING, OPEN_BUILDING, BUILDING_CANDIDATE and STRUCTURE.
+- Persisted best-building shell metrics and enclosed-volume evidence; migrated world memory schema 6 -> 7 and scheduled legacy construction maps for re-analysis.
+- Builder behaviour scoring and HOME_ECHO shadow planning now consider enclosed-volume and shell evidence.
+- Expanded `/operator structures` output with shell coverage, internal void estimates, doors/windows/stairs/slabs, floor layers and unique block-state count.
+- Added tests for closed and open shells, capped interior analysis, floor-plane detection, block role counts, block-state refresh and schema migration.
+- **World mutation remains disabled.** This release still does not relocate, reconstruct or roll back player builds.
+
+Known limitations:
+- Placement tracking still depends on ordinary BlockItem interaction and confirmation on the following tick; commands, WorldEdit, world generation and some modded placement paths are not captured.
+- Enclosed voids are inferred from the recorded placed-block set, not from a full world scan. Natural terrain, untracked blocks and open doorways can make the estimate incomplete or inaccurate.
+- The 32,768-cell cap skips interior flood-fill for larger bounding boxes rather than scanning them without a budget.
+- BlockState properties are stored, but block-entity NBT and container contents are not captured.
+- Geometry labels do not establish a room's purpose, safety or usability.
+
+
+
 ## 0.8.0 — Construction Intelligence
 
 - Added a bounded, per-player history of confirmed placed blocks, captured by checking BlockItem interactions against the next server tick's actual world state.
