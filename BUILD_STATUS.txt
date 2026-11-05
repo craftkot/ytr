@@ -1,27 +1,50 @@
 Operator: Reality 0.5.0
 
-Implementation:
-- Added height-aware 3D tunnel-network reconstruction from per-Y centerlines.
-- Vertical bands up to 3 blocks high are treated as ordinary tunnel clearance.
-- Taller continuous vertical runs are retained as vertical shafts.
-- Added 3D graph connections, corridor segments, junction coordinates and 3D path-length estimates.
-- /operator network uses the height-aware analyzer; /operator network2d retains the 0.4 horizontal projection.
-- Added round-robin audit of up to 128 previously mapped cells per server tick.
-- Audit only reads loaded chunks and never force-loads terrain.
-- If a mapped cell is no longer air, it is removed from all player profiles.
-- World memory schema remains 3; no migration is required for 0.4 saves.
+Verified implementation commit:
+- c1a37b69689cd150bfead7f448667b3994626e11
+- GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42066275226
+- Final result: SUCCESS
+
+Build and runtime verification:
+- Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.3.
+- Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
+- gradle clean test build: PASS.
+- 46 JUnit tests completed, 46 passed.
+- Dedicated Fabric server startup: PASS.
+- Operator 0.5.0 loaded without crash.
+- RCON /operator status: PASS; reports passive observation and 128-cell loaded-chunk audit budget.
+- World-memory JSON persisted with schemaVersion 3: PASS.
+- RCON stop and clean server shutdown: PASS.
+- Mod JAR and source snapshot artifacts uploaded successfully.
+
+Verified distributables:
+- operator-reality-0.5.0.jar — 87,018 bytes.
+- SHA-256: 1d3b98404b754235721a85204dac5ff902467d89aecf77b2995752099c07d51d
+- operator-reality-0.5.0-sources.jar — 26,783 bytes.
+- GitHub artifact: operator-reality-0.5.0, ID 13434237379.
+- Source artifact: operator-reality-0.5.0-source, ID 13433027887.
+
+Implemented:
+- Height-aware 3D tunnel graph reconstructed from per-Y centerlines.
+- Vertical bands up to three blocks high are treated as normal tunnel clearance.
+- Taller vertical runs are retained as shaft segments.
+- Stacked passages at different heights remain separate networks.
+- 3D dead-end, junction, corridor, vertical-shaft and loop analysis.
+- 3D junction coordinates, corridor endpoints and estimated route lengths.
+- /operator network now uses the height-aware graph.
+- /operator network2d preserves the 0.4 horizontal projection.
+- Round-robin audit of up to 128 previously mapped cells per server tick.
+- Audit checks only loaded chunks and never force-loads terrain.
+- Filled recorded cells are removed from all player profiles.
+- World-memory schema remains 3; no migration is required for 0.4 saves.
 - World mutation remains disabled.
 
 Known limitations:
 - 3D reconstruction is layer-wise: centerlines are computed per Y layer and linked afterward. It is not a full 3D medial-axis transform.
-- Vertical bands of up to 3 blocks are collapsed as tunnel clearance; unusually tall rooms may be represented approximately.
+- Vertical bands of up to three blocks are collapsed as tunnel clearance; unusually tall rooms may be represented approximately.
 - Only suitable blocks mined after installing the mod are mapped.
 - Existing tunnels and air spaces are not scanned.
 - Audit can invalidate filled mapped cells but does not discover new air cells created by explosions or other non-player destruction.
 - Audit examines loaded chunks only; unloaded chunks are skipped without being loaded.
 - Audit budget is 128 mapped cells per server tick across all player profiles.
 - World mutation is intentionally disabled.
-
-Verification:
-- Pending GitHub Actions for this commit.
-- Required: Gradle tests/build, dedicated server startup, /operator status, persistence and clean shutdown.
