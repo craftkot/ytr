@@ -28,6 +28,30 @@ jobs:
           gradle-version: '9.8.2'
       - name: Run tests and build mod
         run: gradle clean test build --no-daemon
+      - name: Smoke-test dedicated server startup
+        shell: bash
+        run: |
+          mkdir -p run run/server
+          printf 'eula=true\\n' > run/eula.txt
+          printf 'eula=true\\n' > run/server/eula.txt
+          set +e
+          printf 'stop\\n' | timeout 180s gradle runServer --no-daemon
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ]; then
+            echo "Dedicated server smoke test failed with exit code $result"
+            exit "$result"
+          fi
+          log_file=""
+          for candidate in run/logs/latest.log run/server/logs/latest.log; do
+            if [ -f "$candidate" ]; then log_file="$candidate"; fi
+          done
+          if [ -z "$log_file" ] || ! grep -q "Done (" "$log_file"; then
+            echo "Minecraft server did not reach the ready state."
+            find run -maxdepth 4 -type f -name '*.log' -print
+            exit 1
+          fi
+          echo "Dedicated server reached the ready state and accepted the stop command."
       - name: Upload mod JARs
         uses: actions/upload-artifact@v4
         with:
