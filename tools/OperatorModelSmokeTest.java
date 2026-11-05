@@ -1,6 +1,7 @@
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
 import ru.ehtid.operator.analysis.TunnelNetworkAnalyzer;
+import ru.ehtid.operator.analysis.Tunnel3DNetworkAnalyzer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -65,6 +66,21 @@ public final class OperatorModelSmokeTest {
         check(network.junctions == 1, "T-shaped tunnel should have one junction");
         check(network.corridorSegments == 3, "T-shaped tunnel should have three corridor segments");
 
+        List<PlayerMemory.TunnelCell> stacked = new ArrayList<>();
+        for (int x = 0; x < 6; x++) {
+            for (int y : new int[]{20, 21, 25, 26}) {
+                stacked.add(new PlayerMemory.TunnelCell(
+                        x, y, 0, "minecraft:overworld", "minecraft:stone", 40_000L + y + x
+                ));
+            }
+        }
+        Tunnel3DNetworkAnalyzer.Analysis network3d =
+                Tunnel3DNetworkAnalyzer.analyze(stacked, "minecraft:overworld");
+        check(network3d.networkComponents == 2,
+                "stacked passages at separate heights must remain separate 3D networks");
+        check(network3d.corridorSegments == 2,
+                "each stacked passage must retain its own corridor segment");
+
         PlayerMemory bounded = new PlayerMemory();
         for (int i = 0; i < 700; i++) {
             bounded.recordMovement(i * 3.0D, 64, 0, "minecraft:overworld", i * 100L);
@@ -76,7 +92,7 @@ public final class OperatorModelSmokeTest {
         check(bounded.mineHistory.size() == PlayerMemory.MAX_MINE_SAMPLES, "mining history must remain bounded");
         check(bounded.minedBlockTypes.size() <= PlayerMemory.MAX_COUNTER_KEYS, "mined block counters must remain bounded");
 
-        System.out.println("PASS: player learning, movement, mining chain, bounded memory, tunnel voxel geometry, and tunnel network topology.");
+        System.out.println("PASS: player learning, movement, mining chain, bounded memory, 2D tunnel geometry, and height-aware 3D tunnel topology.");
     }
 
     private static void check(boolean condition, String message) {
