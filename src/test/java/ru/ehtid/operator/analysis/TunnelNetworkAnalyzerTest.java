@@ -27,6 +27,9 @@ class TunnelNetworkAnalyzerTest {
         assertEquals(1, result.corridorSegments);
         assertEquals(0, result.loops);
         assertEquals(9, result.longestSegmentCells);
+        assertEquals(1, result.segments.size());
+        assertEquals(-4, result.segments.get(0).startX);
+        assertEquals(4, result.segments.get(0).endX);
         assertTrue(result.thinningConverged);
     }
 
@@ -64,7 +67,10 @@ class TunnelNetworkAnalyzerTest {
         assertEquals(3, result.corridorSegments);
         assertEquals(0, result.loops);
         assertEquals(1, result.junctionPoints.size());
+        assertEquals(0, result.junctionPoints.get(0).x);
+        assertEquals(0, result.junctionPoints.get(0).z);
         assertEquals(3, result.junctionPoints.get(0).exits);
+        assertEquals(3, result.segments.size());
     }
 
     @Test
