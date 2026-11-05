@@ -1,12 +1,16 @@
 package ru.ehtid.operator.observe;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -20,6 +24,7 @@ import net.minecraft.core.BlockPos;
 import ru.ehtid.operator.OperatorMod;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
 import ru.ehtid.operator.analysis.TunnelNetworkAnalyzer;
+import ru.ehtid.operator.analysis.Tunnel3DNetworkAnalyzer;
 import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
@@ -29,8 +34,13 @@ public final class ObservationEngine {
     private static final long MOVEMENT_SAMPLE_INTERVAL = 20L;
     private static final long SAVE_INTERVAL = 600L;
     private static final int MAX_PENDING_VOXEL_CHECKS = 256;
+    private static final int MAX_TRACKED_VOXEL_AUDITS_PER_TICK = 128;
 
     private final Map<String, PendingVoxelCheck> pendingVoxelChecks = new LinkedHashMap<>();
+    private int auditPlayerCursor = 0;
+    private int auditCellCursor = 0;
+    private String auditPlayerKey = "";
+    private List<Map.Entry<String, PlayerMemory.TunnelCell>> auditSnapshot = List.of();
     private OperatorWorldData data = new OperatorWorldData();
     private boolean loaded = false;
     private boolean dirty = false;
@@ -50,6 +60,10 @@ public final class ObservationEngine {
             dirty = true;
         }
         updateWorldObservationPhase(now);
+        auditPlayerCursor = 0;
+        auditCellCursor = 0;
+        auditPlayerKey = "";
+        auditSnapshot = List.of();
 
         if (dirty) save(server);
         OperatorMod.LOGGER.info(
@@ -64,6 +78,7 @@ public final class ObservationEngine {
         long now = server.overworld().getGameTime();
         updateWorldObservationPhase(now);
         processPendingVoxelChecks();
+        auditTrackedVoxels(server);
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player.isSpectator()) continue;
@@ -154,6 +169,75 @@ public final class ObservationEngine {
         }
     }
 
+    /**
+     * Round-robin verification of mapped cells. Only loaded chunks are inspected;
+     * this never force-loads terrain. It catches replacements from players, pistons,
+     * dispensers, fluids and other mods, not just ordinary right-click placement.
+     */
+    private void auditTrackedVoxels(MinecraftServer server) {
+        if (data.players.isEmpty()) {
+            auditPlayerCursor = 0;
+            auditCellCursor = 0;
+            auditPlayerKey = "";
+            auditSnapshot = List.of();
+            return;
+        }
+
+        List<Map.Entry<String, PlayerMemory>> profiles = new ArrayList<>(data.players.entrySet());
+        if (auditPlayerCursor >= profiles.size()) {
+            auditPlayerCursor = 0;
+            auditPlayerKey = "";
+            auditSnapshot = List.of();
+            auditCellCursor = 0;
+        }
+
+        Map<String, ServerLevel> levels = new HashMap<>();
+        for (ServerLevel level : server.getAllLevels()) {
+            levels.put(level.dimension().toString(), level);
+        }
+
+        int budget = MAX_TRACKED_VOXEL_AUDITS_PER_TICK;
+        int attempts = 0;
+        int maxAttempts = MAX_TRACKED_VOXEL_AUDITS_PER_TICK * profiles.size();
+        while (budget > 0 && attempts < maxAttempts) {
+            if (auditPlayerCursor >= profiles.size()) auditPlayerCursor = 0;
+            Map.Entry<String, PlayerMemory> profile = profiles.get(auditPlayerCursor);
+
+            if (!profile.getKey().equals(auditPlayerKey)) {
+                auditPlayerKey = profile.getKey();
+                auditSnapshot = new ArrayList<>(profile.getValue().tunnelCells.entrySet());
+                auditCellCursor = 0;
+            }
+
+            if (auditCellCursor >= auditSnapshot.size()) {
+                auditPlayerCursor = (auditPlayerCursor + 1) % profiles.size();
+                auditPlayerKey = "";
+                auditSnapshot = List.of();
+                auditCellCursor = 0;
+                attempts++;
+                continue;
+            }
+
+            PlayerMemory.TunnelCell cell = auditSnapshot.get(auditCellCursor++).getValue();
+            attempts++;
+            budget--;
+            if (cell == null || cell.dimension == null) continue;
+
+            PlayerMemory owner = profile.getValue();
+            if (!owner.hasTunnelCell(cell.dimension, cell.x, cell.y, cell.z)) continue;
+            ServerLevel level = levels.get(cell.dimension);
+            if (level == null) continue;
+
+            BlockPos position = new BlockPos(cell.x, cell.y, cell.z);
+            if (!level.hasChunkAt(position)) continue;
+            if (!level.getBlockState(position).isAir()) {
+                for (PlayerMemory memory : data.players.values()) {
+                    if (memory.removeTunnelCell(cell.dimension, cell.x, cell.y, cell.z)) dirty = true;
+                }
+            }
+        }
+    }
+
     private record PendingVoxelCheck(
             Level level,
             BlockPos position,
@@ -167,6 +251,10 @@ public final class ObservationEngine {
             save(server);
         }
         pendingVoxelChecks.clear();
+        auditSnapshot = List.of();
+        auditPlayerKey = "";
+        auditPlayerCursor = 0;
+        auditCellCursor = 0;
         loaded = false;
     }
 
@@ -190,13 +278,14 @@ public final class ObservationEngine {
                 .filter(memory -> memory.personalObservationComplete(OBSERVATION_TICKS))
                 .count();
         String phase = data.observationComplete ? "WORLD OBSERVATION COMPLETE" : "PASSIVE OBSERVATION";
-        return "Operator 0.4 | " + phase
+        return "Operator 0.5 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
                 + " | individually trained: " + personallyTrained
                 + " | mapped tunnel cells: " + data.players.values().stream().mapToInt(PlayerMemory::getTunnelCellCount).sum()
-                + " | world mutations: disabled in 0.4";
+                + " | loaded-cell audit: up to " + MAX_TRACKED_VOXEL_AUDITS_PER_TICK + "/tick"
+                + " | world mutations: disabled in 0.5";
     }
 
     public String getPlayerProfile(ServerPlayer player, MinecraftServer server) {
@@ -245,17 +334,26 @@ public final class ObservationEngine {
             return "No player profile yet. Mine natural terrain while Operator is active to build a tunnel network.";
         }
         String dimension = player.level().dimension().toString();
+        Tunnel3DNetworkAnalyzer.Analysis analysis =
+                Tunnel3DNetworkAnalyzer.analyze(memory.tunnelCells.values(), dimension);
+        return analysis.describe()
+                + " | note: height-aware layer-wise 3D reconstruction; only recorded mined voxels are known.";
+    }
+
+    public String getTunnelNetwork2dProfile(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) return "No player profile yet. Mine natural terrain while Operator is active.";
+        String dimension = player.level().dimension().toString();
         TunnelNetworkAnalyzer.Analysis analysis =
                 TunnelNetworkAnalyzer.analyze(memory.tunnelCells.values(), dimension);
-        return analysis.describe()
-                + " | note: this is a horizontal centerline estimate, not a complete 3D air-space map.";
+        return analysis.describe() + " | legacy horizontal X/Z projection.";
     }
 
     private void updateWorldObservationPhase(long now) {
         if (!data.observationComplete && data.worldObservationElapsed(now) >= OBSERVATION_TICKS) {
             data.observationComplete = true;
             dirty = true;
-            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.4.");
+            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.5.");
         }
     }
 
