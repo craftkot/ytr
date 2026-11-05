@@ -18,10 +18,10 @@ class OperatorWorldDataTest {
     @Test
     void normalizeRepairsMissingCollectionsAndMigratesSchema() {
         OperatorWorldData data = new OperatorWorldData();
-        data.schemaVersion = 1;
+        data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(2, data.schemaVersion);
+        assertEquals(3, data.schemaVersion);
         assertNotNull(data.players);
     }
 
