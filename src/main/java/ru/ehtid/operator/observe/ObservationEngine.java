@@ -463,20 +463,22 @@ public final class ObservationEngine {
     public String getTunnelProfile(ServerPlayer player) {
         PlayerMemory memory = data.players.get(player.getUUID().toString());
         if (memory == null) {
-            return "No player profile yet. Stay in the world and mine natural terrain to begin mapping.";
+            return "No player profile yet. Explore an enclosed underground space or mine natural terrain to begin mapping.";
         }
         String dimension = player.level().dimension().toString();
         TunnelAnalyzer.Analysis analysis = TunnelAnalyzer.analyze(memory.tunnelCells.values(), dimension);
         return analysis.describe()
                 + " | retained cells across all dimensions: " + memory.getTunnelCellCount()
-                + " | total terrain blocks recorded: " + memory.tunnelBlocksCleared
+                + " | mined cells: " + memory.getMinedTunnelCellCount()
+                + " | locally discovered air: " + memory.getObservedAirCellCount()
+                + " | total terrain blocks mined: " + memory.tunnelBlocksCleared
                 + " | note: map combines mined voxels with bounded nearby scans of connected underground air.";
     }
 
     public String getTunnelNetworkProfile(ServerPlayer player) {
         PlayerMemory memory = data.players.get(player.getUUID().toString());
         if (memory == null) {
-            return "No player profile yet. Mine natural terrain while Operator is active to build a tunnel network.";
+            return "No player profile yet. Explore an enclosed underground space or mine natural terrain to build a tunnel network.";
         }
         String dimension = player.level().dimension().toString();
         Tunnel3DNetworkAnalyzer.Analysis analysis =
@@ -487,7 +489,7 @@ public final class ObservationEngine {
 
     public String getTunnelNetwork2dProfile(ServerPlayer player) {
         PlayerMemory memory = data.players.get(player.getUUID().toString());
-        if (memory == null) return "No player profile yet. Mine natural terrain while Operator is active.";
+        if (memory == null) return "No player profile yet. Explore an enclosed underground space or mine natural terrain.";
         String dimension = player.level().dimension().toString();
         TunnelNetworkAnalyzer.Analysis analysis =
                 TunnelNetworkAnalyzer.analyze(memory.tunnelCells.values(), dimension);
