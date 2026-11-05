@@ -262,19 +262,19 @@ class ConstructionAnalyzerTest {
             List<PlayerMemory.ConstructionBlock> blocks, int offset
     ) {
         long tick = blocks.size();
-        for (int x = 0; x <= 32; x++) {
+        for (int x = 0; x <= 31; x++) {
             blocks.add(new PlayerMemory.ConstructionBlock(
                     offset + x, 0, 0, "minecraft:overworld", "minecraft:stone", tick++
             ));
         }
-        for (int y = 1; y <= 32; y++) {
+        for (int y = 1; y <= 31; y++) {
             blocks.add(new PlayerMemory.ConstructionBlock(
-                    offset + 32, y, 0, "minecraft:overworld", "minecraft:stone", tick++
+                    offset + 31, y, 0, "minecraft:overworld", "minecraft:stone", tick++
             ));
         }
-        for (int z = 1; z <= 32; z++) {
+        for (int z = 1; z <= 31; z++) {
             blocks.add(new PlayerMemory.ConstructionBlock(
-                    offset + 32, 32, z, "minecraft:overworld", "minecraft:stone", tick++
+                    offset + 31, 32, z, "minecraft:overworld", "minecraft:stone", tick++
             ));
         }
     }
