@@ -211,8 +211,20 @@ public final class PlayerMemory {
         return tunnelCells == null ? 0 : tunnelCells.size();
     }
 
+    public boolean hasTunnelCell(String dimension, int x, int y, int z) {
+        return tunnelCells != null && tunnelCells.containsKey(tunnelCellKey(dimension, x, y, z));
+    }
+
+    public boolean removeTunnelCell(String dimension, int x, int y, int z) {
+        return tunnelCells != null && tunnelCells.remove(tunnelCellKey(dimension, x, y, z)) != null;
+    }
+
+    private static String tunnelCellKey(String dimension, int x, int y, int z) {
+        return dimension + "|" + x + "," + y + "," + z;
+    }
+
     private void recordTunnelCell(int x, int y, int z, String dimension, String blockId, long gameTick) {
-        String key = dimension + "|" + x + "," + y + "," + z;
+        String key = tunnelCellKey(dimension, x, y, z);
         tunnelCells.remove(key);
         tunnelCells.put(key, new TunnelCell(x, y, z, dimension, blockId, gameTick));
         tunnelBlocksCleared++;
