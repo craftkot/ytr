@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class OperatorWorldData {
-    public int schemaVersion = 2;
+    public int schemaVersion = 3;
     public long observationStartedAt = -1L;
     public boolean observationComplete = false;
     public long lastSavedAt = 0L;
@@ -13,8 +13,8 @@ public final class OperatorWorldData {
     public void normalize() {
         if (players == null) players = new LinkedHashMap<>();
         if (schemaVersion < 1) schemaVersion = 1;
-        // Schema 2 adds active-playtime counters and richer mining summaries.
-        schemaVersion = 2;
+        // Schema 3 adds a bounded per-player map of mined terrain cells.
+        schemaVersion = 3;
         players.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
         for (PlayerMemory memory : players.values()) memory.normalize();
     }
