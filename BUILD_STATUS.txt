@@ -16,6 +16,7 @@ Implemented in 0.8.0:
 - Building-candidate threshold: 24+ blocks and minimum 3x3x3 bounds.
 - Per-player construction map cap: 8,192 blocks.
 - Removal invalidation when a tracked block is broken by any player, including creative mode.
+- Loaded-chunk construction audit of up to 64 blocks per tick; unloaded chunks are never force-loaded.
 - Construction analysis budget: one dirty player profile per server tick, with a 20-tick per-profile throttle.
 - Persisted construction summary and schema 5 -> 6 migration.
 - /operator structures diagnostics and construction metrics in profile/status.
