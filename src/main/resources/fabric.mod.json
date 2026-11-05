@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "A persistent adaptive observer for Minecraft. Version 0.2 improves per-player training and mining-behaviour memory.",
+  "description": "A persistent adaptive observer for Minecraft. Version 0.3 maps mined terrain voxels and reconstructs tunnel geometry.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
