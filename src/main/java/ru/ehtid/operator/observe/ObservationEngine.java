@@ -43,6 +43,7 @@ public final class ObservationEngine {
     private static final int AIR_SCAN_BELOW = 6;
     private static final int AIR_SCAN_ABOVE = 3;
     private static final int MAX_AIR_SCAN_VISITED = 4096;
+    private static final int MAX_ACTIVE_AIR_SCANS = 16;
     private static final int MAX_AIR_SCAN_WORK_PER_TICK = 128;
     private static final int[][] AIR_SCAN_DIRECTIONS = {
             {1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
@@ -262,7 +263,10 @@ public final class ObservationEngine {
         if (activeAirScans.containsKey(playerKey)) return;
         Long lastScan = lastAirScanAt.get(playerKey);
         if (lastScan != null && now - lastScan < AIR_SCAN_INTERVAL) return;
+        if (activeAirScans.size() >= MAX_ACTIVE_AIR_SCANS) return;
         lastAirScanAt.put(playerKey, now);
+        if (memory.getTunnelCellCount() >= PlayerMemory.MAX_TUNNEL_CELLS
+                && memory.getObservedAirCellCount() == 0) return;
 
         ServerLevel level = (ServerLevel) player.level();
         BlockPos feet = player.blockPosition();
