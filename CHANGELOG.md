@@ -6,7 +6,7 @@
 - Added terrain-material recognition for stone, ores, dirt, sand, gravel, clay, ice and related natural blocks.
 - Added six-face connected-component reconstruction.
 - Added dimension-aware analysis; coordinates in the Nether and Overworld are never joined.
-- Added preliminary geometry classes: linear tunnel, chamber, irregular excavation and small area.
+- Added preliminary geometry classes: linear tunnel, chamber, irregular excavation and small area, including bounds for the largest component.
 - Added /operator tunnels to inspect the current dimension.
 - Added mapped-cell counts to /operator status and /operator profile.
 - Migrated world memory to schema 3 while retaining old player profiles.
