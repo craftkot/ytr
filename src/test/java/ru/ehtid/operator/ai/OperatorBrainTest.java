@@ -112,6 +112,25 @@ class OperatorBrainTest {
         assertEquals(2L, memory.operatorDecisionCount);
     }
 
+
+    @Test
+    void builderProfileSelectsHomeEchoPlan() {
+        PlayerMemory memory = readyPlayer();
+        memory.blocksPlaced = 80L;
+        memory.recognizedStructureCount = 2;
+        memory.recognizedBuildingCount = 1;
+        memory.largestStructureBlockCount = 72;
+        memory.largestBuildingBlockCount = 48;
+        memory.constructionComplexity = 0.65D;
+
+        OperatorBrain.Decision decision = OperatorBrain.evaluate(memory, true, 24_000L);
+
+        assertEquals("READY", decision.phase());
+        assertEquals("BUILDER", decision.archetype());
+        assertEquals("HOME_ECHO", decision.event());
+        assertTrue(decision.confidence() >= 0.30D);
+    }
+
     private static PlayerMemory readyPlayer() {
         PlayerMemory memory = new PlayerMemory();
         memory.observedTicks = OperatorBrain.REQUIRED_PERSONAL_TICKS;
