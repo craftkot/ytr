@@ -242,6 +242,43 @@ class ConstructionAnalyzerTest {
                 .allMatch(structure -> structure.blockCount() == 8));
     }
 
+
+    @Test
+    void capsAggregateInteriorWorkAcrossManyLargeComponents() {
+        List<PlayerMemory.ConstructionBlock> blocks = new ArrayList<>();
+        addLargeConnectedPath(blocks, 0);
+        addLargeConnectedPath(blocks, 100);
+        addLargeConnectedPath(blocks, 200);
+
+        ConstructionAnalyzer.Analysis analysis = ConstructionAnalyzer.analyze(blocks);
+
+        assertEquals(3, analysis.structureCount());
+        assertEquals(2, analysis.structures().stream()
+                .filter(ConstructionAnalyzer.Structure::interiorScanComplete).count());
+        assertFalse(analysis.structures().get(2).interiorScanComplete());
+    }
+
+    private static void addLargeConnectedPath(
+            List<PlayerMemory.ConstructionBlock> blocks, int offset
+    ) {
+        long tick = blocks.size();
+        for (int x = 0; x <= 32; x++) {
+            blocks.add(new PlayerMemory.ConstructionBlock(
+                    offset + x, 0, 0, "minecraft:overworld", "minecraft:stone", tick++
+            ));
+        }
+        for (int y = 1; y <= 32; y++) {
+            blocks.add(new PlayerMemory.ConstructionBlock(
+                    offset + 32, y, 0, "minecraft:overworld", "minecraft:stone", tick++
+            ));
+        }
+        for (int z = 1; z <= 32; z++) {
+            blocks.add(new PlayerMemory.ConstructionBlock(
+                    offset + 32, 32, z, "minecraft:overworld", "minecraft:stone", tick++
+            ));
+        }
+    }
+
     private static void addCube(List<PlayerMemory.ConstructionBlock> blocks,
                                 String dimension, int ox, int oy, int oz) {
         for (int x = 0; x < 2; x++) {
