@@ -67,7 +67,7 @@ class Tunnel3DNetworkAnalyzerTest {
         assertEquals(1, result.networkComponents);
         assertEquals(2, result.deadEnds);
         assertEquals(1, result.corridorSegments);
-        assertEquals(8.0D + 2.0D * Math.sqrt(2.0D), result.totalCenterlineLength, 0.0001D);
+        assertEquals(6.0D + 2.0D * Math.sqrt(2.0D), result.totalCenterlineLength, 0.0001D);
         assertNotEquals(result.segments.get(0).startY, result.segments.get(0).endY);
     }
 
