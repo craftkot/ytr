@@ -13,13 +13,14 @@ import java.util.Set;
 import ru.ehtid.operator.data.PlayerMemory;
 
 /**
- * Builds a bounded, event-derived map of player-placed blocks into connected
- * components. A "building candidate" is a geometric heuristic, not proof that
- * a component is a home or that it contains a usable interior.
+ * Converts confirmed player-placed blocks into connected structures and a bounded
+ * geometric shell analysis. Results are estimates from placed-block evidence only:
+ * they are not a scan of every block in the Minecraft world.
  */
 public final class ConstructionAnalyzer {
     public static final int MIN_STRUCTURE_BLOCKS = 8;
     public static final int MIN_BUILDING_BLOCKS = 24;
+    public static final long MAX_INTERIOR_SCAN_CELLS = 32_768L;
 
     private static final int[][] DIRECTIONS = {
             {1, 0, 0}, {-1, 0, 0},
@@ -96,8 +97,12 @@ public final class ConstructionAnalyzer {
                 buildings++;
                 largestBuilding = Math.max(largestBuilding, structure.blockCount());
             }
-            complexityTotal += 0.5D * ratio(structure.uniqueBlockTypes(), 8.0D)
-                    + 0.5D * ratio(structure.blockCount(), 128.0D);
+            double shellQuality = (structure.floorCoverage()
+                    + structure.roofCoverage() + structure.wallCoverage()) / 3.0D;
+            complexityTotal += 0.35D * ratio(structure.uniqueBlockTypes(), 8.0D)
+                    + 0.35D * ratio(structure.blockCount(), 128.0D)
+                    + 0.20D * shellQuality
+                    + 0.10D * ratio(structure.enclosedVoidCells(), 64.0D);
         }
         double complexity = structures.isEmpty() ? 0.0D : complexityTotal / structures.size();
 
@@ -111,6 +116,99 @@ public final class ConstructionAnalyzer {
     private static double ratio(double value, double ceiling) {
         if (value <= 0.0D || ceiling <= 0.0D) return 0.0D;
         return Math.min(1.0D, value / ceiling);
+    }
+
+    private static String blockPath(String blockId) {
+        int separator = blockId.indexOf(':');
+        return separator >= 0 ? blockId.substring(separator + 1) : blockId;
+    }
+
+    private static boolean isDoor(String blockId) {
+        String path = blockPath(blockId);
+        return path.endsWith("_door");
+    }
+
+    private static boolean isWindow(String blockId) {
+        String path = blockPath(blockId);
+        return path.equals("glass") || path.equals("tinted_glass")
+                || path.endsWith("_glass") || path.endsWith("_glass_pane");
+    }
+
+    private static boolean isStair(String blockId) {
+        return blockPath(blockId).endsWith("_stairs");
+    }
+
+    private static boolean isSlab(String blockId) {
+        return blockPath(blockId).endsWith("_slab");
+    }
+
+    private static boolean isUpperDoorHalf(String blockState) {
+        return blockState != null && blockState.contains("half=upper");
+    }
+
+    private static InteriorMetrics estimateEnclosedVoid(
+            List<PlayerMemory.ConstructionBlock> blocks,
+            int minX, int minY, int minZ,
+            int maxX, int maxY, int maxZ,
+            int spanX, int spanY, int spanZ
+    ) {
+        long volume = (long) spanX * spanY * spanZ;
+        if (volume <= 0L || volume > MAX_INTERIOR_SCAN_CELLS) {
+            return new InteriorMetrics(false, 0);
+        }
+
+        Set<LocalCell> occupied = new HashSet<>();
+        for (PlayerMemory.ConstructionBlock block : blocks) {
+            occupied.add(new LocalCell(block.x, block.y, block.z));
+        }
+
+        Set<LocalCell> exterior = new HashSet<>();
+        ArrayDeque<LocalCell> frontier = new ArrayDeque<>();
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                seedExterior(new LocalCell(x, y, minZ), occupied, exterior, frontier);
+                if (maxZ != minZ) seedExterior(new LocalCell(x, y, maxZ), occupied, exterior, frontier);
+            }
+        }
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                seedExterior(new LocalCell(x, minY, z), occupied, exterior, frontier);
+                if (maxY != minY) seedExterior(new LocalCell(x, maxY, z), occupied, exterior, frontier);
+            }
+        }
+        for (int y = minY; y <= maxY; y++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                seedExterior(new LocalCell(minX, y, z), occupied, exterior, frontier);
+                if (maxX != minX) seedExterior(new LocalCell(maxX, y, z), occupied, exterior, frontier);
+            }
+        }
+
+        while (!frontier.isEmpty()) {
+            LocalCell current = frontier.removeFirst();
+            for (int[] direction : DIRECTIONS) {
+                int x = current.x() + direction[0];
+                int y = current.y() + direction[1];
+                int z = current.z() + direction[2];
+                if (x < minX || x > maxX || y < minY || y > maxY || z < minZ || z > maxZ) {
+                    continue;
+                }
+                LocalCell next = new LocalCell(x, y, z);
+                if (occupied.contains(next) || !exterior.add(next)) continue;
+                frontier.addLast(next);
+            }
+        }
+
+        long enclosed = Math.max(0L, volume - occupied.size() - exterior.size());
+        return new InteriorMetrics(true, (int) Math.min(Integer.MAX_VALUE, enclosed));
+    }
+
+    private static void seedExterior(
+            LocalCell cell,
+            Set<LocalCell> occupied,
+            Set<LocalCell> exterior,
+            ArrayDeque<LocalCell> frontier
+    ) {
+        if (!occupied.contains(cell) && exterior.add(cell)) frontier.addLast(cell);
     }
 
     public record Analysis(
@@ -137,17 +235,33 @@ public final class ConstructionAnalyzer {
             int maxY,
             int maxZ,
             int uniqueBlockTypes,
+            int uniqueBlockStates,
             long firstPlacedAt,
             long lastPlacedAt,
             boolean buildingCandidate,
-            double confidence
+            double confidence,
+            double floorCoverage,
+            double roofCoverage,
+            double wallCoverage,
+            int floorLayerCount,
+            int doorCount,
+            int windowBlockCount,
+            int stairBlockCount,
+            int slabBlockCount,
+            boolean interiorScanComplete,
+            int enclosedVoidCells,
+            String semanticKind
     ) {
         public int spanX() { return maxX - minX + 1; }
         public int spanY() { return maxY - minY + 1; }
         public int spanZ() { return maxZ - minZ + 1; }
 
+        public boolean enclosedBuildingCandidate() {
+            return "ENCLOSED_BUILDING".equals(semanticKind);
+        }
+
         public String kind() {
-            return buildingCandidate ? "BUILDING_CANDIDATE" : "STRUCTURE";
+            return semanticKind;
         }
 
         public String bounds() {
@@ -158,11 +272,20 @@ public final class ConstructionAnalyzer {
     }
 
     private record CellKey(String dimension, int x, int y, int z) { }
+    private record LocalCell(int x, int y, int z) { }
+    private record InteriorMetrics(boolean complete, int enclosedVoidCells) { }
 
     private static final class Component {
         private final String dimension;
         private final Set<String> blockTypes = new HashSet<>();
+        private final Set<String> blockStates = new HashSet<>();
+        private final List<PlayerMemory.ConstructionBlock> blocks = new ArrayList<>();
+        private final Map<Integer, Integer> blocksByY = new LinkedHashMap<>();
         private int blockCount;
+        private int doorCount;
+        private int windowBlockCount;
+        private int stairBlockCount;
+        private int slabBlockCount;
         private int minX = Integer.MAX_VALUE;
         private int minY = Integer.MAX_VALUE;
         private int minZ = Integer.MAX_VALUE;
@@ -178,6 +301,7 @@ public final class ConstructionAnalyzer {
 
         private void add(PlayerMemory.ConstructionBlock block) {
             blockCount++;
+            blocks.add(block);
             minX = Math.min(minX, block.x);
             minY = Math.min(minY, block.y);
             minZ = Math.min(minZ, block.z);
@@ -185,6 +309,14 @@ public final class ConstructionAnalyzer {
             maxY = Math.max(maxY, block.y);
             maxZ = Math.max(maxZ, block.z);
             blockTypes.add(block.blockId);
+            if (block.blockState != null && !block.blockState.isBlank()) {
+                blockStates.add(block.blockState);
+            }
+            blocksByY.merge(block.y, 1, Integer::sum);
+            if (isDoor(block.blockId) && !isUpperDoorHalf(block.blockState)) doorCount++;
+            if (isWindow(block.blockId)) windowBlockCount++;
+            if (isStair(block.blockId)) stairBlockCount++;
+            if (isSlab(block.blockId)) slabBlockCount++;
             firstPlacedAt = Math.min(firstPlacedAt, block.gameTick);
             lastPlacedAt = Math.max(lastPlacedAt, block.gameTick);
         }
@@ -195,17 +327,74 @@ public final class ConstructionAnalyzer {
             int spanZ = maxZ - minZ + 1;
             boolean buildingCandidate = blockCount >= MIN_BUILDING_BLOCKS
                     && spanX >= 3 && spanY >= 3 && spanZ >= 3;
+
+            long floorArea = (long) spanX * spanZ;
+            long wallArea = 2L * spanY * spanZ + 2L * spanY * spanX;
+            int floorBlocks = 0;
+            int roofBlocks = 0;
+            long occupiedWallFaceCells = 0L;
+            int floorLayers = 0;
+
+            for (PlayerMemory.ConstructionBlock block : blocks) {
+                if (block.y == minY) floorBlocks++;
+                if (block.y == maxY) roofBlocks++;
+                if (block.x == minX) occupiedWallFaceCells++;
+                if (block.x == maxX) occupiedWallFaceCells++;
+                if (block.z == minZ) occupiedWallFaceCells++;
+                if (block.z == maxZ) occupiedWallFaceCells++;
+            }
+            for (Map.Entry<Integer, Integer> layer : blocksByY.entrySet()) {
+                int y = layer.getKey();
+                if (y <= minY || y >= maxY || floorArea <= 0L) continue;
+                if (layer.getValue() / (double) floorArea >= 0.55D) floorLayers++;
+            }
+
+            double floorCoverage = floorArea <= 0L ? 0.0D
+                    : Math.min(1.0D, floorBlocks / (double) floorArea);
+            double roofCoverage = floorArea <= 0L ? 0.0D
+                    : Math.min(1.0D, roofBlocks / (double) floorArea);
+            double wallCoverage = wallArea <= 0L ? 0.0D
+                    : Math.min(1.0D, occupiedWallFaceCells / (double) wallArea);
+
+            InteriorMetrics interior = estimateEnclosedVoid(
+                    blocks, minX, minY, minZ, maxX, maxY, maxZ, spanX, spanY, spanZ
+            );
+            boolean enclosedBuilding = buildingCandidate
+                    && interior.complete() && interior.enclosedVoidCells() > 0
+                    && floorCoverage >= 0.55D
+                    && roofCoverage >= 0.55D
+                    && wallCoverage >= 0.40D;
+            boolean openBuilding = buildingCandidate
+                    && floorCoverage >= 0.35D
+                    && wallCoverage >= 0.30D
+                    && (roofCoverage >= 0.25D || doorCount > 0 || windowBlockCount > 0);
+
+            String semanticKind = enclosedBuilding ? "ENCLOSED_BUILDING"
+                    : openBuilding ? "OPEN_BUILDING"
+                    : buildingCandidate ? "BUILDING_CANDIDATE" : "STRUCTURE";
+
             int smallestSpan = Math.min(spanX, Math.min(spanY, spanZ));
+            double baseConfidence = buildingCandidate
+                    ? 0.35D + 0.45D * ratio(blockCount, 64.0D)
+                            + 0.20D * ratio(smallestSpan, 8.0D)
+                    : 0.15D + 0.45D * ratio(blockCount, 64.0D);
+            double shellQuality = (floorCoverage + roofCoverage + wallCoverage) / 3.0D;
             double confidence = buildingCandidate
-                    ? Math.min(0.95D, 0.35D
-                            + 0.45D * ratio(blockCount, 64.0D)
-                            + 0.20D * ratio(smallestSpan, 8.0D))
-                    : Math.min(0.60D, 0.15D + 0.45D * ratio(blockCount, 64.0D));
+                    ? Math.min(0.98D, 0.65D * baseConfidence
+                            + 0.20D * shellQuality
+                            + (enclosedBuilding ? 0.15D : 0.0D))
+                    : Math.min(0.60D, baseConfidence);
+
             return new Structure(
                     dimension, blockCount,
                     minX, minY, minZ, maxX, maxY, maxZ,
-                    blockTypes.size(), firstPlacedAt, lastPlacedAt,
-                    buildingCandidate, confidence
+                    blockTypes.size(), blockStates.size(),
+                    firstPlacedAt, lastPlacedAt,
+                    buildingCandidate, confidence,
+                    floorCoverage, roofCoverage, wallCoverage,
+                    floorLayers, doorCount, windowBlockCount,
+                    stairBlockCount, slabBlockCount,
+                    interior.complete(), interior.enclosedVoidCells(), semanticKind
             );
         }
     }
