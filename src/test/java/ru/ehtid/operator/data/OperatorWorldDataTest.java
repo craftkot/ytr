@@ -21,7 +21,7 @@ class OperatorWorldDataTest {
         data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(3, data.schemaVersion);
+        assertEquals(4, data.schemaVersion);
         assertNotNull(data.players);
     }
 
