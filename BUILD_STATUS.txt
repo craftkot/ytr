@@ -1,13 +1,17 @@
 Operator: Reality 0.8.0
 
-Verification state: PENDING GitHub Actions for the 0.8.0 commit.
-Verified baseline: Operator 0.7.0, build and dedicated-server smoke test passed in GitHub Actions run 42107956745.
+Verification: PASSED.
+Verified source commit: ac2a6425d152d0f47398e6a9d8c69ba162779e0e
+GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42114685802
 
-Target build:
-- Minecraft Java 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
-- Java 25 / Gradle 9.8.2.
-- Required: gradle clean test build.
-- Required: dedicated Fabric server startup, RCON /operator status and persisted world-memory schemaVersion 6.
+Successful checks:
+- gradle clean test build --no-daemon
+- Java 25 / Gradle 9.8.2 toolchain.
+- All JUnit tests passed, including construction component analysis, bounded player construction memory, schema migration and builder-aware Operator planning.
+- Dedicated Fabric server reached the ready state.
+- RCON /operator status returned the expected passive-observation state.
+- Operator world memory was persisted with schemaVersion 6.
+- Mod JAR and source ZIP artifacts were uploaded.
 
 Implemented in 0.8.0:
 - Bounded per-player placement history, confirmed against actual next-tick world state.
