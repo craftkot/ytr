@@ -18,6 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -30,6 +31,7 @@ import ru.ehtid.operator.ai.OperatorBrain;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
 import ru.ehtid.operator.analysis.TunnelNetworkAnalyzer;
 import ru.ehtid.operator.analysis.Tunnel3DNetworkAnalyzer;
+import ru.ehtid.operator.analysis.ConstructionAnalyzer;
 import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
@@ -39,6 +41,9 @@ public final class ObservationEngine {
     private static final long MOVEMENT_SAMPLE_INTERVAL = 20L;
     private static final long SAVE_INTERVAL = 600L;
     private static final int MAX_PENDING_VOXEL_CHECKS = 256;
+    private static final int MAX_PENDING_PLACEMENT_CHECKS = 1024;
+    private static final int MAX_CONSTRUCTION_ANALYSES_PER_TICK = 1;
+    private static final long CONSTRUCTION_ANALYSIS_INTERVAL = 20L;
     private static final int MAX_TRACKED_VOXEL_AUDITS_PER_TICK = 128;
     private static final long AIR_SCAN_INTERVAL = 100L;
     private static final int AIR_SCAN_RADIUS = 12;
@@ -53,11 +58,13 @@ public final class ObservationEngine {
     };
 
     private final Map<String, PendingVoxelCheck> pendingVoxelChecks = new LinkedHashMap<>();
+    private final Map<String, PendingPlacementCheck> pendingPlacementChecks = new LinkedHashMap<>();
     private final Map<String, Long> lastAirScanAt = new HashMap<>();
     private final Map<String, AirScanSession> activeAirScans = new HashMap<>();
     private final ArrayDeque<AirScanSession> airScanQueue = new ArrayDeque<>();
     private int auditPlayerCursor = 0;
     private int auditCellCursor = 0;
+    private int constructionAnalysisCursor = 0;
     private String auditPlayerKey = "";
     private List<Map.Entry<String, PlayerMemory.TunnelCell>> auditSnapshot = List.of();
     private OperatorWorldData data = new OperatorWorldData();
@@ -81,6 +88,7 @@ public final class ObservationEngine {
         updateWorldObservationPhase(now);
         auditPlayerCursor = 0;
         auditCellCursor = 0;
+        constructionAnalysisCursor = 0;
         auditPlayerKey = "";
         auditSnapshot = List.of();
 
@@ -97,6 +105,7 @@ public final class ObservationEngine {
         long now = server.overworld().getGameTime();
         updateWorldObservationPhase(now);
         processPendingVoxelChecks();
+        processPendingPlacementChecks();
         auditTrackedVoxels(server);
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -121,27 +130,42 @@ public final class ObservationEngine {
         }
 
         processAirScanSessions();
+        processConstructionAnalyses(now);
         if (dirty && now - data.lastSavedAt >= SAVE_INTERVAL) save(server);
     }
 
     public void onBlockBroken(Level level, Player player, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        if (!(player instanceof ServerPlayer serverPlayer)) return;
-        if (player.isCreative() || player.isSpectator() || !loaded) return;
+        if (!(player instanceof ServerPlayer serverPlayer) || player.isSpectator() || !loaded) return;
 
         long now = level.getGameTime();
-        PlayerMemory memory = getOrCreate(serverPlayer, now);
-        String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        memory.recordBrokenBlock(
-                pos.getX(), pos.getY(), pos.getZ(),
-                level.dimension().toString(), blockId,
-                isRockLike(blockId), isTunnelMaterial(blockId), now
-        );
-        dirty = true;
+        String dimension = level.dimension().toString();
+        String positionKey = dimension + "|" + pos.getX() + "," + pos.getY() + "," + pos.getZ();
+        pendingPlacementChecks.remove(positionKey);
+
+        // A broken player-placed block must disappear from its owner's structure map,
+        // even when somebody other than the original builder removed it.
+        for (PlayerMemory profile : data.players.values()) {
+            if (profile.removePlacedBlock(pos.getX(), pos.getY(), pos.getZ(), dimension, now)) {
+                dirty = true;
+            }
+        }
+
+        // Creative building/demolition affects construction memory but not survival mining statistics.
+        if (!player.isCreative()) {
+            PlayerMemory memory = getOrCreate(serverPlayer, now);
+            String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+            memory.recordBrokenBlock(
+                    pos.getX(), pos.getY(), pos.getZ(),
+                    dimension, blockId,
+                    isRockLike(blockId), isTunnelMaterial(blockId), now
+            );
+            dirty = true;
+        }
     }
 
     /**
-     * Schedules a one-tick-later check for a mined voxel adjacent to a block interaction.
-     * If the interaction placed a block into that recorded air cell, the stale voxel is removed.
+     * Observes the adjacent placement target before vanilla handles the interaction.
+     * A block is recorded only after a one-tick-later world check confirms placement.
      */
     public InteractionResult onBlockUse(Player player, Level level, InteractionHand hand, BlockHitResult hitResult) {
         if (!(player instanceof ServerPlayer serverPlayer) || player.isSpectator() || !loaded) {
@@ -150,28 +174,71 @@ public final class ObservationEngine {
 
         BlockPos target = hitResult.getBlockPos().relative(hitResult.getDirection()).immutable();
         String dimension = level.dimension().toString();
+        String key = dimension + "|" + target.getX() + "," + target.getY() + "," + target.getZ();
+        long now = level.getGameTime();
+
+        if (serverPlayer.getItemInHand(hand).getItem() instanceof BlockItem
+                && level.hasChunkAt(target) && level.getBlockState(target).isAir()) {
+            getOrCreate(serverPlayer, now);
+            pendingPlacementChecks.remove(key);
+            pendingPlacementChecks.put(key, new PendingPlacementCheck(
+                    level, target, dimension, serverPlayer.getUUID().toString(), now + 1L
+            ));
+            while (pendingPlacementChecks.size() > MAX_PENDING_PLACEMENT_CHECKS) {
+                Iterator<String> iterator = pendingPlacementChecks.keySet().iterator();
+                if (!iterator.hasNext()) break;
+                iterator.next();
+                iterator.remove();
+            }
+        }
+
         boolean trackedByAnyPlayer = data.players.values().stream()
                 .anyMatch(memory -> memory.hasTunnelCell(
                         dimension, target.getX(), target.getY(), target.getZ()
                 ));
-        if (!trackedByAnyPlayer) return InteractionResult.PASS;
-
-        String key = dimension + "|" + target.getX() + "," + target.getY() + "," + target.getZ();
-        pendingVoxelChecks.remove(key);
-        pendingVoxelChecks.put(key, new PendingVoxelCheck(
-                level, target, dimension, level.getGameTime() + 1L
-        ));
-        while (pendingVoxelChecks.size() > MAX_PENDING_VOXEL_CHECKS) {
-            Iterator<String> iterator = pendingVoxelChecks.keySet().iterator();
-            if (!iterator.hasNext()) break;
-            iterator.next();
-            iterator.remove();
+        if (trackedByAnyPlayer) {
+            pendingVoxelChecks.remove(key);
+            pendingVoxelChecks.put(key, new PendingVoxelCheck(
+                    level, target, dimension, now + 1L
+            ));
+            while (pendingVoxelChecks.size() > MAX_PENDING_VOXEL_CHECKS) {
+                Iterator<String> iterator = pendingVoxelChecks.keySet().iterator();
+                if (!iterator.hasNext()) break;
+                iterator.next();
+                iterator.remove();
+            }
         }
         return InteractionResult.PASS;
     }
 
     private void processPendingVoxelChecks() {
         processPendingVoxelChecks(false);
+    }
+
+    private void processPendingPlacementChecks() {
+        if (pendingPlacementChecks.isEmpty()) return;
+
+        Iterator<Map.Entry<String, PendingPlacementCheck>> iterator =
+                pendingPlacementChecks.entrySet().iterator();
+        while (iterator.hasNext()) {
+            PendingPlacementCheck check = iterator.next().getValue();
+            if (check.level().getGameTime() < check.dueGameTick()) continue;
+            iterator.remove();
+
+            if (!check.level().hasChunkAt(check.position())) continue;
+            BlockState placedState = check.level().getBlockState(check.position());
+            if (placedState.isAir()) continue;
+
+            PlayerMemory memory = data.players.get(check.playerKey());
+            if (memory == null) continue;
+            String blockId = BuiltInRegistries.BLOCK.getKey(placedState.getBlock()).toString();
+            if (memory.recordPlacedBlock(
+                    check.position().getX(), check.position().getY(), check.position().getZ(),
+                    check.dimension(), blockId, check.level().getGameTime()
+            )) {
+                dirty = true;
+            }
+        }
     }
 
     private void processPendingVoxelChecks(boolean force) {
@@ -315,6 +382,37 @@ public final class ObservationEngine {
         return position.getY() <= localSurface - 6;
     }
 
+    private void processConstructionAnalyses(long now) {
+        if (data.players.isEmpty()) {
+            constructionAnalysisCursor = 0;
+            return;
+        }
+
+        List<PlayerMemory> profiles = new ArrayList<>(data.players.values());
+        if (constructionAnalysisCursor >= profiles.size()) constructionAnalysisCursor = 0;
+        int analysed = 0;
+        int attempts = 0;
+        while (analysed < MAX_CONSTRUCTION_ANALYSES_PER_TICK && attempts < profiles.size()) {
+            PlayerMemory memory = profiles.get(constructionAnalysisCursor);
+            constructionAnalysisCursor = (constructionAnalysisCursor + 1) % profiles.size();
+            attempts++;
+            if (!memory.constructionAnalysisDirty) continue;
+            if (memory.lastConstructionAnalysisAt >= 0L
+                    && now >= memory.lastConstructionAnalysisAt
+                    && now - memory.lastConstructionAnalysisAt < CONSTRUCTION_ANALYSIS_INTERVAL) continue;
+
+            ConstructionAnalyzer.Analysis analysis =
+                    ConstructionAnalyzer.analyze(memory.constructionBlocks.values());
+            memory.updateConstructionSummary(
+                    analysis.structureCount(), analysis.buildingCandidateCount(),
+                    analysis.largestStructureBlockCount(), analysis.largestBuildingBlockCount(),
+                    analysis.complexity(), now
+            );
+            dirty = true;
+            analysed++;
+        }
+    }
+
     private void processAirScanSessions() {
         int budget = MAX_AIR_SCAN_WORK_PER_TICK;
         while (budget > 0 && !airScanQueue.isEmpty()) {
@@ -400,12 +498,21 @@ public final class ObservationEngine {
             long dueGameTick
     ) { }
 
+    private record PendingPlacementCheck(
+            Level level,
+            BlockPos position,
+            String dimension,
+            String playerKey,
+            long dueGameTick
+    ) { }
+
     public void onServerStopping(MinecraftServer server) {
         if (loaded) {
             processPendingVoxelChecks(true);
             save(server);
         }
         pendingVoxelChecks.clear();
+        pendingPlacementChecks.clear();
         lastAirScanAt.clear();
         activeAirScans.clear();
         airScanQueue.clear();
@@ -413,6 +520,7 @@ public final class ObservationEngine {
         auditPlayerKey = "";
         auditPlayerCursor = 0;
         auditCellCursor = 0;
+        constructionAnalysisCursor = 0;
         loaded = false;
     }
 
@@ -443,7 +551,11 @@ public final class ObservationEngine {
         long decisions = data.players.values().stream()
                 .mapToLong(memory -> memory.operatorDecisionCount)
                 .sum();
-        return "Operator 0.7 | " + phase
+        int constructionBlocks = data.players.values().stream()
+                .mapToInt(PlayerMemory::getConstructionBlockCount).sum();
+        int buildingCandidates = data.players.values().stream()
+                .mapToInt(memory -> memory.recognizedBuildingCount).sum();
+        return "Operator 0.8 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -455,6 +567,8 @@ public final class ObservationEngine {
                 + " | loaded-cell audit: up to " + MAX_TRACKED_VOXEL_AUDITS_PER_TICK + "/tick"
                 + " | brain plans: " + plannedPlayers
                 + " | recorded decisions: " + decisions
+                + " | player-placed blocks: " + constructionBlocks
+                + " | building candidates: " + buildingCandidates
                 + " | world mutations: disabled (shadow planning only)";
     }
 
@@ -500,8 +614,45 @@ public final class ObservationEngine {
                 + " | most mined block: " + memory.mostMinedBlockType()
                 + " | most visited dimension: " + memory.mostVisitedDimension()
                 + " | mining data sufficient: " + (memory.hasEnoughMiningData() ? "yes" : "not yet")
+                + " | player-placed blocks: " + memory.getConstructionBlockCount()
+                + " | building candidates: " + memory.recognizedBuildingCount
+                + " | largest building candidate: " + memory.largestBuildingBlockCount + " blocks"
                 + " | operator readiness: " + (isPlayerReadyForOperator(player) ? "ready" : "still observing")
                 + " | world tick: " + now;
+    }
+
+    public String getConstructionProfile(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) {
+            return "Construction Intelligence: no player profile yet. Place blocks with a block item to begin recording your builds.";
+        }
+
+        String dimension = player.level().dimension().toString();
+        ConstructionAnalyzer.Analysis analysis =
+                ConstructionAnalyzer.analyze(memory.constructionBlocks.values(), dimension);
+        String details = analysis.structures().stream().limit(3)
+                .map(structure -> structure.kind()
+                        + " " + structure.blockCount() + " blocks"
+                        + " | " + structure.bounds()
+                        + " | " + Math.round(structure.confidence() * 100.0D) + "%")
+                .collect(java.util.stream.Collectors.joining(" ; "));
+
+        return "Construction Intelligence"
+                + " | dimension: " + dimension
+                + " | tracked placed blocks: " + analysis.trackedBlockCount()
+                + " | connected structures: " + analysis.structureCount()
+                + " | building candidates: " + analysis.buildingCandidateCount()
+                + " | largest structure: " + analysis.largestStructureBlockCount()
+                + " blocks"
+                + " | largest building candidate: " + analysis.largestBuildingBlockCount()
+                + " blocks"
+                + " | lifetime placements: " + memory.blocksPlaced
+                + " | tracked removals: " + memory.constructionBlocksRemoved
+                + " | last change tick: " + memory.lastConstructionChangeAt
+                + (details.isBlank() ? " | no connected structure has reached "
+                        + ConstructionAnalyzer.MIN_STRUCTURE_BLOCKS + " blocks yet"
+                        : " | largest components: " + details)
+                + " | note: geometry-based candidates only; interiors, block-entity contents and command/world-editor changes are not captured.";
     }
 
     public String getTunnelProfile(ServerPlayer player) {
