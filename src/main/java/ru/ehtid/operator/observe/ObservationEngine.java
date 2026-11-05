@@ -19,6 +19,7 @@ import net.minecraft.core.BlockPos;
 
 import ru.ehtid.operator.OperatorMod;
 import ru.ehtid.operator.analysis.TunnelAnalyzer;
+import ru.ehtid.operator.analysis.TunnelNetworkAnalyzer;
 import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
@@ -189,13 +190,13 @@ public final class ObservationEngine {
                 .filter(memory -> memory.personalObservationComplete(OBSERVATION_TICKS))
                 .count();
         String phase = data.observationComplete ? "WORLD OBSERVATION COMPLETE" : "PASSIVE OBSERVATION";
-        return "Operator 0.3 | " + phase
+        return "Operator 0.4 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
                 + " | individually trained: " + personallyTrained
                 + " | mapped tunnel cells: " + data.players.values().stream().mapToInt(PlayerMemory::getTunnelCellCount).sum()
-                + " | world mutations: disabled in 0.3";
+                + " | world mutations: disabled in 0.4";
     }
 
     public String getPlayerProfile(ServerPlayer player, MinecraftServer server) {
@@ -238,11 +239,23 @@ public final class ObservationEngine {
                 + " | note: only blocks mined while Operator was active are mapped.";
     }
 
+    public String getTunnelNetworkProfile(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) {
+            return "No player profile yet. Mine natural terrain while Operator is active to build a tunnel network.";
+        }
+        String dimension = player.level().dimension().toString();
+        TunnelNetworkAnalyzer.Analysis analysis =
+                TunnelNetworkAnalyzer.analyze(memory.tunnelCells.values(), dimension);
+        return analysis.describe()
+                + " | note: this is a horizontal centerline estimate, not a complete 3D air-space map.";
+    }
+
     private void updateWorldObservationPhase(long now) {
         if (!data.observationComplete && data.worldObservationElapsed(now) >= OBSERVATION_TICKS) {
             data.observationComplete = true;
             dirty = true;
-            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.3.");
+            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.4.");
         }
     }
 
