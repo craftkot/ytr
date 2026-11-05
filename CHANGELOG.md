@@ -6,6 +6,7 @@
 - Added dimension-aware six-neighbour connected-component analysis for player-placed blocks.
 - Added structure recognition (8+ connected blocks) and geometric building candidates (24+ blocks with at least 3×3×3 bounds).
 - Added block removal invalidation when a tracked construction block is broken by any player, including creative players.
+- Added a loaded-chunk round-robin audit of up to 64 tracked construction blocks per tick to remove stale entries after explosions, pistons and external replacement.
 - Added a maximum of 8,192 retained construction blocks per player and one dirty-profile analysis per server tick, throttled to 20 ticks per profile.
 - Added persisted construction summaries and schema 5 -> 6 migration without resetting existing player, mining, route or Operator planner data.
 - Added `/operator structures`, construction counters to `/operator profile` and `/operator status`, and builder-aware `HOME_ECHO` shadow planning.
