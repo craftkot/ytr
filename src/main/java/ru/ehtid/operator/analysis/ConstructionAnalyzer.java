@@ -343,10 +343,19 @@ public final class ConstructionAnalyzer {
                 if (block.z == minZ) occupiedWallFaceCells++;
                 if (block.z == maxZ) occupiedWallFaceCells++;
             }
-            for (Map.Entry<Integer, Integer> layer : blocksByY.entrySet()) {
-                int y = layer.getKey();
-                if (y <= minY || y >= maxY || floorArea <= 0L) continue;
-                if (layer.getValue() / (double) floorArea >= 0.55D) floorLayers++;
+            long interiorFloorArea = (long) Math.max(0, spanX - 2) * Math.max(0, spanZ - 2);
+            Map<Integer, Integer> interiorBlocksByY = new LinkedHashMap<>();
+            if (interiorFloorArea > 0L) {
+                for (PlayerMemory.ConstructionBlock block : blocks) {
+                    if (block.y > minY && block.y < maxY
+                            && block.x > minX && block.x < maxX
+                            && block.z > minZ && block.z < maxZ) {
+                        interiorBlocksByY.merge(block.y, 1, Integer::sum);
+                    }
+                }
+            }
+            for (Map.Entry<Integer, Integer> layer : interiorBlocksByY.entrySet()) {
+                if (layer.getValue() / (double) interiorFloorArea >= 0.55D) floorLayers++;
             }
 
             double floorCoverage = floorArea <= 0L ? 0.0D
