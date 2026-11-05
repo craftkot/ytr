@@ -175,6 +175,31 @@ class ConstructionAnalyzerTest {
         assertEquals(1, structure.floorLayerCount());
     }
 
+
+    @Test
+    void solidFilledCubeIsNotMistakenForAnOpenBuilding() {
+        List<PlayerMemory.ConstructionBlock> blocks = new ArrayList<>();
+        long tick = 0L;
+        for (int x = 0; x < 3; x++) {
+            for (int y = 0; y < 3; y++) {
+                for (int z = 0; z < 3; z++) {
+                    blocks.add(new PlayerMemory.ConstructionBlock(
+                            x, y, z, "minecraft:overworld", "minecraft:stone", tick++
+                    ));
+                }
+            }
+        }
+
+        ConstructionAnalyzer.Structure structure =
+                ConstructionAnalyzer.analyze(blocks).structures().get(0);
+
+        assertTrue(structure.buildingCandidate());
+        assertTrue(structure.interiorScanComplete());
+        assertEquals(0, structure.unoccupiedCells());
+        assertEquals(0, structure.enclosedVoidCells());
+        assertEquals("BUILDING_CANDIDATE", structure.kind());
+    }
+
     @Test
     void doesNotClassifyThinPillarAsBuilding() {
         PlayerMemory memory = new PlayerMemory();
