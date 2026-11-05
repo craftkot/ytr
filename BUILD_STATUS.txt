@@ -21,7 +21,7 @@ Local checks completed:
 
 Scope of 0.2.0:
 - Passive observation and persistent player memory are implemented.
-- World and player training gates are implemented.
+- World and per-player online-presence gates are implemented. AFK time currently counts toward the 24,000-tick personal gate; behavioural samples still require actual movement or mining.
 - Mining history and route sampling are implemented.
 - World mutations remain disabled intentionally. This release does not yet create or alter tunnels, terrain, structures or entities.
 
