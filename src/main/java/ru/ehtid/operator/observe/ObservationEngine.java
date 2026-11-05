@@ -128,12 +128,16 @@ public final class ObservationEngine {
     }
 
     private void processPendingVoxelChecks() {
+        processPendingVoxelChecks(false);
+    }
+
+    private void processPendingVoxelChecks(boolean force) {
         if (pendingVoxelChecks.isEmpty()) return;
 
         Iterator<Map.Entry<String, PendingVoxelCheck>> iterator = pendingVoxelChecks.entrySet().iterator();
         while (iterator.hasNext()) {
             PendingVoxelCheck check = iterator.next().getValue();
-            if (check.level().getGameTime() < check.dueGameTick()) continue;
+            if (!force && check.level().getGameTime() < check.dueGameTick()) continue;
             iterator.remove();
 
             if (!check.level().getBlockState(check.position()).isAir()) {
@@ -157,7 +161,10 @@ public final class ObservationEngine {
     ) { }
 
     public void onServerStopping(MinecraftServer server) {
-        if (loaded) save(server);
+        if (loaded) {
+            processPendingVoxelChecks(true);
+            save(server);
+        }
         pendingVoxelChecks.clear();
         loaded = false;
     }
