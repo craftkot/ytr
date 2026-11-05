@@ -32,10 +32,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p run run/server
-          printf 'eula=true\\n' > run/eula.txt
-          printf 'eula=true\\n' > run/server/eula.txt
+          printf 'eula=true\n' > run/eula.txt
+          printf 'eula=true\n' > run/server/eula.txt
           set +e
-          printf 'stop\\n' | timeout 180s gradle runServer --no-daemon
+          printf 'stop\n' | timeout 180s gradle runServer --no-daemon
           result=$?
           set -e
           if [ "$result" -ne 0 ]; then
