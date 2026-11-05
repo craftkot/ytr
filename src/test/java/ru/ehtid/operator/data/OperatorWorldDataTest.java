@@ -21,7 +21,7 @@ class OperatorWorldDataTest {
         data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(6, data.schemaVersion);
+        assertEquals(7, data.schemaVersion);
         assertNotNull(data.players);
     }
 
@@ -39,7 +39,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(6, data.schemaVersion);
+        assertEquals(7, data.schemaVersion);
         assertEquals(1, memory.getTunnelCellCount());
         assertEquals(1, memory.getMinedTunnelCellCount());
         assertEquals(0, memory.getObservedAirCellCount());
@@ -76,7 +76,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(6, data.schemaVersion);
+        assertEquals(7, data.schemaVersion);
         assertEquals(24_000L, memory.observedTicks);
         assertEquals(1234.5D, memory.distanceTravelled);
         assertEquals("NONE", memory.plannedOperatorEvent);
@@ -104,13 +104,43 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(6, data.schemaVersion);
+        assertEquals(7, data.schemaVersion);
         assertEquals(25_000L, memory.observedTicks);
         assertEquals(3L, memory.operatorDecisionCount);
         assertEquals(1, memory.getConstructionBlockCount());
         assertEquals("minecraft:oak_planks",
                 memory.constructionBlocks.values().iterator().next().blockId);
         assertEquals(1L, memory.blocksPlaced);
+    }
+
+
+    @Test
+    void schemaSixMigrationPreservesConstructionMapAndSchedulesSemanticReanalysis() {
+        OperatorWorldData data = new OperatorWorldData();
+        data.schemaVersion = 6;
+        PlayerMemory memory = new PlayerMemory();
+        memory.uuid = "player-uuid";
+        memory.blocksPlaced = 30L;
+        memory.constructionAnalysisDirty = false;
+        memory.lastConstructionAnalysisAt = 900L;
+        memory.constructionBlocks.put("minecraft:overworld|1,64,2",
+                new PlayerMemory.ConstructionBlock(
+                        1, 64, 2, "minecraft:overworld", "minecraft:oak_stairs", 500L
+                ));
+        data.players.put("player-uuid", memory);
+
+        data.normalize();
+
+        assertEquals(7, data.schemaVersion);
+        assertEquals(30L, memory.blocksPlaced);
+        assertEquals(1, memory.getConstructionBlockCount());
+        PlayerMemory.ConstructionBlock migrated =
+                memory.constructionBlocks.get("minecraft:overworld|1,64,2");
+        assertNotNull(migrated);
+        assertEquals("", migrated.blockState);
+        assertTrue(memory.constructionAnalysisDirty);
+        assertEquals(-1L, memory.lastConstructionAnalysisAt);
+        assertEquals(0, memory.recognizedEnclosedBuildingCount);
     }
 
 }
