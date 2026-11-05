@@ -1,9 +1,61 @@
 # Operator: Reality
 
-Development repository for the Minecraft 26.3 Fabric mod.
+Адаптивный наблюдатель для Minecraft Java 26.3 + Fabric.
 
-Active development branch: `operator-dev`.
+**Текущая версия:** 0.2.0  
+**Рабочая ветка:** operator-dev  
+**Репозиторий:** https://github.com/craftkot/ytr
 
-The current source snapshot and build instructions are published as `operator-reality-0.2.0-source.zip` on the development branch. GitHub Actions builds the snapshot on Java 25 and runs the model tests.
+## Состояние проекта
 
-World mutation is intentionally disabled in 0.2.0. This release validates player observation, persistent memory and mining-behaviour statistics before any terrain-changing code is introduced.
+Версия 0.2.0 реализует основу наблюдения:
+
+- первые 24 000 игровых тиков мира — пассивное наблюдение;
+- отдельная память игроков по UUID;
+- персональное обучение на 24 000 активных тиков каждого игрока;
+- маршруты и накопление пройденной дистанции;
+- история добычи блоков, глубины, направлений и непрерывных цепочек;
+- ограничение памяти и атомарное сохранение данных;
+- команды диагностики.
+
+Изменение мира пока отключено намеренно. Следующий этап — построение карты выкопанных шахт, затем безопасное создание новых ответвлений. Нельзя включать изменение блоков, пока не готовы защита построек и откат операций.
+
+## Сборка
+
+Требования: Minecraft Java 26.3, Java 25, Fabric Loader 0.20.1+, Fabric API 0.165.2+26.3 и Gradle 9.8.2.
+
+В корне проекта:
+
+    gradle clean test build
+
+Запуск тестового клиента:
+
+    gradle runClient
+
+Готовые JAR-файлы появятся в build/libs/.
+
+## Диагностика в игре
+
+    /operator status
+    /operator profile
+
+status показывает мировую фазу обучения и число индивидуально обученных профилей.
+profile показывает статистику текущего игрока и его готовность к будущему Оператору.
+
+## Где хранятся данные
+
+    <папка мира>/operator_reality/operator-memory.json
+
+Прогресс переживает перезапуск сервера. Для старых сохранений выполняется нормализация схемы данных.
+
+## Тестирование модели без Minecraft
+
+В PowerShell:
+
+    New-Item -ItemType Directory -Force build/model-test | Out-Null
+    javac -Xlint:all -Werror -d build/model-test src/main/java/ru/ehtid/operator/data/PlayerMemory.java tools/OperatorModelSmokeTest.java
+    java -ea -cp build/model-test OperatorModelSmokeTest
+
+Полные JUnit-тесты запускаются через gradle test. GitHub Actions выполняет сборку на Java 25.
+
+Перед тестированием на важном мире сделайте резервную копию.
