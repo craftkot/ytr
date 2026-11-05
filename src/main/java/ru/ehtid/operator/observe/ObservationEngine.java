@@ -294,7 +294,8 @@ public final class ObservationEngine {
                     position.getY() + direction[1],
                     position.getZ() + direction[2]
             );
-            if (level.hasChunkAt(neighbour) && level.getBlockState(neighbour).blocksMotion()) {
+            if (level.hasChunkAt(neighbour)
+                    && level.getBlockState(neighbour).isCollisionShapeFullBlock(level, neighbour)) {
                 solidNeighbours++;
             }
         }
