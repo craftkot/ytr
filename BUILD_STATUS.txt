@@ -1,35 +1,34 @@
-Operator: Reality 0.8.0
+Operator: Reality 0.9.0
 
-Verification: PASSED.
-Verified source commit: ac2a6425d152d0f47398e6a9d8c69ba162779e0e
-GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42114685802
+Verification state: PENDING GitHub Actions for the current operator-dev head.
+Previous verified baseline: Operator 0.8.0, full build/test and dedicated-server smoke test passed:
+https://github.com/craftkot/ytr/actions/runs/42114685802
 
-Successful checks:
-- gradle clean test build --no-daemon
-- Java 25 / Gradle 9.8.2 toolchain.
-- All JUnit tests passed, including construction component analysis, bounded player construction memory, schema migration and builder-aware Operator planning.
-- Dedicated Fabric server reached the ready state.
-- RCON /operator status returned the expected passive-observation state.
-- Operator world memory was persisted with schemaVersion 6.
-- Mod JAR and source ZIP artifacts were uploaded.
+Target build:
+- Minecraft Java 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
+- Java 25 / Gradle 9.8.2.
+- Required: gradle clean test build --no-daemon.
+- Required: dedicated Fabric server startup, RCON /operator status and persisted world-memory schemaVersion 7.
 
-Implemented in 0.8.0:
-- Bounded per-player placement history, confirmed against actual next-tick world state.
-- Dimension-aware six-neighbour connected-component construction analysis.
-- Structure threshold: 8 connected placed blocks.
-- Building-candidate threshold: 24+ blocks and minimum 3x3x3 bounds.
-- Per-player construction map cap: 8,192 blocks.
-- Removal invalidation when a tracked block is broken by any player, including creative mode.
-- Loaded-chunk construction audit of up to 64 blocks per tick; unloaded chunks are never force-loaded.
-- Construction analysis budget: one dirty player profile per server tick, with a 20-tick per-profile throttle.
-- Persisted construction summary and schema 5 -> 6 migration.
-- /operator structures diagnostics and construction metrics in profile/status.
-- Builder-aware HOME_ECHO shadow plan.
+Implemented in 0.9.0:
+- Persist serialized BlockState properties per confirmed player-placed block.
+- Refresh block state during loaded-chunk audits without counting another placement.
+- Floor, roof and four-wall shell coverage estimates.
+- Internal horizontal floor-plane detection that excludes the perimeter wall ring.
+- Door count (lower half counted once), glass/window blocks, stairs and slabs.
+- Enclosed void flood-fill inside the component bounding box, capped at 32,768 cells.
+- Semantic geometry labels: ENCLOSED_BUILDING, OPEN_BUILDING, BUILDING_CANDIDATE and STRUCTURE.
+- Persisted shell and enclosed-volume summary metrics.
+- Schema 6 -> 7 migration, preserving construction records and scheduling semantic re-analysis.
+- Builder scoring and HOME_ECHO shadow planning now include shell and enclosed-volume evidence.
+- Expanded /operator structures diagnostics.
 - World mutations remain disabled.
 
+Verification must still pass on the exact current commit before this release is marked verified.
+
 Known limitations:
-- Only ordinary BlockItem placement confirmed through UseBlockCallback is tracked.
-- Commands, WorldEdit, world generation and some modded placement paths are not captured.
-- Building classification is geometric and heuristic; it does not prove a component is a house.
-- Interiors, block states, block-entity NBT and container contents are not stored.
-- No actual house relocation, reconstruction or rollback is implemented.
+- Placement capture depends on ordinary BlockItem interactions confirmed on the following tick.
+- Enclosed voids are inferred from recorded placements, not a complete world scan.
+- Components with bounding-box volume above 32,768 cells skip interior flood-fill.
+- Block-entity NBT and container contents are not captured.
+- No house relocation, reconstruction or rollback is implemented.
