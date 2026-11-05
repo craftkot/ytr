@@ -2,6 +2,8 @@ package ru.ehtid.operator.data;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class PlayerMemoryTest {
@@ -137,6 +139,25 @@ class PlayerMemoryTest {
                 "minecraft:overworld|" + (PlayerMemory.MAX_TUNNEL_CELLS + 9) + ",20,0"
         ));
         assertEquals(PlayerMemory.MAX_TUNNEL_CELLS + 10L, memory.tunnelBlocksCleared);
+    }
+
+    @Test
+    void normalizeRestoresChronologicalVoxelEvictionOrder() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.tunnelCells = new HashMap<>();
+        for (int tick = PlayerMemory.MAX_TUNNEL_CELLS; tick >= 0; tick--) {
+            String key = "cell-" + tick;
+            memory.tunnelCells.put(key, new PlayerMemory.TunnelCell(
+                    tick, 20, 0, "minecraft:overworld", "minecraft:stone", tick
+            ));
+        }
+
+        memory.normalize();
+
+        assertEquals(PlayerMemory.MAX_TUNNEL_CELLS, memory.getTunnelCellCount());
+        assertFalse(memory.tunnelCells.containsKey("cell-0"));
+        assertTrue(memory.tunnelCells.containsKey("cell-" + PlayerMemory.MAX_TUNNEL_CELLS));
+        assertEquals(1L, memory.tunnelCells.values().iterator().next().gameTick);
     }
 
     @Test
