@@ -47,6 +47,15 @@ public final class OperatorCommands {
                     );
                     return 1;
                 }))
+                .then(Commands.literal("network2d").executes(context -> {
+                    var source = context.getSource();
+                    var player = source.getPlayerOrException();
+                    source.sendSuccess(
+                            () -> Component.literal(observer.getTunnelNetwork2dProfile(player)),
+                            false
+                    );
+                    return 1;
+                }))
         );
     }
 }
