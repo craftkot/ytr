@@ -175,7 +175,8 @@ public final class ObservationEngine {
      * dispensers, fluids and other mods, not just ordinary right-click placement.
      */
     private void auditTrackedVoxels(MinecraftServer server) {
-        if (data.players.isEmpty()) {
+        if (data.players.isEmpty() || data.players.values().stream()
+                .noneMatch(memory -> !memory.tunnelCells.isEmpty())) {
             auditPlayerCursor = 0;
             auditCellCursor = 0;
             auditPlayerKey = "";
@@ -198,7 +199,7 @@ public final class ObservationEngine {
 
         int budget = MAX_TRACKED_VOXEL_AUDITS_PER_TICK;
         int attempts = 0;
-        int maxAttempts = MAX_TRACKED_VOXEL_AUDITS_PER_TICK * profiles.size();
+        int maxAttempts = profiles.size() + MAX_TRACKED_VOXEL_AUDITS_PER_TICK;
         while (budget > 0 && attempts < maxAttempts) {
             if (auditPlayerCursor >= profiles.size()) auditPlayerCursor = 0;
             Map.Entry<String, PlayerMemory> profile = profiles.get(auditPlayerCursor);
