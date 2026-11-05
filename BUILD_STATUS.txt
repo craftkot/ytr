@@ -1,26 +1,30 @@
-Operator: Reality 0.7.0
+Operator: Reality 0.8.0
 
-Verification state: PENDING GitHub Actions for the 0.7.0 commit.
-Previous verified baseline: Operator 0.6.0, commit 790cb329dfe1906d7fdde273475a79a52d721fec.
+Verification state: PENDING GitHub Actions for the 0.8.0 commit.
+Verified baseline: Operator 0.7.0, build and dedicated-server smoke test passed in GitHub Actions run 42107956745.
 
 Target build:
 - Minecraft Java 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
 - Java 25 / Gradle 9.8.2.
 - Required: gradle clean test build.
-- Required: dedicated Fabric server startup, RCON /operator status and persisted world-memory schemaVersion 5.
-- Required: JUnit tests for decision gates, archetype scoring, plan selection, cooldown and schema migration.
+- Required: dedicated Fabric server startup, RCON /operator status and persisted world-memory schemaVersion 6.
 
-Implemented in 0.7.0:
-- Deterministic server-local decision planner; no remote AI dependency.
-- Player archetypes: MINER, EXPLORER, CAVER, MIXED and UNKNOWN.
-- Evidence-gated plans: TUNNEL_FOLD, PATH_ECHO, DEPTH_LURE and DIMENSION_DRIFT.
-- Independent world and per-player observation gates of 24,000 ticks each.
-- Decision evaluation every 200 game ticks; 6,000-tick plan-switch cooldown.
-- Per-player persisted planner state and schema 4 -> 5 migration.
-- /operator brain diagnostics and aggregate planner status.
-- World mutations remain disabled; planned events are not executed.
+Implemented in 0.8.0:
+- Bounded per-player placement history, confirmed against actual next-tick world state.
+- Dimension-aware six-neighbour connected-component construction analysis.
+- Structure threshold: 8 connected placed blocks.
+- Building-candidate threshold: 24+ blocks and minimum 3x3x3 bounds.
+- Per-player construction map cap: 8,192 blocks.
+- Removal invalidation when a tracked block is broken by any player, including creative mode.
+- Construction analysis budget: one dirty player profile per server tick, with a 20-tick per-profile throttle.
+- Persisted construction summary and schema 5 -> 6 migration.
+- /operator structures diagnostics and construction metrics in profile/status.
+- Builder-aware HOME_ECHO shadow plan.
+- World mutations remain disabled.
 
 Known limitations:
-- The planner uses deterministic heuristics and current observer data only.
-- Structure/home detection, biome history, general entity tracking and actual intervention execution are not implemented.
-- No world-changing behaviour is enabled in this version.
+- Only ordinary BlockItem placement confirmed through UseBlockCallback is tracked.
+- Commands, WorldEdit, world generation and some modded placement paths are not captured.
+- Building classification is geometric and heuristic; it does not prove a component is a house.
+- Interiors, block states, block-entity NBT and container contents are not stored.
+- No actual house relocation, reconstruction or rollback is implemented.
