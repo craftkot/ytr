@@ -21,6 +21,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.core.BlockPos;
 
@@ -299,7 +300,12 @@ public final class ObservationEngine {
                 solidNeighbours++;
             }
         }
-        return solidNeighbours >= 2;
+        if (solidNeighbours >= 2) return true;
+        if (solidNeighbours == 0) return false;
+        int localSurface = level.getHeight(
+                Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, position.getX(), position.getZ()
+        );
+        return position.getY() <= localSurface - 6;
     }
 
     private void processAirScanSessions() {
