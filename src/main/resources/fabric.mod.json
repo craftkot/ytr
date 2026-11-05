@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "A persistent adaptive observer for Minecraft. Version 0.5 reconstructs height-aware 3D tunnel networks, vertical shafts, junctions and stale mapped-cell invalidation.",
+  "description": "A persistent adaptive observer for Minecraft. Version 0.6 adds bounded discovery of nearby connected underground air and preserves mined-versus-scanned voxel provenance.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
