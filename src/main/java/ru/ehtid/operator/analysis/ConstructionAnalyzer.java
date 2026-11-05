@@ -164,7 +164,7 @@ public final class ConstructionAnalyzer {
         long volume = (long) spanX * spanY * spanZ;
         if (volume <= 0L || volume > MAX_INTERIOR_SCAN_CELLS
                 || volume > remainingBudget) {
-            return new InteriorMetrics(false, 0);
+            return new InteriorMetrics(false, 0, 0);
         }
 
         Set<LocalCell> occupied = new HashSet<>();
@@ -208,8 +208,13 @@ public final class ConstructionAnalyzer {
             }
         }
 
-        long enclosed = Math.max(0L, volume - occupied.size() - exterior.size());
-        return new InteriorMetrics(true, (int) Math.min(Integer.MAX_VALUE, enclosed));
+        long unoccupied = Math.max(0L, volume - occupied.size());
+        long enclosed = Math.max(0L, unoccupied - exterior.size());
+        return new InteriorMetrics(
+                true,
+                (int) Math.min(Integer.MAX_VALUE, unoccupied),
+                (int) Math.min(Integer.MAX_VALUE, enclosed)
+        );
     }
 
     private static void seedExterior(
@@ -259,6 +264,7 @@ public final class ConstructionAnalyzer {
             int stairBlockCount,
             int slabBlockCount,
             boolean interiorScanComplete,
+            int unoccupiedCells,
             int enclosedVoidCells,
             String semanticKind
     ) {
@@ -283,7 +289,7 @@ public final class ConstructionAnalyzer {
 
     private record CellKey(String dimension, int x, int y, int z) { }
     private record LocalCell(int x, int y, int z) { }
-    private record InteriorMetrics(boolean complete, int enclosedVoidCells) { }
+    private record InteriorMetrics(boolean complete, int unoccupiedCells, int enclosedVoidCells) { }
 
     private static final class Component {
         private final String dimension;
@@ -383,6 +389,7 @@ public final class ConstructionAnalyzer {
                     && roofCoverage >= 0.55D
                     && wallCoverage >= 0.40D;
             boolean openBuilding = buildingCandidate
+                    && interior.complete() && interior.unoccupiedCells() > 0
                     && floorCoverage >= 0.35D
                     && wallCoverage >= 0.30D
                     && (roofCoverage >= 0.25D || doorCount > 0 || windowBlockCount > 0);
@@ -412,7 +419,8 @@ public final class ConstructionAnalyzer {
                     floorCoverage, roofCoverage, wallCoverage,
                     floorLayers, doorCount, windowBlockCount,
                     stairBlockCount, slabBlockCount,
-                    interior.complete(), interior.enclosedVoidCells(), semanticKind
+                    interior.complete(), interior.unoccupiedCells(),
+                    interior.enclosedVoidCells(), semanticKind
             );
         }
     }
