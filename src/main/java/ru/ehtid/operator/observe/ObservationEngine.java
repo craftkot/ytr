@@ -44,6 +44,7 @@ public final class ObservationEngine {
     private static final int MAX_PENDING_PLACEMENT_CHECKS = 1024;
     private static final int MAX_CONSTRUCTION_ANALYSES_PER_TICK = 1;
     private static final long CONSTRUCTION_ANALYSIS_INTERVAL = 20L;
+    private static final int MAX_CONSTRUCTION_BLOCK_AUDITS_PER_TICK = 64;
     private static final int MAX_TRACKED_VOXEL_AUDITS_PER_TICK = 128;
     private static final long AIR_SCAN_INTERVAL = 100L;
     private static final int AIR_SCAN_RADIUS = 12;
@@ -65,6 +66,10 @@ public final class ObservationEngine {
     private int auditPlayerCursor = 0;
     private int auditCellCursor = 0;
     private int constructionAnalysisCursor = 0;
+    private int constructionAuditPlayerCursor = 0;
+    private int constructionAuditCellCursor = 0;
+    private String constructionAuditPlayerKey = "";
+    private List<Map.Entry<String, PlayerMemory.ConstructionBlock>> constructionAuditSnapshot = List.of();
     private String auditPlayerKey = "";
     private List<Map.Entry<String, PlayerMemory.TunnelCell>> auditSnapshot = List.of();
     private OperatorWorldData data = new OperatorWorldData();
@@ -89,6 +94,10 @@ public final class ObservationEngine {
         auditPlayerCursor = 0;
         auditCellCursor = 0;
         constructionAnalysisCursor = 0;
+        constructionAuditPlayerCursor = 0;
+        constructionAuditCellCursor = 0;
+        constructionAuditPlayerKey = "";
+        constructionAuditSnapshot = List.of();
         auditPlayerKey = "";
         auditSnapshot = List.of();
 
@@ -107,6 +116,7 @@ public final class ObservationEngine {
         processPendingVoxelChecks();
         processPendingPlacementChecks();
         auditTrackedVoxels(server);
+        auditTrackedConstructionBlocks(server);
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (player.isSpectator()) continue;
@@ -235,6 +245,12 @@ public final class ObservationEngine {
 
             PlayerMemory memory = data.players.get(check.playerKey());
             if (memory == null) continue;
+            for (PlayerMemory profile : data.players.values()) {
+                profile.removePlacedBlock(
+                        check.position().getX(), check.position().getY(),
+                        check.position().getZ(), check.dimension(), check.level().getGameTime()
+                );
+            }
             String blockId = BuiltInRegistries.BLOCK.getKey(placedState.getBlock()).toString();
             if (memory.recordPlacedBlock(
                     check.position().getX(), check.position().getY(), check.position().getZ(),
@@ -333,6 +349,81 @@ public final class ObservationEngine {
                 for (PlayerMemory memory : data.players.values()) {
                     if (memory.removeTunnelCell(cell.dimension, cell.x, cell.y, cell.z)) dirty = true;
                 }
+            }
+        }
+    }
+
+    /**
+     * Verifies a small round-robin slice of the construction map against already
+     * loaded chunks. This removes stale entries after explosions, pistons and
+     * external block replacement without forcing chunks to load.
+     */
+    private void auditTrackedConstructionBlocks(MinecraftServer server) {
+        if (data.players.isEmpty() || data.players.values().stream()
+                .noneMatch(memory -> !memory.constructionBlocks.isEmpty())) {
+            constructionAuditPlayerCursor = 0;
+            constructionAuditCellCursor = 0;
+            constructionAuditPlayerKey = "";
+            constructionAuditSnapshot = List.of();
+            return;
+        }
+
+        List<Map.Entry<String, PlayerMemory>> profiles = new ArrayList<>(data.players.entrySet());
+        if (constructionAuditPlayerCursor >= profiles.size()) {
+            constructionAuditPlayerCursor = 0;
+            constructionAuditPlayerKey = "";
+            constructionAuditSnapshot = List.of();
+            constructionAuditCellCursor = 0;
+        }
+
+        Map<String, ServerLevel> levels = new HashMap<>();
+        for (ServerLevel level : server.getAllLevels()) {
+            levels.put(level.dimension().toString(), level);
+        }
+
+        int budget = MAX_CONSTRUCTION_BLOCK_AUDITS_PER_TICK;
+        int attempts = 0;
+        int maxAttempts = profiles.size() + MAX_CONSTRUCTION_BLOCK_AUDITS_PER_TICK;
+        while (budget > 0 && attempts < maxAttempts) {
+            if (constructionAuditPlayerCursor >= profiles.size()) constructionAuditPlayerCursor = 0;
+            Map.Entry<String, PlayerMemory> profile = profiles.get(constructionAuditPlayerCursor);
+
+            if (!profile.getKey().equals(constructionAuditPlayerKey)) {
+                constructionAuditPlayerKey = profile.getKey();
+                constructionAuditSnapshot =
+                        new ArrayList<>(profile.getValue().constructionBlocks.entrySet());
+                constructionAuditCellCursor = 0;
+            }
+
+            if (constructionAuditCellCursor >= constructionAuditSnapshot.size()) {
+                constructionAuditPlayerCursor = (constructionAuditPlayerCursor + 1) % profiles.size();
+                constructionAuditPlayerKey = "";
+                constructionAuditSnapshot = List.of();
+                constructionAuditCellCursor = 0;
+                attempts++;
+                continue;
+            }
+
+            PlayerMemory.ConstructionBlock cell =
+                    constructionAuditSnapshot.get(constructionAuditCellCursor++).getValue();
+            attempts++;
+            budget--;
+            if (cell == null || cell.dimension == null || cell.blockId == null) continue;
+
+            PlayerMemory owner = profile.getValue();
+            String cellKey = cell.dimension + "|" + cell.x + "," + cell.y + "," + cell.z;
+            if (!owner.constructionBlocks.containsKey(cellKey)) continue;
+            ServerLevel level = levels.get(cell.dimension);
+            if (level == null) continue;
+
+            BlockPos position = new BlockPos(cell.x, cell.y, cell.z);
+            if (!level.hasChunkAt(position)) continue;
+            String actualBlockId = BuiltInRegistries.BLOCK
+                    .getKey(level.getBlockState(position).getBlock()).toString();
+            if (!cell.blockId.equals(actualBlockId)
+                    && owner.removePlacedBlock(cell.x, cell.y, cell.z,
+                            cell.dimension, level.getGameTime())) {
+                dirty = true;
             }
         }
     }
@@ -526,6 +617,10 @@ public final class ObservationEngine {
         auditPlayerCursor = 0;
         auditCellCursor = 0;
         constructionAnalysisCursor = 0;
+        constructionAuditPlayerCursor = 0;
+        constructionAuditCellCursor = 0;
+        constructionAuditPlayerKey = "";
+        constructionAuditSnapshot = List.of();
         loaded = false;
     }
 
@@ -570,6 +665,7 @@ public final class ObservationEngine {
                 + " | nearby air-scan sessions: " + activeAirScans.size()
                 + " | scan budget: " + MAX_AIR_SCAN_WORK_PER_TICK + "/tick"
                 + " | loaded-cell audit: up to " + MAX_TRACKED_VOXEL_AUDITS_PER_TICK + "/tick"
+                + " | construction audit: up to " + MAX_CONSTRUCTION_BLOCK_AUDITS_PER_TICK + "/tick"
                 + " | brain plans: " + plannedPlayers
                 + " | recorded decisions: " + decisions
                 + " | player-placed blocks: " + constructionBlocks
