@@ -1,0 +1,20 @@
+Operator: Reality 0.2.0
+
+Local checks completed:
+- fabric.mod.json parses as valid JSON.
+- Pure Java memory model compiles with the available Java 21 compiler using -Xlint:all -Werror.
+- Dependency-free model smoke test passes: active-time learning gate, movement distance accumulation, route sampling, mining chain, direction classification, dimension reset and bounded memory.
+- Source-level checks completed for bounded history collections and schema normalization.
+
+Not yet verified:
+- Full Fabric/Minecraft 26.3 Gradle compilation.
+- JUnit suite through Gradle.
+- Launch in a Minecraft client or dedicated server.
+
+Reason:
+- This container only has Java 21; Minecraft 26.3 / current Fabric Loom requires Java 25.
+- Gradle is not installed and outbound network access is disabled in this container.
+
+GitHub Actions is configured to run gradle clean test build on Java 25 / Gradle 9.8.2. Its result must be checked before calling the full mod build-tested.
+
+World mutations remain disabled in 0.2.0. This version only observes and stores behaviour.
