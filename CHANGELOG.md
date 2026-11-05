@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.6.0 — Nearby underground-air discovery
+
+- Added a bounded, per-player flood-fill scanner for pre-existing connected underground air spaces near the player.
+- Scanner starts only when the player's feet or head cell is enclosed by at least two movement-blocking neighbours.
+- Scan bounds: 12 blocks horizontally, 6 blocks below and 3 blocks above the player's starting position.
+- Maximum 4,096 visited positions per scan and 128 block checks per server tick globally.
+- Scanner reads only already loaded chunks and never force-loads terrain.
+- Added explicit tunnel-cell provenance: mined vs locally discovered air.
+- Discovered air never overwrites mined evidence or increments mined-terrain totals.
+- Bounded storage evicts old scanned-air cells before mined cells; scanned air cannot displace a full set of mined evidence.
+- Updated profile/status output to distinguish mined and discovered-air cells.
+- Migrated world-memory schema 3 to schema 4 without discarding existing player data; legacy tunnel cells default to mined.
+- Removed duplicate /operator network2d command registration.
+- Added tests for discovered-air deduplication, provenance, bounded eviction priority and schema migration.
+- Kept automatic world mutation disabled.
+
+Known limitations:
+- This is a local scan, not a full-world scan. Remote caves and tunnels remain undiscovered until a player approaches.
+- Large connected caves may be truncated by the per-scan visit cap.
+- The scanner records geometry of accessible air; it does not infer whether a cave was natural or player-built.
+- Explosions and other non-player destruction are detected only when the resulting air space is later reached by a nearby scan.
+- 3D topology remains a layer-wise approximation rather than a full 3D medial-axis transform.
+
+
 ## 0.5.0 — Height-aware tunnel networks and voxel audit
 
 - Added per-Y horizontal centerline reconstruction and 3D graph linking.
