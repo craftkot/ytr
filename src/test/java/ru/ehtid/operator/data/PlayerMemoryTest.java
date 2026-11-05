@@ -382,4 +382,45 @@ class PlayerMemoryTest {
         assertFalse(memory.constructionBlocks.containsKey("minecraft:overworld|0,64,0"));
     }
 
+
+    @Test
+    void recordsAndRefreshesSerializedBlockStateWithoutCountingExtraPlacement() {
+        PlayerMemory memory = new PlayerMemory();
+        assertTrue(memory.recordPlacedBlock(
+                2, 65, 3, "minecraft:overworld", "minecraft:oak_stairs",
+                "Block{minecraft:oak_stairs}[facing=north,half=bottom,shape=straight]", 10L
+        ));
+        assertEquals(1L, memory.blocksPlaced);
+        PlayerMemory.ConstructionBlock block =
+                memory.constructionBlocks.get("minecraft:overworld|2,65,3");
+        assertNotNull(block);
+        assertTrue(block.blockState.contains("facing=north"));
+
+        assertTrue(memory.updatePlacedBlockState(
+                2, 65, 3, "minecraft:overworld",
+                "Block{minecraft:oak_stairs}[facing=east,half=bottom,shape=straight]", 20L
+        ));
+        assertEquals(1L, memory.blocksPlaced);
+        assertTrue(block.blockState.contains("facing=east"));
+        assertEquals(20L, memory.lastConstructionChangeAt);
+        assertTrue(memory.constructionAnalysisDirty);
+        assertFalse(memory.updatePlacedBlockState(
+                2, 65, 3, "minecraft:overworld", block.blockState, 30L
+        ));
+    }
+
+    @Test
+    void constructionSemanticsSummaryIsBoundedAndNormalized() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.updateConstructionSemanticsSummary(
+                -1, -10, -2, 3, 4, 5, 6, 1.5D, Double.NaN, -0.5D
+        );
+        assertEquals(0, memory.recognizedEnclosedBuildingCount);
+        assertEquals(0, memory.largestEnclosedVoidCells);
+        assertEquals(0, memory.largestDoorCount);
+        assertEquals(1.0D, memory.largestFloorCoverage, 0.0001D);
+        assertEquals(0.0D, memory.largestRoofCoverage, 0.0001D);
+        assertEquals(0.0D, memory.largestWallCoverage, 0.0001D);
+    }
+
 }
