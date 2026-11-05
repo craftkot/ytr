@@ -480,7 +480,7 @@ public final class Tunnel3DNetworkAnalyzer {
         }
 
         private static Analysis empty(String dimension) {
-            return new Analysis(dimension, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            return new Analysis(dimension, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0.0D, 0.0D, 0, true, List.of(), List.of());
         }
 
