@@ -29,6 +29,15 @@ public final class OperatorCommands {
                     );
                     return 1;
                 }))
+                .then(Commands.literal("structures").executes(context -> {
+                    var source = context.getSource();
+                    var player = source.getPlayerOrException();
+                    source.sendSuccess(
+                            () -> Component.literal(observer.getConstructionProfile(player)),
+                            false
+                    );
+                    return 1;
+                }))
                 .then(Commands.literal("profile").executes(context -> {
                     var source = context.getSource();
                     var player = source.getPlayerOrException();
