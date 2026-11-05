@@ -105,20 +105,18 @@ public final class ObservationEngine {
             return InteractionResult.PASS;
         }
 
-        PlayerMemory memory = data.players.get(serverPlayer.getUUID().toString());
-        if (memory == null) return InteractionResult.PASS;
-
         BlockPos target = hitResult.getBlockPos().relative(hitResult.getDirection()).immutable();
         String dimension = level.dimension().toString();
-        if (!memory.hasTunnelCell(dimension, target.getX(), target.getY(), target.getZ())) {
-            return InteractionResult.PASS;
-        }
+        boolean trackedByAnyPlayer = data.players.values().stream()
+                .anyMatch(memory -> memory.hasTunnelCell(
+                        dimension, target.getX(), target.getY(), target.getZ()
+                ));
+        if (!trackedByAnyPlayer) return InteractionResult.PASS;
 
-        String playerId = serverPlayer.getUUID().toString();
-        String key = playerId + "|" + dimension + "|" + target.getX() + "," + target.getY() + "," + target.getZ();
+        String key = dimension + "|" + target.getX() + "," + target.getY() + "," + target.getZ();
         pendingVoxelChecks.remove(key);
         pendingVoxelChecks.put(key, new PendingVoxelCheck(
-                playerId, level, target, dimension, level.getGameTime() + 1L
+                level, target, dimension, level.getGameTime() + 1L
         ));
         while (pendingVoxelChecks.size() > MAX_PENDING_VOXEL_CHECKS) {
             Iterator<String> iterator = pendingVoxelChecks.keySet().iterator();
@@ -139,19 +137,19 @@ public final class ObservationEngine {
             iterator.remove();
 
             if (!check.level().getBlockState(check.position()).isAir()) {
-                PlayerMemory memory = data.players.get(check.playerId());
-                if (memory != null && memory.removeTunnelCell(
-                        check.dimension(), check.position().getX(),
-                        check.position().getY(), check.position().getZ()
-                )) {
-                    dirty = true;
+                for (PlayerMemory memory : data.players.values()) {
+                    if (memory.removeTunnelCell(
+                            check.dimension(), check.position().getX(),
+                            check.position().getY(), check.position().getZ()
+                    )) {
+                        dirty = true;
+                    }
                 }
             }
         }
     }
 
     private record PendingVoxelCheck(
-            String playerId,
             Level level,
             BlockPos position,
             String dimension,
