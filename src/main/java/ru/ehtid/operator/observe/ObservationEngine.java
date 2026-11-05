@@ -18,7 +18,7 @@ import ru.ehtid.operator.storage.OperatorStorage;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
-    private static final long MOVEMENT_SAMPLE_INTERVAL = 100L;
+    private static final long MOVEMENT_SAMPLE_INTERVAL = 20L;
     private static final long SAVE_INTERVAL = 600L;
 
     private OperatorWorldData data = new OperatorWorldData();
@@ -177,7 +177,13 @@ public final class ObservationEngine {
     private static boolean isRockLike(String blockId) {
         int separator = blockId.indexOf(':');
         String path = separator >= 0 ? blockId.substring(separator + 1) : blockId;
-        return path.contains("stone")
+        boolean stoneFamily = path.equals("stone")
+                || path.startsWith("stone_")
+                || path.endsWith("_stone")
+                || path.contains("_stone_")
+                || path.equals("sandstone")
+                || path.equals("red_sandstone");
+        return stoneFamily
                 || path.contains("deepslate")
                 || path.contains("tuff")
                 || path.contains("granite")
@@ -187,8 +193,10 @@ public final class ObservationEngine {
                 || path.contains("dripstone")
                 || path.contains("basalt")
                 || path.contains("blackstone")
-                || path.contains("netherrack")
-                || path.contains("end_stone")
+                || path.equals("netherrack")
+                || path.equals("end_stone")
+                || path.equals("obsidian")
+                || path.equals("ancient_debris")
                 || path.endsWith("_ore")
                 || path.startsWith("ore_");
     }
