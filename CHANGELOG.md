@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.0 — Construction Intelligence
+
+- Added a bounded, per-player history of confirmed placed blocks, captured by checking BlockItem interactions against the next server tick's actual world state.
+- Added dimension-aware six-neighbour connected-component analysis for player-placed blocks.
+- Added structure recognition (8+ connected blocks) and geometric building candidates (24+ blocks with at least 3×3×3 bounds).
+- Added block removal invalidation when a tracked construction block is broken by any player, including creative players.
+- Added a maximum of 8,192 retained construction blocks per player and one dirty-profile analysis per server tick, throttled to 20 ticks per profile.
+- Added persisted construction summaries and schema 5 -> 6 migration without resetting existing player, mining, route or Operator planner data.
+- Added `/operator structures`, construction counters to `/operator profile` and `/operator status`, and builder-aware `HOME_ECHO` shadow planning.
+- Added unit tests for connected buildings, narrow pillars, dimension separation, placement memory bounds, invalidation, schema migration and brain strategy selection.
+- **No world mutation is executed.** `HOME_ECHO` is a proposal only; actual house relocation, interior reconstruction and rollback are not part of 0.8.0.
+
+Known limitations:
+- Only ordinary BlockItem placement confirmed through the block-interaction callback is tracked; commands, WorldEdit, world generation and some modded placement paths are not.
+- Geometric building candidates are not semantic house recognition. Interiors, rooms, doors, windows and functional roles are not analysed.
+- Block states, block-entity NBT and container contents are not captured; exact reconstruction is not yet possible.
+- Construction history is capped at 8,192 blocks per player and older entries are evicted first.
+
+# Changelog
+
 ## 0.7.0 — Operator decision core (shadow planning)
 
 - Added a deterministic, server-local decision engine that converts accumulated player observations into a proposed intervention.
