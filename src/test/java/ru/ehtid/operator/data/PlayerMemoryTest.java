@@ -25,7 +25,7 @@ class PlayerMemoryTest {
 
         assertEquals(3.0D, memory.distanceTravelled, 0.0001D);
         assertEquals(4, memory.movementSamples);
-        assertEquals(2, memory.route.size());
+        assertEquals(4, memory.route.size());
     }
 
     @Test
@@ -70,6 +70,9 @@ class PlayerMemoryTest {
         memory.recordBrokenBlock(0, 20, 0, "minecraft:overworld", "minecraft:stone", true, 10);
         memory.recordBrokenBlock(1, 20, 0, "minecraft:overworld", "minecraft:dirt", false, 20);
         assertEquals(0, memory.currentMiningChain);
+        memory.recordBrokenBlock(2, 20, 0, "minecraft:overworld", "minecraft:stone", true, 30);
+        assertEquals(1, memory.currentMiningChain);
+        assertEquals(2, memory.miningSessions);
     }
 
     @Test
