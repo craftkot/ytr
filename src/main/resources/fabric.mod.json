@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "An adaptive Minecraft observer with persistent player behaviour memory and a non-mutating operator decision planner.",
+  "description": "An adaptive Minecraft observer with persistent player behaviour memory, event-derived construction mapping and a non-mutating operator decision planner.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
