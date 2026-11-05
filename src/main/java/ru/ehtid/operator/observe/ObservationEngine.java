@@ -165,7 +165,7 @@ public final class ObservationEngine {
         if (!data.observationComplete && data.worldObservationElapsed(now) >= OBSERVATION_TICKS) {
             data.observationComplete = true;
             dirty = true;
-            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.2.");
+            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.3.");
         }
     }
 
