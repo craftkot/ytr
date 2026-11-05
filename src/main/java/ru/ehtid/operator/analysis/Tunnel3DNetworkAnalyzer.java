@@ -135,7 +135,7 @@ public final class Tunnel3DNetworkAnalyzer {
 
         junctionPoints.sort(Comparator.comparingInt((Junction j) -> j.exits).reversed()
                 .thenComparing(j -> j.dimension).thenComparingDouble(j -> j.y)
-                .thenComparingInt(j -> j.z).thenComparingInt(j -> j.x));
+                .thenComparingDouble(j -> j.z).thenComparingDouble(j -> j.x));
         if (junctionPoints.size() > 8) junctionPoints = new ArrayList<>(junctionPoints.subList(0, 8));
         segments.sort(Comparator.comparingDouble((CorridorSegment s) -> s.length).reversed()
                 .thenComparing(s -> s.dimension).thenComparingDouble(s -> Math.min(s.startY, s.endY))
@@ -480,7 +480,7 @@ public final class Tunnel3DNetworkAnalyzer {
         }
 
         private static Analysis empty(String dimension) {
-            return new Analysis(dimension, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            return new Analysis(dimension, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0.0D, 0.0D, 0, true, List.of(), List.of());
         }
 
