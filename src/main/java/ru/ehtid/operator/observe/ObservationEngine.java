@@ -716,7 +716,9 @@ public final class ObservationEngine {
                 + " | most visited dimension: " + memory.mostVisitedDimension()
                 + " | mining data sufficient: " + (memory.hasEnoughMiningData() ? "yes" : "not yet")
                 + " | player-placed blocks: " + memory.getConstructionBlockCount()
+                + " | connected structures: " + memory.recognizedStructureCount
                 + " | building candidates: " + memory.recognizedBuildingCount
+                + " | largest structure: " + memory.largestStructureBlockCount + " blocks"
                 + " | largest building candidate: " + memory.largestBuildingBlockCount + " blocks"
                 + " | operator readiness: " + (isPlayerReadyForOperator(player) ? "ready" : "still observing")
                 + " | world tick: " + now;
@@ -735,6 +737,8 @@ public final class ObservationEngine {
                 .map(structure -> structure.kind()
                         + " " + structure.blockCount() + " blocks"
                         + " | " + structure.bounds()
+                        + " | " + structure.uniqueBlockTypes() + " block types"
+                        + " | ticks " + structure.firstPlacedAt() + "-" + structure.lastPlacedAt()
                         + " | " + Math.round(structure.confidence() * 100.0D) + "%")
                 .collect(java.util.stream.Collectors.joining(" ; "));
 
