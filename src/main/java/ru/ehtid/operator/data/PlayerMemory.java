@@ -12,6 +12,7 @@ import java.util.Map;
 public final class PlayerMemory {
     public static final int MAX_ROUTE_SAMPLES = 512;
     public static final int MAX_MINE_SAMPLES = 2048;
+    public static final int MAX_TUNNEL_CELLS = 4096;
     public static final int MAX_COUNTER_KEYS = 256;
 
     public String uuid = "";
@@ -28,6 +29,8 @@ public final class PlayerMemory {
     public long movementSamples = 0L;
     public double distanceTravelled = 0.0D;
     public long miningSessions = 0L;
+    /** Number of terrain cells cleared while tunnel mapping was active. */
+    public long tunnelBlocksCleared = 0L;
 
     public boolean hasLastPosition = false;
     public double lastX;
@@ -52,6 +55,8 @@ public final class PlayerMemory {
 
     public List<RouteSample> route = new ArrayList<>();
     public List<MineSample> mineHistory = new ArrayList<>();
+    /** Recent mined terrain voxels, keyed by dimension and block coordinates. */
+    public Map<String, TunnelCell> tunnelCells = new LinkedHashMap<>();
     public Map<String, Long> brokenBlockTypes = new LinkedHashMap<>();
     public Map<String, Long> minedBlockTypes = new LinkedHashMap<>();
     public Map<String, Long> miningDirections = new LinkedHashMap<>();
@@ -61,6 +66,10 @@ public final class PlayerMemory {
     public void normalize() {
         if (route == null) route = new ArrayList<>();
         if (mineHistory == null) mineHistory = new ArrayList<>();
+        if (tunnelCells == null) tunnelCells = new LinkedHashMap<>();
+        else tunnelCells = new LinkedHashMap<>(tunnelCells);
+        tunnelCells.entrySet().removeIf(entry -> entry.getKey() == null
+                || entry.getValue() == null || entry.getValue().dimension == null);
         if (brokenBlockTypes == null) brokenBlockTypes = new LinkedHashMap<>();
         if (minedBlockTypes == null) minedBlockTypes = new LinkedHashMap<>();
         if (miningDirections == null) miningDirections = new LinkedHashMap<>();
@@ -68,6 +77,7 @@ public final class PlayerMemory {
         if (miningDepthBands == null) miningDepthBands = new LinkedHashMap<>();
         trim(route, MAX_ROUTE_SAMPLES);
         trim(mineHistory, MAX_MINE_SAMPLES);
+        trimOldest(tunnelCells, MAX_TUNNEL_CELLS);
         trimMap(brokenBlockTypes, MAX_COUNTER_KEYS);
         trimMap(minedBlockTypes, MAX_COUNTER_KEYS);
         trimMap(miningDirections, MAX_COUNTER_KEYS);
@@ -78,6 +88,7 @@ public final class PlayerMemory {
         rockBlocksBroken = Math.max(0L, rockBlocksBroken);
         movementSamples = Math.max(0L, movementSamples);
         miningSessions = Math.max(0L, miningSessions);
+        tunnelBlocksCleared = Math.max(0L, tunnelBlocksCleared);
         distanceTravelled = Math.max(0.0D, distanceTravelled);
         currentMiningChain = Math.max(0, currentMiningChain);
         longestMiningChain = Math.max(currentMiningChain, longestMiningChain);
@@ -129,10 +140,17 @@ public final class PlayerMemory {
 
     public void recordBrokenBlock(int x, int y, int z, String dimension, String blockId,
                                   boolean rockLike, long gameTick) {
+        recordBrokenBlock(x, y, z, dimension, blockId, rockLike, rockLike, gameTick);
+    }
+
+    public void recordBrokenBlock(int x, int y, int z, String dimension, String blockId,
+                                  boolean rockLike, boolean tunnelMaterial, long gameTick) {
         if (firstSeenAt < 0L) firstSeenAt = gameTick;
         lastSeenAt = gameTick;
         blocksBroken++;
         incrementBounded(brokenBlockTypes, blockId);
+
+        if (tunnelMaterial) recordTunnelCell(x, y, z, dimension, blockId, gameTick);
 
         if (!rockLike) {
             currentMiningChain = 0;
@@ -175,6 +193,18 @@ public final class PlayerMemory {
         lastMineDimension = dimension;
         lastMineTick = gameTick;
         hasLastMinePosition = true;
+    }
+
+    public int getTunnelCellCount() {
+        return tunnelCells == null ? 0 : tunnelCells.size();
+    }
+
+    private void recordTunnelCell(int x, int y, int z, String dimension, String blockId, long gameTick) {
+        String key = dimension + "|" + x + "," + y + "," + z;
+        tunnelCells.remove(key);
+        tunnelCells.put(key, new TunnelCell(x, y, z, dimension, blockId, gameTick));
+        tunnelBlocksCleared++;
+        trimOldest(tunnelCells, MAX_TUNNEL_CELLS);
     }
 
     public boolean personalObservationComplete(long requiredActiveTicks) {
@@ -269,6 +299,15 @@ public final class PlayerMemory {
         while (list.size() > maximum) list.remove(0);
     }
 
+    private static <K, V> void trimOldest(Map<K, V> map, int maximum) {
+        while (map.size() > maximum) {
+            var iterator = map.keySet().iterator();
+            if (!iterator.hasNext()) return;
+            iterator.next();
+            iterator.remove();
+        }
+    }
+
     private static void trimMap(Map<String, Long> map, int maximum) {
         while (map.size() > maximum) {
             String leastUsed = map.entrySet().stream()
@@ -294,6 +333,26 @@ public final class PlayerMemory {
             this.y = y;
             this.z = z;
             this.dimension = dimension;
+            this.gameTick = gameTick;
+        }
+    }
+
+    public static final class TunnelCell {
+        public int x;
+        public int y;
+        public int z;
+        public String dimension;
+        public String blockId;
+        public long gameTick;
+
+        public TunnelCell() { }
+
+        public TunnelCell(int x, int y, int z, String dimension, String blockId, long gameTick) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.dimension = dimension;
+            this.blockId = blockId;
             this.gameTick = gameTick;
         }
     }
