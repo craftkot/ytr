@@ -6,7 +6,7 @@
 - Refresh stored block states during the loaded-chunk audit without incrementing lifetime placement counts.
 - Added bounded shell analysis for floor, roof and four wall faces.
 - Added estimates for internal horizontal floor planes, door blocks (counting the lower half once), glass blocks/panes, stairs and slabs.
-- Added a flood-fill estimate of enclosed void cells inside each connected component's bounding box, capped at 32,768 cells per component.
+- Added a flood-fill estimate of enclosed void cells inside each connected component's bounding box, capped at 32,768 cells per component and 65,536 cells total per player analysis.
 - Added geometric classifications: ENCLOSED_BUILDING, OPEN_BUILDING, BUILDING_CANDIDATE and STRUCTURE.
 - Persisted best-building shell metrics and enclosed-volume evidence; migrated world memory schema 6 -> 7 and scheduled legacy construction maps for re-analysis.
 - Builder behaviour scoring and HOME_ECHO shadow planning now consider enclosed-volume and shell evidence.
