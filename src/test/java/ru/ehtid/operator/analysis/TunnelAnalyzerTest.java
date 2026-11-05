@@ -166,7 +166,7 @@ class TunnelAnalyzerTest {
         assertEquals(0, result.mappedCells);
         assertEquals(0, result.components);
         assertNull(result.largest);
-        assertTrue(result.describe().contains("No mined tunnel cells"));
+        assertTrue(result.describe().contains("No mapped tunnel cells"));
     }
 
     private static PlayerMemory.TunnelCell cell(int x, int y, int z, String dimension) {
