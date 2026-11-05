@@ -1,28 +1,27 @@
-Operator: Reality 0.2.0
+Operator: Reality 0.3.0
 
-Verified on GitHub Actions:
-- Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.3.
-- Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
-- Gradle clean test build completed successfully.
-- Main sources compiled; resources processed; JAR and sources JAR created.
-- JUnit test task completed successfully (11 test methods are present across the two test classes).
-- Dedicated Fabric server launched successfully in CI.
-- Fabric Loader reported 44 loaded mods, including operator_reality 0.2.0.
-- OperatorMod initialization completed without a crash.
-- SERVER_STARTED loaded the world memory and reported PASSIVE OBSERVATION.
-- RCON command operator status returned the expected observation status.
-- The world memory JSON was created and schemaVersion 2 was verified.
-- RCON stop command shut the test server down cleanly.
+Implementation status before CI:
+- Added per-player bounded mined-terrain voxel map (4,096 unique positions).
+- Added terrain material classification for stone/ore and selected natural terrain blocks.
+- Added six-neighbour connected-component analysis.
+- Added dimension-aware analysis, linear/chamber/irregular/small classifications.
+- Added /operator tunnels for the current player's current dimension.
+- Added mapped tunnel cell counts to status and profile.
+- Migrated world save schema from 2 to 3; old profiles are normalized.
+- Added ten TunnelAnalyzer test cases and PlayerMemory voxel persistence/bounds tests.
+- Extended the dependency-free model smoke test to cover linear tunnel reconstruction.
+- World mutation remains disabled.
 
-Local checks completed:
-- fabric.mod.json parses as valid JSON.
-- Pure Java memory model compiles with the available Java 21 compiler using -Xlint:all -Werror.
-- Dependency-free model smoke test passes: active-time learning gate, movement distance accumulation, route sampling, mining chain, direction classification, dimension reset and bounded memory.
+Verification still required:
+- Java 25 / Gradle 9.8.2 full build and JUnit suite.
+- Dedicated Fabric server startup.
+- RCON /operator status smoke test.
+- World save schemaVersion 3 persistence.
+- Artifact upload and inspection.
 
-Scope of 0.2.0:
-- Passive observation and persistent player memory are implemented.
-- World and per-player online-presence gates are implemented. AFK time currently counts toward the 24,000-tick personal gate; behavioural samples still require actual movement or mining.
-- Mining history and route sampling are implemented.
-- World mutations remain disabled intentionally. This release does not yet create or alter tunnels, terrain, structures or entities.
-
-The distributable JAR was taken from the successful GitHub Actions artifact and inspected for its classes and Fabric metadata.
+Known limitations:
+- Only player-mined terrain blocks observed after installing 0.3 are mapped.
+- Existing tunnels/air spaces are not scanned.
+- Placed blocks, explosions and other mods' block changes are not removed from the mined-voxel map.
+- The map retains at most 4,096 most recently mined unique cells per player.
+- World mutations are not implemented.
