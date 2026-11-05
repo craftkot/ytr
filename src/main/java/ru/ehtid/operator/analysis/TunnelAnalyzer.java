@@ -31,7 +31,7 @@ public final class TunnelAnalyzer {
             for (PlayerMemory.TunnelCell cell : cells) {
                 if (cell == null || cell.dimension == null) continue;
                 if (dimension != null && !dimension.isBlank() && !dimension.equals(cell.dimension)) continue;
-                positions.put(new BlockPos(cell.x, cell.y, cell.z), cell);
+                positions.put(new BlockPos(cell.dimension, cell.x, cell.y, cell.z), cell);
             }
         }
 
@@ -76,6 +76,7 @@ public final class TunnelAnalyzer {
             component.add(current);
             for (int[] direction : DIRECTIONS) {
                 BlockPos neighbour = new BlockPos(
+                        current.dimension,
                         current.x + direction[0],
                         current.y + direction[1],
                         current.z + direction[2]
@@ -134,6 +135,7 @@ public final class TunnelAnalyzer {
         if (cells.size() < 4) {
             type = ComponentType.SMALL;
         } else if (Math.min(extentX, Math.min(extentY, extentZ)) >= 3
+                && longest <= secondLongest * 1.5D
                 && density >= 0.45D) {
             type = ComponentType.CHAMBER;
         } else if (longest >= 4 && longest >= secondLongest * 1.5D && axisEdgeRatio >= 0.50D) {
@@ -160,7 +162,7 @@ public final class TunnelAnalyzer {
         return extents[1];
     }
 
-    private record BlockPos(int x, int y, int z) { }
+    private record BlockPos(String dimension, int x, int y, int z) { }
 
     public enum Axis {
         X, Y, Z
