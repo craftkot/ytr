@@ -61,4 +61,29 @@ class OperatorWorldDataTest {
         assertNotNull(memory.dimensionVisits);
         assertNotNull(memory.miningDepthBands);
     }
+
+    @Test
+    void schemaFourSaveMigratesDecisionFieldsWithoutDiscardingObservationData() {
+        OperatorWorldData data = new OperatorWorldData();
+        data.schemaVersion = 4;
+        PlayerMemory memory = new PlayerMemory();
+        memory.uuid = "player-uuid";
+        memory.observedTicks = 24_000L;
+        memory.distanceTravelled = 1234.5D;
+        memory.plannedOperatorEvent = null;
+        memory.operatorPhase = null;
+        data.players.put("player-uuid", memory);
+
+        data.normalize();
+
+        assertEquals(5, data.schemaVersion);
+        assertEquals(24_000L, memory.observedTicks);
+        assertEquals(1234.5D, memory.distanceTravelled);
+        assertEquals("NONE", memory.plannedOperatorEvent);
+        assertEquals("OBSERVING", memory.operatorPhase);
+        assertEquals("UNKNOWN", memory.operatorArchetype);
+        assertEquals(-1L, memory.lastBrainEvaluationAt);
+        assertEquals(-1L, memory.lastOperatorDecisionAt);
+    }
+
 }
