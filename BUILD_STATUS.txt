@@ -1,14 +1,21 @@
 Operator: Reality 0.9.0
 
-Verification state: PENDING GitHub Actions for the current operator-dev head.
-Previous verified baseline: Operator 0.8.0, full build/test and dedicated-server smoke test passed:
-https://github.com/craftkot/ytr/actions/runs/42114685802
+Verification: PASSED.
+Verified source commit: f1c42efaed122289ea122f11607be689e9b9bdf7
+GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42121017075
 
-Target build:
-- Minecraft Java 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
-- Java 25 / Gradle 9.8.2.
-- Required: gradle clean test build --no-daemon.
-- Required: dedicated Fabric server startup, RCON /operator status and persisted world-memory schemaVersion 7.
+Successful checks:
+- gradle clean test build --no-daemon.
+- Java 25 / Gradle 9.8.2 toolchain.
+- All JUnit tests passed, including closed/open/solid shell classification, room-adjacent geometry metrics, per-component and aggregate flood-fill budgets, block-state persistence/refresh, schema migration and builder-aware planning.
+- Dedicated Fabric server reached the ready state.
+- RCON /operator status returned the expected passive-observation state.
+- Operator world memory was persisted with schemaVersion 7.
+- Mod JAR and source ZIP artifacts were uploaded.
+
+Artifacts:
+- operator-reality-0.9.0 (158,265 bytes).
+- operator-reality-0.9.0-source (68,561 bytes).
 
 Implemented in 0.9.0:
 - Persist serialized BlockState properties per confirmed player-placed block.
@@ -16,15 +23,14 @@ Implemented in 0.9.0:
 - Floor, roof and four-wall shell coverage estimates.
 - Internal horizontal floor-plane detection that excludes the perimeter wall ring.
 - Door count (lower half counted once), glass/window blocks, stairs and slabs.
-- Enclosed void flood-fill inside the component bounding box, capped at 32,768 cells per component and 65,536 cells per player analysis.
+- Enclosed void and unoccupied-cell flood-fill inside the component bounding box, capped at 32,768 cells per component and 65,536 cells per player analysis.
 - Semantic geometry labels: ENCLOSED_BUILDING, OPEN_BUILDING, BUILDING_CANDIDATE and STRUCTURE.
+- Solid filled volumes and incomplete interior scans are not mislabeled as open buildings.
 - Persisted shell and enclosed-volume summary metrics.
 - Schema 6 -> 7 migration, preserving construction records and scheduling semantic re-analysis.
 - Builder scoring and HOME_ECHO shadow planning now include shell and enclosed-volume evidence.
 - Expanded /operator structures diagnostics.
 - World mutations remain disabled.
-
-Verification must still pass on the exact current commit before this release is marked verified.
 
 Known limitations:
 - Placement capture depends on ordinary BlockItem interactions confirmed on the following tick.
