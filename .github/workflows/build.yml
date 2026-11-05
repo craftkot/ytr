@@ -137,5 +137,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: operator-reality-0.7.0-source
-          path: operator-reality-0.6.0-source.zip
+          path: operator-reality-0.7.0-source.zip
           if-no-files-found: error
