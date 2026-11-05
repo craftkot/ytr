@@ -89,8 +89,8 @@ class ConstructionAnalyzerTest {
         assertEquals(1, structure.windowBlockCount());
         assertEquals(1, structure.stairBlockCount());
         assertEquals(1, structure.slabBlockCount());
-        assertEquals(1, structure.enclosedVoidCells() + 2,
-                "two interior decorative blocks occupy two of the original void cells");
+        assertEquals(16, structure.enclosedVoidCells(),
+                "two interior decorative blocks occupy two of the original 18 void cells");
         assertTrue(structure.enclosedBuildingCandidate());
         assertTrue(structure.uniqueBlockStates() >= 4);
         assertEquals(0, structure.floorLayerCount(),
