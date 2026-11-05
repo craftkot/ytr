@@ -1,20 +1,28 @@
 Operator: Reality 0.2.0
 
+Verified on GitHub Actions:
+- Java 25 / Gradle 9.8.2 / Fabric Loom 1.19.3.
+- Minecraft 26.3 / Fabric Loader 0.20.1 / Fabric API 0.165.2+26.3.
+- Gradle clean test build completed successfully.
+- Main sources compiled; resources processed; JAR and sources JAR created.
+- JUnit test task completed successfully (11 test methods are present across the two test classes).
+- Dedicated Fabric server launched successfully in CI.
+- Fabric Loader reported 44 loaded mods, including operator_reality 0.2.0.
+- OperatorMod initialization completed without a crash.
+- SERVER_STARTED loaded the world memory and reported PASSIVE OBSERVATION.
+- RCON command operator status returned the expected observation status.
+- The world memory JSON was created and schemaVersion 2 was verified.
+- RCON stop command shut the test server down cleanly.
+
 Local checks completed:
 - fabric.mod.json parses as valid JSON.
 - Pure Java memory model compiles with the available Java 21 compiler using -Xlint:all -Werror.
 - Dependency-free model smoke test passes: active-time learning gate, movement distance accumulation, route sampling, mining chain, direction classification, dimension reset and bounded memory.
-- Source-level checks completed for bounded history collections and schema normalization.
 
-Not yet verified:
-- Full Fabric/Minecraft 26.3 Gradle compilation.
-- JUnit suite through Gradle.
-- Launch in a Minecraft client or dedicated server.
+Scope of 0.2.0:
+- Passive observation and persistent player memory are implemented.
+- World and player training gates are implemented.
+- Mining history and route sampling are implemented.
+- World mutations remain disabled intentionally. This release does not yet create or alter tunnels, terrain, structures or entities.
 
-Reason:
-- This container only has Java 21; Minecraft 26.3 / current Fabric Loom requires Java 25.
-- Gradle is not installed and outbound network access is disabled in this container.
-
-GitHub Actions is configured to run gradle clean test build on Java 25 / Gradle 9.8.2. Its result must be checked before calling the full mod build-tested.
-
-World mutations remain disabled in 0.2.0. This version only observes and stores behaviour.
+The distributable JAR was taken from the successful GitHub Actions artifact and inspected for its classes and Fabric metadata.
