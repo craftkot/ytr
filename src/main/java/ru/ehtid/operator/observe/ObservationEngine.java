@@ -1,11 +1,14 @@
 package ru.ehtid.operator.observe;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -35,8 +38,21 @@ public final class ObservationEngine {
     private static final long SAVE_INTERVAL = 600L;
     private static final int MAX_PENDING_VOXEL_CHECKS = 256;
     private static final int MAX_TRACKED_VOXEL_AUDITS_PER_TICK = 128;
+    private static final long AIR_SCAN_INTERVAL = 100L;
+    private static final int AIR_SCAN_RADIUS = 12;
+    private static final int AIR_SCAN_BELOW = 6;
+    private static final int AIR_SCAN_ABOVE = 3;
+    private static final int MAX_AIR_SCAN_VISITED = 4096;
+    private static final int MAX_AIR_SCAN_WORK_PER_TICK = 128;
+    private static final int[][] AIR_SCAN_DIRECTIONS = {
+            {1, 0, 0}, {-1, 0, 0}, {0, 1, 0},
+            {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
+    };
 
     private final Map<String, PendingVoxelCheck> pendingVoxelChecks = new LinkedHashMap<>();
+    private final Map<String, Long> lastAirScanAt = new HashMap<>();
+    private final Map<String, AirScanSession> activeAirScans = new HashMap<>();
+    private final ArrayDeque<AirScanSession> airScanQueue = new ArrayDeque<>();
     private int auditPlayerCursor = 0;
     private int auditCellCursor = 0;
     private String auditPlayerKey = "";
@@ -91,9 +107,11 @@ public final class ObservationEngine {
                         player.level().dimension().toString(), now
                 );
             }
+            maybeStartNearbyAirScan(player, memory, now);
             dirty = true;
         }
 
+        processAirScanSessions();
         if (dirty && now - data.lastSavedAt >= SAVE_INTERVAL) save(server);
     }
 
@@ -239,6 +257,121 @@ public final class ObservationEngine {
         }
     }
 
+    private void maybeStartNearbyAirScan(ServerPlayer player, PlayerMemory memory, long now) {
+        String playerKey = player.getUUID().toString();
+        if (activeAirScans.containsKey(playerKey)) return;
+        Long lastScan = lastAirScanAt.get(playerKey);
+        if (lastScan != null && now - lastScan < AIR_SCAN_INTERVAL) return;
+        lastAirScanAt.put(playerKey, now);
+
+        ServerLevel level = player.serverLevel();
+        BlockPos feet = player.blockPosition();
+        BlockPos head = new BlockPos(feet.getX(), feet.getY() + 1, feet.getZ());
+        if (!level.hasChunkAt(feet) || !level.hasChunkAt(head)) return;
+        if (!isEnclosedAir(level, feet) && !isEnclosedAir(level, head)) return;
+
+        AirScanSession session = new AirScanSession(
+                playerKey, level, memory, feet, level.dimension().toString()
+        );
+        session.enqueue(feet);
+        session.enqueue(head);
+        if (!session.isDone()) {
+            activeAirScans.put(playerKey, session);
+            airScanQueue.addLast(session);
+        }
+    }
+
+    private static boolean isEnclosedAir(ServerLevel level, BlockPos position) {
+        if (!level.hasChunkAt(position) || !level.getBlockState(position).isAir()) return false;
+        int solidNeighbours = 0;
+        for (int[] direction : AIR_SCAN_DIRECTIONS) {
+            BlockPos neighbour = new BlockPos(
+                    position.getX() + direction[0],
+                    position.getY() + direction[1],
+                    position.getZ() + direction[2]
+            );
+            if (level.hasChunkAt(neighbour) && level.getBlockState(neighbour).blocksMotion()) {
+                solidNeighbours++;
+            }
+        }
+        return solidNeighbours >= 2;
+    }
+
+    private void processAirScanSessions() {
+        int budget = MAX_AIR_SCAN_WORK_PER_TICK;
+        while (budget > 0 && !airScanQueue.isEmpty()) {
+            AirScanSession session = airScanQueue.removeFirst();
+            session.processNext();
+            budget--;
+            if (session.isDone()) {
+                activeAirScans.remove(session.playerKey, session);
+            } else {
+                airScanQueue.addLast(session);
+            }
+        }
+    }
+
+    /**
+     * Bounded flood-fill of nearby connected air. It starts only from an enclosed
+     * player position, stays within a 25x25x10 box, and never loads chunks.
+     */
+    private final class AirScanSession {
+        private final String playerKey;
+        private final ServerLevel level;
+        private final PlayerMemory memory;
+        private final String dimension;
+        private final int minX, maxX, minY, maxY, minZ, maxZ;
+        private final ArrayDeque<BlockPos> frontier = new ArrayDeque<>();
+        private final Set<BlockPos> visited = new HashSet<>();
+
+        private AirScanSession(String playerKey, ServerLevel level, PlayerMemory memory,
+                               BlockPos origin, String dimension) {
+            this.playerKey = playerKey;
+            this.level = level;
+            this.memory = memory;
+            this.dimension = dimension;
+            this.minX = origin.getX() - AIR_SCAN_RADIUS;
+            this.maxX = origin.getX() + AIR_SCAN_RADIUS;
+            this.minY = Math.max(level.getMinBuildHeight(), origin.getY() - AIR_SCAN_BELOW);
+            this.maxY = Math.min(level.getMaxBuildHeight() - 1, origin.getY() + AIR_SCAN_ABOVE);
+            this.minZ = origin.getZ() - AIR_SCAN_RADIUS;
+            this.maxZ = origin.getZ() + AIR_SCAN_RADIUS;
+        }
+
+        private void enqueue(BlockPos position) {
+            if (visited.size() >= MAX_AIR_SCAN_VISITED) return;
+            if (position.getX() < minX || position.getX() > maxX
+                    || position.getY() < minY || position.getY() > maxY
+                    || position.getZ() < minZ || position.getZ() > maxZ) return;
+            if (!level.hasChunkAt(position) || !visited.add(position)) return;
+            frontier.addLast(position);
+        }
+
+        private void processNext() {
+            BlockPos position = frontier.pollFirst();
+            if (position == null || !level.hasChunkAt(position)) return;
+            if (!level.getBlockState(position).isAir()) return;
+
+            if (memory.recordDiscoveredAir(
+                    position.getX(), position.getY(), position.getZ(), dimension, level.getGameTime()
+            )) {
+                dirty = true;
+            }
+
+            for (int[] direction : AIR_SCAN_DIRECTIONS) {
+                enqueue(new BlockPos(
+                        position.getX() + direction[0],
+                        position.getY() + direction[1],
+                        position.getZ() + direction[2]
+                ));
+            }
+        }
+
+        private boolean isDone() {
+            return frontier.isEmpty() || visited.size() >= MAX_AIR_SCAN_VISITED;
+        }
+    }
+
     private record PendingVoxelCheck(
             Level level,
             BlockPos position,
@@ -252,6 +385,9 @@ public final class ObservationEngine {
             save(server);
         }
         pendingVoxelChecks.clear();
+        lastAirScanAt.clear();
+        activeAirScans.clear();
+        airScanQueue.clear();
         auditSnapshot = List.of();
         auditPlayerKey = "";
         auditPlayerCursor = 0;
@@ -279,14 +415,17 @@ public final class ObservationEngine {
                 .filter(memory -> memory.personalObservationComplete(OBSERVATION_TICKS))
                 .count();
         String phase = data.observationComplete ? "WORLD OBSERVATION COMPLETE" : "PASSIVE OBSERVATION";
-        return "Operator 0.5 | " + phase
+        return "Operator 0.6 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
                 + " | individually trained: " + personallyTrained
                 + " | mapped tunnel cells: " + data.players.values().stream().mapToInt(PlayerMemory::getTunnelCellCount).sum()
+                + " | discovered air cells: " + data.players.values().stream().mapToInt(PlayerMemory::getObservedAirCellCount).sum()
+                + " | nearby air-scan sessions: " + activeAirScans.size()
+                + " | scan budget: " + MAX_AIR_SCAN_WORK_PER_TICK + "/tick"
                 + " | loaded-cell audit: up to " + MAX_TRACKED_VOXEL_AUDITS_PER_TICK + "/tick"
-                + " | world mutations: disabled in 0.5";
+                + " | world mutations: disabled in 0.6";
     }
 
     public String getPlayerProfile(ServerPlayer player, MinecraftServer server) {
@@ -303,6 +442,8 @@ public final class ObservationEngine {
                 + " | blocks broken: " + memory.blocksBroken
                 + " | rock/ore blocks: " + memory.rockBlocksBroken
                 + " | mapped tunnel cells: " + memory.getTunnelCellCount()
+                + " | mined tunnel cells: " + memory.getMinedTunnelCellCount()
+                + " | nearby discovered air cells: " + memory.getObservedAirCellCount()
                 + " | mining sessions: " + memory.miningSessions
                 + " | longest continuous mining chain: " + memory.longestMiningChain
                 + " | route samples: " + memory.route.size()
@@ -326,7 +467,7 @@ public final class ObservationEngine {
         return analysis.describe()
                 + " | retained cells across all dimensions: " + memory.getTunnelCellCount()
                 + " | total terrain blocks recorded: " + memory.tunnelBlocksCleared
-                + " | note: only blocks mined while Operator was active are mapped.";
+                + " | note: map combines mined voxels with bounded nearby scans of connected underground air.";
     }
 
     public String getTunnelNetworkProfile(ServerPlayer player) {
@@ -338,7 +479,7 @@ public final class ObservationEngine {
         Tunnel3DNetworkAnalyzer.Analysis analysis =
                 Tunnel3DNetworkAnalyzer.analyze(memory.tunnelCells.values(), dimension);
         return analysis.describe()
-                + " | note: height-aware layer-wise 3D reconstruction; only recorded mined voxels are known.";
+                + " | note: height-aware layer-wise 3D reconstruction from mined and locally discovered air voxels.";
     }
 
     public String getTunnelNetwork2dProfile(ServerPlayer player) {
@@ -354,7 +495,7 @@ public final class ObservationEngine {
         if (!data.observationComplete && data.worldObservationElapsed(now) >= OBSERVATION_TICKS) {
             data.observationComplete = true;
             dirty = true;
-            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.5.");
+            OperatorMod.LOGGER.info("Operator completed the initial passive observation period. No world mutations are enabled in 0.6.");
         }
     }
 
