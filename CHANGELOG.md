@@ -17,7 +17,7 @@
 Known limitations:
 - Placement tracking still depends on ordinary BlockItem interaction and confirmation on the following tick; commands, WorldEdit, world generation and some modded placement paths are not captured.
 - Enclosed voids are inferred from the recorded placed-block set, not from a full world scan. Natural terrain, untracked blocks and open doorways can make the estimate incomplete or inaccurate.
-- The 32,768-cell cap skips interior flood-fill for larger bounding boxes rather than scanning them without a budget.
+- The per-component 32,768-cell cap and per-analysis 65,536-cell cap skip interior flood-fill for larger or numerous bounding boxes rather than scanning them without a budget.
 - BlockState properties are stored, but block-entity NBT and container contents are not captured.
 - Geometry labels do not establish a room's purpose, safety or usability.
 
