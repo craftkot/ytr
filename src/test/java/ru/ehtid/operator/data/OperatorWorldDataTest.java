@@ -21,7 +21,7 @@ class OperatorWorldDataTest {
         data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(5, data.schemaVersion);
+        assertEquals(6, data.schemaVersion);
         assertNotNull(data.players);
     }
 
@@ -39,7 +39,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(5, data.schemaVersion);
+        assertEquals(6, data.schemaVersion);
         assertEquals(1, memory.getTunnelCellCount());
         assertEquals(1, memory.getMinedTunnelCellCount());
         assertEquals(0, memory.getObservedAirCellCount());
@@ -76,7 +76,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(5, data.schemaVersion);
+        assertEquals(6, data.schemaVersion);
         assertEquals(24_000L, memory.observedTicks);
         assertEquals(1234.5D, memory.distanceTravelled);
         assertEquals("NONE", memory.plannedOperatorEvent);
@@ -84,6 +84,33 @@ class OperatorWorldDataTest {
         assertEquals("UNKNOWN", memory.operatorArchetype);
         assertEquals(-1L, memory.lastBrainEvaluationAt);
         assertEquals(-1L, memory.lastOperatorDecisionAt);
+    }
+
+
+    @Test
+    void schemaFiveSaveMigratesWithoutDroppingPlannerOrConstructionData() {
+        OperatorWorldData data = new OperatorWorldData();
+        data.schemaVersion = 5;
+        PlayerMemory memory = new PlayerMemory();
+        memory.uuid = "player-uuid";
+        memory.observedTicks = 25_000L;
+        memory.operatorDecisionCount = 3L;
+        memory.constructionBlocks.put("minecraft:overworld|1,64,2",
+                new PlayerMemory.ConstructionBlock(
+                        1, 64, 2, "minecraft:overworld", "minecraft:oak_planks", 500L
+                ));
+        memory.blocksPlaced = 1L;
+        data.players.put("player-uuid", memory);
+
+        data.normalize();
+
+        assertEquals(6, data.schemaVersion);
+        assertEquals(25_000L, memory.observedTicks);
+        assertEquals(3L, memory.operatorDecisionCount);
+        assertEquals(1, memory.getConstructionBlockCount());
+        assertEquals("minecraft:oak_planks",
+                memory.constructionBlocks.values().iterator().next().blockId);
+        assertEquals(1L, memory.blocksPlaced);
     }
 
 }
