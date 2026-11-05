@@ -68,6 +68,7 @@ public final class TunnelNetworkAnalyzer {
         int thinningIterations = 0;
         boolean thinningConverged = true;
         List<Junction> junctionPoints = new ArrayList<>();
+        List<CorridorSegment> segments = new ArrayList<>();
 
         for (ComponentSummary component : components) {
             skeletonCells += component.skeletonCells;
@@ -81,6 +82,16 @@ public final class TunnelNetworkAnalyzer {
             thinningIterations += component.thinningIterations;
             thinningConverged &= component.thinningConverged;
             junctionPoints.addAll(component.junctionPoints);
+            segments.addAll(component.segments);
+        }
+
+        segments.sort(Comparator
+                .comparingInt((CorridorSegment item) -> item.lengthCells).reversed()
+                .thenComparing(item -> item.dimension)
+                .thenComparingInt(item -> Math.min(item.startX, item.endX))
+                .thenComparingInt(item -> Math.min(item.startZ, item.endZ)));
+        if (segments.size() > 8) {
+            segments = new ArrayList<>(segments.subList(0, 8));
         }
 
         junctionPoints.sort(Comparator
@@ -97,7 +108,7 @@ public final class TunnelNetworkAnalyzer {
                 voxels.size(), footprint.size(), components.size(), skeletonCells,
                 deadEnds, junctions, corridorSegments, loops, isolatedAreas,
                 longestSegment, totalCenterlineLength, thinningIterations,
-                thinningConverged, components, junctionPoints
+                thinningConverged, components, junctionPoints, segments
         );
     }
 
@@ -150,7 +161,7 @@ public final class TunnelNetworkAnalyzer {
                 graph.deadEnds, graph.junctions, graph.edges.size(),
                 graph.loops, graph.isolatedAreas, graph.longestSegmentCells,
                 graph.totalCenterlineLength, thin.iterations, thin.converged,
-                graph.junctionPoints
+                graph.junctionPoints, graph.segments
         );
     }
 
@@ -263,6 +274,8 @@ public final class TunnelNetworkAnalyzer {
         }
 
         List<Set<ColumnPos>> nodeClusters = clusterSpecialPixels(special, adjacency);
+        List<NodePoint> nodeCenters = new ArrayList<>();
+        for (Set<ColumnPos> cluster : nodeClusters) nodeCenters.add(nodeCenter(cluster, dimension));
         Map<ColumnPos, Integer> nodeOfPixel = new HashMap<>();
         for (int i = 0; i < nodeClusters.size(); i++) {
             for (ColumnPos pixel : nodeClusters.get(i)) nodeOfPixel.put(pixel, i);
@@ -309,7 +322,12 @@ public final class TunnelNetworkAnalyzer {
                     Integer endNode = nodeOfPixel.get(current);
                     if (endNode != null) {
                         int length = steps + (nodeIndex == endNode ? 0 : 1);
-                        edges.add(new GraphEdge(nodeIndex, endNode, length));
+                        NodePoint start = nodeCenters.get(nodeIndex);
+                        NodePoint end = nodeCenters.get(endNode);
+                        edges.add(new GraphEdge(
+                                nodeIndex, endNode, length,
+                                start.x, start.z, end.x, end.z
+                        ));
                     }
                 }
             }
@@ -346,9 +364,15 @@ public final class TunnelNetworkAnalyzer {
         }
 
         int loops = Math.max(0, edges.size() - nodeClusters.size() + 1);
+        List<CorridorSegment> segments = new ArrayList<>();
+        for (GraphEdge edge : edges) {
+            segments.add(new CorridorSegment(
+                    dimension, edge.startX, edge.startZ, edge.endX, edge.endZ, edge.lengthCells
+            ));
+        }
         return new GraphSummary(
                 edges, deadEnds, junctions, loops, isolatedAreas,
-                longest, totalLength, junctionPoints
+                longest, totalLength, junctionPoints, segments
         );
     }
 
@@ -379,7 +403,7 @@ public final class TunnelNetworkAnalyzer {
         return clusters;
     }
 
-    private static Junction centroid(Set<ColumnPos> pixels, int exits, String dimension) {
+    private static NodePoint nodeCenter(Set<ColumnPos> pixels, String dimension) {
         long sumX = 0L;
         long sumZ = 0L;
         for (ColumnPos pixel : pixels) {
@@ -388,7 +412,12 @@ public final class TunnelNetworkAnalyzer {
         }
         int x = (int) Math.round(sumX / (double) pixels.size());
         int z = (int) Math.round(sumZ / (double) pixels.size());
-        return new Junction(dimension, x, z, exits);
+        return new NodePoint(dimension, x, z);
+    }
+
+    private static Junction centroid(Set<ColumnPos> pixels, int exits, String dimension) {
+        NodePoint center = nodeCenter(pixels, dimension);
+        return new Junction(dimension, center.x, center.z, exits);
     }
 
     private static final Comparator<ColumnPos> COLUMN_ORDER = Comparator
@@ -399,7 +428,9 @@ public final class TunnelNetworkAnalyzer {
     private record VoxelPos(String dimension, int x, int y, int z) { }
     private record ColumnPos(String dimension, int x, int z) { }
     private record ThinResult(Set<ColumnPos> pixels, int iterations, boolean converged) { }
-    private record GraphEdge(int startNode, int endNode, int lengthCells) { }
+    private record NodePoint(String dimension, int x, int z) { }
+    private record GraphEdge(int startNode, int endNode, int lengthCells,
+                             int startX, int startZ, int endX, int endZ) { }
 
     private record EdgeKey(ColumnPos first, ColumnPos second) {
         private static EdgeKey of(ColumnPos first, ColumnPos second) {
@@ -418,10 +449,12 @@ public final class TunnelNetworkAnalyzer {
         private final int longestSegmentCells;
         private final int totalCenterlineLength;
         private final List<Junction> junctionPoints;
+        private final List<CorridorSegment> segments;
 
         private GraphSummary(List<GraphEdge> edges, int deadEnds, int junctions,
                              int loops, int isolatedAreas, int longestSegmentCells,
-                             int totalCenterlineLength, List<Junction> junctionPoints) {
+                             int totalCenterlineLength, List<Junction> junctionPoints,
+                             List<CorridorSegment> segments) {
             this.edges = edges;
             this.deadEnds = deadEnds;
             this.junctions = junctions;
@@ -430,6 +463,26 @@ public final class TunnelNetworkAnalyzer {
             this.longestSegmentCells = longestSegmentCells;
             this.totalCenterlineLength = totalCenterlineLength;
             this.junctionPoints = junctionPoints;
+            this.segments = segments;
+        }
+    }
+
+    public static final class CorridorSegment {
+        public final String dimension;
+        public final int startX;
+        public final int startZ;
+        public final int endX;
+        public final int endZ;
+        public final int lengthCells;
+
+        private CorridorSegment(String dimension, int startX, int startZ,
+                                 int endX, int endZ, int lengthCells) {
+            this.dimension = dimension;
+            this.startX = startX;
+            this.startZ = startZ;
+            this.endX = endX;
+            this.endZ = endZ;
+            this.lengthCells = lengthCells;
         }
     }
 
@@ -465,13 +518,15 @@ public final class TunnelNetworkAnalyzer {
         public final int thinningIterations;
         public final boolean thinningConverged;
         public final List<Junction> junctionPoints;
+        public final List<CorridorSegment> segments;
 
         private ComponentSummary(String dimension, int columns, int skeletonCells,
                                  int minX, int maxX, int minZ, int maxZ,
                                  int deadEnds, int junctions, int corridorSegments,
                                  int loops, int isolatedAreas, int longestSegmentCells,
                                  int totalCenterlineLength, int thinningIterations,
-                                 boolean thinningConverged, List<Junction> junctionPoints) {
+                                 boolean thinningConverged, List<Junction> junctionPoints,
+                                 List<CorridorSegment> segments) {
             this.dimension = dimension;
             this.columns = columns;
             this.skeletonCells = skeletonCells;
@@ -489,6 +544,7 @@ public final class TunnelNetworkAnalyzer {
             this.thinningIterations = thinningIterations;
             this.thinningConverged = thinningConverged;
             this.junctionPoints = List.copyOf(junctionPoints);
+            this.segments = List.copyOf(segments);
         }
     }
 
@@ -509,13 +565,15 @@ public final class TunnelNetworkAnalyzer {
         public final boolean thinningConverged;
         public final List<ComponentSummary> componentList;
         public final List<Junction> junctionPoints;
+        public final List<CorridorSegment> segments;
 
         private Analysis(String dimension, int mappedVoxels, int footprintColumns,
                          int networkComponents, int skeletonCells, int deadEnds,
                          int junctions, int corridorSegments, int loops, int isolatedAreas,
                          int longestSegmentCells, int totalCenterlineLength,
                          int thinningIterations, boolean thinningConverged,
-                         List<ComponentSummary> componentList, List<Junction> junctionPoints) {
+                         List<ComponentSummary> componentList, List<Junction> junctionPoints,
+                         List<CorridorSegment> segments) {
             this.dimension = dimension;
             this.mappedVoxels = mappedVoxels;
             this.footprintColumns = footprintColumns;
@@ -532,6 +590,7 @@ public final class TunnelNetworkAnalyzer {
             this.thinningConverged = thinningConverged;
             this.componentList = List.copyOf(componentList);
             this.junctionPoints = List.copyOf(junctionPoints);
+            this.segments = List.copyOf(segments);
         }
 
         public String describe() {
@@ -561,6 +620,18 @@ public final class TunnelNetworkAnalyzer {
                     if (i > 0) result.append("; ");
                     result.append('(').append(junction.x).append(", ").append(junction.z)
                             .append(", exits ").append(junction.exits).append(')');
+                }
+            }
+
+            if (!segments.isEmpty()) {
+                result.append(" | main segments: ");
+                int shownSegments = Math.min(5, segments.size());
+                for (int i = 0; i < shownSegments; i++) {
+                    CorridorSegment segment = segments.get(i);
+                    if (i > 0) result.append("; ");
+                    result.append('(').append(segment.startX).append(", ").append(segment.startZ)
+                            .append(")->(").append(segment.endX).append(", ").append(segment.endZ)
+                            .append(") ~").append(segment.lengthCells).append(" cells");
                 }
             }
 
