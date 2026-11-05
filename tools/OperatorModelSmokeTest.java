@@ -11,7 +11,7 @@ public final class OperatorModelSmokeTest {
         memory.recordMovement(2, -20, 0, "minecraft:overworld", 24_200);
         memory.recordMovement(3, -20, 0, "minecraft:overworld", 24_300);
         check(Math.abs(memory.distanceTravelled - 3.0D) < 0.0001D, "small movement segments should accumulate");
-        check(memory.route.size() == 2, "route should store origin and meaningful displacement");
+        check(memory.route.size() == 4, "route should retain meaningful movement samples");
 
         memory.recordBrokenBlock(0, -20, 0, "minecraft:overworld", "minecraft:stone", true, 24_310);
         memory.recordBrokenBlock(1, -20, 0, "minecraft:overworld", "minecraft:stone", true, 24_320);
