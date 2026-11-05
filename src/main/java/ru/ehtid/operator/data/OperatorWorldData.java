@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class OperatorWorldData {
-    public int schemaVersion = 6;
+    public int schemaVersion = 7;
     public long observationStartedAt = -1L;
     public boolean observationComplete = false;
     public long lastSavedAt = 0L;
@@ -14,7 +14,7 @@ public final class OperatorWorldData {
         int previousSchemaVersion = schemaVersion;
         if (players == null) players = new LinkedHashMap<>();
         if (schemaVersion < 1) schemaVersion = 1;
-        // Schema 5 adds planner state; schema 6 adds bounded player-placed construction memory.
+        // Schema 5 adds planner state, schema 6 construction memory, schema 7 block states and shell metrics.
         players.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
         for (PlayerMemory memory : players.values()) {
             if (previousSchemaVersion < 5) {
@@ -22,9 +22,29 @@ public final class OperatorWorldData {
                 memory.lastBrainEvaluationAt = -1L;
                 memory.lastOperatorDecisionAt = -1L;
             }
+            if (previousSchemaVersion < 7) {
+                // Old construction records contain block IDs but no serialized BlockState properties.
+                if (memory.constructionBlocks != null) {
+                    for (PlayerMemory.ConstructionBlock block : memory.constructionBlocks.values()) {
+                        if (block != null && block.blockState == null) block.blockState = "";
+                    }
+                    memory.constructionAnalysisDirty = !memory.constructionBlocks.isEmpty();
+                }
+                memory.lastConstructionAnalysisAt = -1L;
+                memory.recognizedEnclosedBuildingCount = 0;
+                memory.largestEnclosedVoidCells = 0;
+                memory.largestDoorCount = 0;
+                memory.largestWindowBlockCount = 0;
+                memory.largestStairBlockCount = 0;
+                memory.largestSlabBlockCount = 0;
+                memory.largestFloorLayerCount = 0;
+                memory.largestFloorCoverage = 0.0D;
+                memory.largestRoofCoverage = 0.0D;
+                memory.largestWallCoverage = 0.0D;
+            }
             memory.normalize();
         }
-        schemaVersion = 6;
+        schemaVersion = 7;
     }
 
     public long worldObservationElapsed(long currentGameTick) {
