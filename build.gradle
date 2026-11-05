@@ -22,10 +22,11 @@ dependencies {
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
-processResources {
-    inputs.property 'version', project.version
+def modVersionForResources = project.version.toString()
+tasks.named('processResources').configure {
+    inputs.property 'version', modVersionForResources
     filesMatching('fabric.mod.json') {
-        expand 'version': project.version
+        expand 'version': modVersionForResources
     }
 }
 
