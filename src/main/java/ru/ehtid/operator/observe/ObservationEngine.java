@@ -305,6 +305,7 @@ public final class ObservationEngine {
             budget--;
             if (session.isDone()) {
                 activeAirScans.remove(session.playerKey, session);
+                lastAirScanAt.put(session.playerKey, session.level.getGameTime());
             } else {
                 airScanQueue.addLast(session);
             }
@@ -368,7 +369,9 @@ public final class ObservationEngine {
         }
 
         private boolean isDone() {
-            return frontier.isEmpty() || visited.size() >= MAX_AIR_SCAN_VISITED;
+            // Once the visit cap is reached, finish processing the bounded frontier
+            // instead of dropping already queued cells.
+            return frontier.isEmpty();
         }
     }
 
