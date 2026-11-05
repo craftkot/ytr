@@ -13,8 +13,8 @@ import java.util.Set;
 import ru.ehtid.operator.data.PlayerMemory;
 
 /**
- * Reconstructs connected mined volumes from block positions observed by Operator.
- * This does not inspect existing air blocks: only recorded player-mined cells are analysed.
+ * Reconstructs connected mapped air volumes from positions observed by Operator.
+ * Inputs may include mined cells and nearby air cells discovered by the bounded local scanner.
  */
 public final class TunnelAnalyzer {
     private static final int[][] DIRECTIONS = {
@@ -240,7 +240,7 @@ public final class TunnelAnalyzer {
 
         public String describe() {
             if (mappedCells == 0) {
-                return "No mined tunnel cells recorded in " + dimension
+                return "No mapped tunnel cells recorded in " + dimension
                         + ". Mine natural terrain blocks while Operator is active.";
             }
             String largestDescription = largest == null
@@ -251,7 +251,7 @@ public final class TunnelAnalyzer {
                     + " Y[" + largest.minY + ".." + largest.maxY + "]"
                     + " Z[" + largest.minZ + ".." + largest.maxZ + "]";
             return "Tunnel map (" + dimension + ")"
-                    + " | mapped dug cells: " + mappedCells
+                    + " | mapped air cells: " + mappedCells
                     + " | connected areas: " + components
                     + " | linear: " + linearComponents
                     + " | chambers: " + chamberComponents
