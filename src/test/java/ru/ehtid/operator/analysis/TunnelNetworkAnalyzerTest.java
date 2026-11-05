@@ -152,7 +152,7 @@ class TunnelNetworkAnalyzerTest {
     void reportsThatVerticalLayersAreProjectedIntoOneHorizontalColumn() {
         List<PlayerMemory.TunnelCell> cells = List.of(
                 new PlayerMemory.TunnelCell(2, 10, 3, "minecraft:overworld", "minecraft:stone", 1),
-                new PlayerMemory.TunnelCell(2, 40, 3, "minecraft:stone", "minecraft:stone", 2)
+                new PlayerMemory.TunnelCell(2, 40, 3, "minecraft:overworld", "minecraft:stone", 2)
         );
 
         TunnelNetworkAnalyzer.Analysis result =
