@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.BlockPos;
 
 import ru.ehtid.operator.OperatorMod;
+import ru.ehtid.operator.analysis.TunnelAnalyzer;
 import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
@@ -80,7 +81,8 @@ public final class ObservationEngine {
         String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
         memory.recordBrokenBlock(
                 pos.getX(), pos.getY(), pos.getZ(),
-                level.dimension().toString(), blockId, isRockLike(blockId), now
+                level.dimension().toString(), blockId,
+                isRockLike(blockId), isTunnelMaterial(blockId), now
         );
         dirty = true;
     }
@@ -110,12 +112,13 @@ public final class ObservationEngine {
                 .filter(memory -> memory.personalObservationComplete(OBSERVATION_TICKS))
                 .count();
         String phase = data.observationComplete ? "WORLD OBSERVATION COMPLETE" : "PASSIVE OBSERVATION";
-        return "Operator 0.2 | " + phase
+        return "Operator 0.3 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
                 + " | individually trained: " + personallyTrained
-                + " | world mutations: disabled in 0.2";
+                + " | mapped tunnel cells: " + data.players.values().stream().mapToInt(PlayerMemory::getTunnelCellCount).sum()
+                + " | world mutations: disabled in 0.3";
     }
 
     public String getPlayerProfile(ServerPlayer player, MinecraftServer server) {
@@ -131,6 +134,7 @@ public final class ObservationEngine {
                 + " | personal remaining: " + personalRemaining
                 + " | blocks broken: " + memory.blocksBroken
                 + " | rock/ore blocks: " + memory.rockBlocksBroken
+                + " | mapped tunnel cells: " + memory.getTunnelCellCount()
                 + " | mining sessions: " + memory.miningSessions
                 + " | longest continuous mining chain: " + memory.longestMiningChain
                 + " | route samples: " + memory.route.size()
@@ -142,6 +146,19 @@ public final class ObservationEngine {
                 + " | mining data sufficient: " + (memory.hasEnoughMiningData() ? "yes" : "not yet")
                 + " | operator readiness: " + (isPlayerReadyForOperator(player) ? "ready" : "still observing")
                 + " | world tick: " + now;
+    }
+
+    public String getTunnelProfile(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) {
+            return "No player profile yet. Stay in the world and mine natural terrain to begin mapping.";
+        }
+        String dimension = player.level().dimension().toString();
+        TunnelAnalyzer.Analysis analysis = TunnelAnalyzer.analyze(memory.tunnelCells.values(), dimension);
+        return analysis.describe()
+                + " | retained cells across all dimensions: " + memory.getTunnelCellCount()
+                + " | total terrain blocks recorded: " + memory.tunnelBlocksCleared
+                + " | note: only blocks mined while Operator was active are mapped.";
     }
 
     private void updateWorldObservationPhase(long now) {
@@ -172,6 +189,32 @@ public final class ObservationEngine {
         if (!loaded) return;
         data.lastSavedAt = server.overworld().getGameTime();
         dirty = !OperatorStorage.save(server, data);
+    }
+
+    private static boolean isTunnelMaterial(String blockId) {
+        if (isRockLike(blockId)) return true;
+        int separator = blockId.indexOf(':');
+        String path = separator >= 0 ? blockId.substring(separator + 1) : blockId;
+        return path.equals("dirt")
+                || path.equals("coarse_dirt")
+                || path.equals("rooted_dirt")
+                || path.equals("grass_block")
+                || path.equals("podzol")
+                || path.equals("mycelium")
+                || path.equals("mud")
+                || path.equals("packed_mud")
+                || path.equals("clay")
+                || path.equals("sand")
+                || path.equals("red_sand")
+                || path.equals("gravel")
+                || path.equals("soul_sand")
+                || path.equals("soul_soil")
+                || path.equals("snow_block")
+                || path.equals("ice")
+                || path.equals("packed_ice")
+                || path.equals("blue_ice")
+                || path.equals("terracotta")
+                || path.endsWith("_terracotta");
     }
 
     private static boolean isRockLike(String blockId) {
