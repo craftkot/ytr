@@ -15,6 +15,7 @@ public final class PlayerMemory {
     public static final int MAX_MINE_SAMPLES = 2048;
     public static final int MAX_TUNNEL_CELLS = 4096;
     public static final int MAX_CONSTRUCTION_BLOCKS = 8192;
+    public static final int MAX_BLOCK_STATE_LENGTH = 512;
     public static final int MAX_COUNTER_KEYS = 256;
     public static final String TUNNEL_SOURCE_MINED = "mined";
     public static final String TUNNEL_SOURCE_OBSERVED_AIR = "observed_air";
@@ -58,6 +59,17 @@ public final class PlayerMemory {
     public int largestStructureBlockCount = 0;
     public int largestBuildingBlockCount = 0;
     public double constructionComplexity = 0.0D;
+    /** Best geometric shell metrics across this player's building candidates. */
+    public int recognizedEnclosedBuildingCount = 0;
+    public int largestEnclosedVoidCells = 0;
+    public int largestDoorCount = 0;
+    public int largestWindowBlockCount = 0;
+    public int largestStairBlockCount = 0;
+    public int largestSlabBlockCount = 0;
+    public int largestFloorLayerCount = 0;
+    public double largestFloorCoverage = 0.0D;
+    public double largestRoofCoverage = 0.0D;
+    public double largestWallCoverage = 0.0D;
 
     public boolean hasLastPosition = false;
     public double lastX;
@@ -126,6 +138,12 @@ public final class PlayerMemory {
             for (Map.Entry<String, ConstructionBlock> entry : orderedBlocks) {
                 ordered.put(entry.getKey(), entry.getValue());
             }
+            for (ConstructionBlock block : ordered.values()) {
+                if (block.blockState == null) block.blockState = "";
+                if (block.blockState.length() > MAX_BLOCK_STATE_LENGTH) {
+                    block.blockState = block.blockState.substring(0, MAX_BLOCK_STATE_LENGTH);
+                }
+            }
             constructionBlocks = ordered;
         }
         if (brokenBlockTypes == null) brokenBlockTypes = new LinkedHashMap<>();
@@ -170,6 +188,16 @@ public final class PlayerMemory {
         largestBuildingBlockCount = Math.max(0, largestBuildingBlockCount);
         if (!Double.isFinite(constructionComplexity)) constructionComplexity = 0.0D;
         constructionComplexity = Math.max(0.0D, Math.min(1.0D, constructionComplexity));
+        recognizedEnclosedBuildingCount = Math.max(0, recognizedEnclosedBuildingCount);
+        largestEnclosedVoidCells = Math.max(0, largestEnclosedVoidCells);
+        largestDoorCount = Math.max(0, largestDoorCount);
+        largestWindowBlockCount = Math.max(0, largestWindowBlockCount);
+        largestStairBlockCount = Math.max(0, largestStairBlockCount);
+        largestSlabBlockCount = Math.max(0, largestSlabBlockCount);
+        largestFloorLayerCount = Math.max(0, largestFloorLayerCount);
+        largestFloorCoverage = normalizeRatio(largestFloorCoverage);
+        largestRoofCoverage = normalizeRatio(largestRoofCoverage);
+        largestWallCoverage = normalizeRatio(largestWallCoverage);
     }
 
     public void recordActiveTick(long gameTick) {
@@ -354,17 +382,72 @@ public final class PlayerMemory {
     /** Records a block confirmed to have been placed by this player. */
     public boolean recordPlacedBlock(int x, int y, int z, String dimension,
                                      String blockId, long gameTick) {
+        return recordPlacedBlock(x, y, z, dimension, blockId, "", gameTick);
+    }
+
+    /** Records the confirmed block type and its serialized BlockState properties. */
+    public boolean recordPlacedBlock(int x, int y, int z, String dimension,
+                                     String blockId, String blockState, long gameTick) {
         if (dimension == null || blockId == null || blockId.isBlank()) return false;
         String key = constructionBlockKey(dimension, x, y, z);
         constructionBlocks.remove(key);
         constructionBlocks.put(key, new ConstructionBlock(
-                x, y, z, dimension, blockId, gameTick
+                x, y, z, dimension, blockId, normalizeBlockState(blockState), gameTick
         ));
         blocksPlaced++;
         lastConstructionChangeAt = gameTick;
         constructionAnalysisDirty = true;
         trimConstructionBlocks();
         return true;
+    }
+
+    /** Refreshes orientation/open/waterlogged properties without counting a new placement. */
+    public boolean updatePlacedBlockState(int x, int y, int z, String dimension,
+                                           String blockState, long gameTick) {
+        if (constructionBlocks == null) return false;
+        ConstructionBlock block = constructionBlocks.get(constructionBlockKey(dimension, x, y, z));
+        if (block == null) return false;
+        String normalized = normalizeBlockState(blockState);
+        if (normalized.equals(block.blockState)) return false;
+        block.blockState = normalized;
+        lastConstructionChangeAt = gameTick;
+        constructionAnalysisDirty = true;
+        return true;
+    }
+
+    public void updateConstructionSemanticsSummary(
+            int enclosedBuildingCount,
+            int enclosedVoidCells,
+            int doorCount,
+            int windowBlockCount,
+            int stairBlockCount,
+            int slabBlockCount,
+            int floorLayerCount,
+            double floorCoverage,
+            double roofCoverage,
+            double wallCoverage
+    ) {
+        recognizedEnclosedBuildingCount = Math.max(0, enclosedBuildingCount);
+        largestEnclosedVoidCells = Math.max(0, enclosedVoidCells);
+        largestDoorCount = Math.max(0, doorCount);
+        largestWindowBlockCount = Math.max(0, windowBlockCount);
+        largestStairBlockCount = Math.max(0, stairBlockCount);
+        largestSlabBlockCount = Math.max(0, slabBlockCount);
+        largestFloorLayerCount = Math.max(0, floorLayerCount);
+        largestFloorCoverage = normalizeRatio(floorCoverage);
+        largestRoofCoverage = normalizeRatio(roofCoverage);
+        largestWallCoverage = normalizeRatio(wallCoverage);
+    }
+
+    private static String normalizeBlockState(String blockState) {
+        if (blockState == null || blockState.isBlank()) return "";
+        return blockState.length() <= MAX_BLOCK_STATE_LENGTH
+                ? blockState : blockState.substring(0, MAX_BLOCK_STATE_LENGTH);
+    }
+
+    private static double normalizeRatio(double value) {
+        if (!Double.isFinite(value)) return 0.0D;
+        return Math.max(0.0D, Math.min(1.0D, value));
     }
 
     /** Invalidates a tracked placed block after any player breaks or replaces it. */
@@ -564,17 +647,25 @@ public final class PlayerMemory {
         public int z;
         public String dimension;
         public String blockId;
+        /** Serialized block identifier plus property values (orientation, half, open, etc.). */
+        public String blockState = "";
         public long gameTick;
 
         public ConstructionBlock() { }
 
         public ConstructionBlock(int x, int y, int z, String dimension,
                                  String blockId, long gameTick) {
+            this(x, y, z, dimension, blockId, "", gameTick);
+        }
+
+        public ConstructionBlock(int x, int y, int z, String dimension,
+                                 String blockId, String blockState, long gameTick) {
             this.x = x;
             this.y = y;
             this.z = z;
             this.dimension = dimension;
             this.blockId = blockId;
+            this.blockState = normalizeBlockState(blockState);
             this.gameTick = gameTick;
         }
     }
