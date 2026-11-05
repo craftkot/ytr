@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "A persistent adaptive observer for Minecraft. Version 0.6 adds bounded discovery of nearby connected underground air and preserves mined-versus-scanned voxel provenance.",
+  "description": "An adaptive Minecraft observer with persistent player behaviour memory and a non-mutating operator decision planner.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
