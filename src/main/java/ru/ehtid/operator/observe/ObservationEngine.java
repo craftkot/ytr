@@ -62,7 +62,7 @@ public final class ObservationEngine {
             if (now % MOVEMENT_SAMPLE_INTERVAL == 0L) {
                 memory.recordMovement(
                         player.getX(), player.getY(), player.getZ(),
-                        player.level().dimension().location().toString(), now
+                        player.level().dimension().toString(), now
                 );
             }
             dirty = true;
@@ -80,7 +80,7 @@ public final class ObservationEngine {
         String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
         memory.recordBrokenBlock(
                 pos.getX(), pos.getY(), pos.getZ(),
-                level.dimension().location().toString(), blockId, isRockLike(blockId), now
+                level.dimension().toString(), blockId, isRockLike(blockId), now
         );
         dirty = true;
     }
