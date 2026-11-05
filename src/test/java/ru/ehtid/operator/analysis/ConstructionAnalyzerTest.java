@@ -274,7 +274,7 @@ class ConstructionAnalyzerTest {
         }
         for (int z = 1; z <= 31; z++) {
             blocks.add(new PlayerMemory.ConstructionBlock(
-                    offset + 31, 32, z, "minecraft:overworld", "minecraft:stone", tick++
+                    offset + 31, 31, z, "minecraft:overworld", "minecraft:stone", tick++
             ));
         }
     }
