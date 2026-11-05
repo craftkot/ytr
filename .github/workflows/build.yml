@@ -1,38 +1,4 @@
 name: Build and test
 
 on:
-  push:
-    branches: [ operator-dev ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Java 25
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.8.2'
-      - name: Extract source snapshot
-        run: unzip -q operator-reality-0.2.0-source.zip -d project
-      - name: Run tests and build mod
-        working-directory: project
-        run: gradle clean test build --no-daemon
-      - name: Upload mod JARs
-        uses: actions/upload-artifact@v4
-        with:
-          name: operator-reality-0.2.0
-          path: project/build/libs/*.jar
-          if-no-files-found: error
