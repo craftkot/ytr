@@ -5,7 +5,10 @@
 - Added per-player active observation ticks; offline time no longer counts toward personal training.
 - Kept the first 24,000 world ticks strictly passive.
 - Added a readiness gate requiring both the world observation and the player's personal observation to complete.
-- Improved route distance accumulation so small movements between samples are not discarded.
+- Improved route distance accumulation and increased movement sampling to once per second.
+- Made route points more granular to retain turns and short branches.
+- Fixed mining-chain reset after a non-rock block is broken.
+- Narrowed rock classification to avoid counting redstone lamps and torches as stone.
 - Added mining session counts, continuous mining chains, depth bands and dimension-aware chain resets.
 - Corrected mining direction labels and fixed the previous mine-dimension update ordering.
 - Added bounded counters for block types, dimensions and mining depth bands.
