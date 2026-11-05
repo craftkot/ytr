@@ -138,7 +138,7 @@ public final class TunnelAnalyzer {
                 && longest <= secondLongest * 1.5D
                 && density >= 0.45D) {
             type = ComponentType.CHAMBER;
-        } else if (longest >= 4 && longest >= secondLongest * 1.5D && axisEdgeRatio >= 0.50D) {
+        } else if (longest >= 4 && longest >= secondLongest * 1.5D && axisEdgeRatio >= 0.30D) {
             type = ComponentType.LINEAR;
         } else {
             type = ComponentType.IRREGULAR;
