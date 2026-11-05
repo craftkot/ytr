@@ -9,6 +9,8 @@
 - Added preliminary geometry classes: linear tunnel, chamber, irregular excavation and small area, including bounds for the largest component.
 - Added /operator tunnels to inspect the current dimension.
 - Added mapped-cell counts to /operator status and /operator profile.
+- Added delayed block-use verification: when a player fills a previously mined cell, that voxel is removed from every affected player profile.
+- Bounded pending placement checks to 256 entries and kept the callback non-cancelling for mod compatibility.
 - Migrated world memory to schema 3 while retaining old player profiles.
 - Added geometry tests for straight tunnels, two-block-high corridors, chambers, cross-shaped excavations, disconnected areas, dimension isolation, duplicate cells and empty maps.
 - Extended model smoke tests to cover tunnel voxel reconstruction.
