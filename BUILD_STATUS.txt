@@ -1,6 +1,6 @@
 Operator: Reality 0.4.0
 
-Implementation status:
+Implementation:
 - Added TunnelNetworkAnalyzer with X/Z footprint projection.
 - Added Zhang-Suen centerline thinning with a hard limit of 128 iterations.
 - Added graph compression into corridor edges and topology nodes.
@@ -8,8 +8,18 @@ Implementation status:
 - Added junction coordinates, approximate corridor segment endpoints and estimated centerline segment lengths.
 - Added /operator network and retained /operator tunnels.
 - Added 11 topology tests covering straight/thick corridors, T and four-way junctions, loops, disconnected areas, dimension separation, vertical projection and diagonal-only contact.
-- Kept world mutation disabled.
 - Existing world memory schema remains 3; no migration is required for 0.3 saves.
+- World mutation remains disabled.
+
+Verification on source commit 03095e6cdd10905312495538abfc019f16b8be8b:
+- Java 25 / Gradle 9.8.2 compile, JUnit and build: PASS.
+- Dedicated Fabric server startup: PASS.
+- RCON /operator status: PASS.
+- Schema-3 world-memory persistence: PASS.
+- Clean dedicated server shutdown: PASS.
+- Mod JAR artifact uploaded successfully.
+- CI source-snapshot upload failed because workflow path still referenced operator-reality-0.3.0-source.zip; the archive is now generated as operator-reality-0.4.0-source.zip and workflow upload path has been corrected.
+- Full CI rerun is required after this workflow fix.
 
 Known limitations:
 - Network analysis uses horizontal X/Z projection; vertical layers collapse.
@@ -19,7 +29,3 @@ Known limitations:
 - Existing tunnels and air spaces are not scanned.
 - Explosions, pistons, fluids, dispensers and other mods' block changes are not fully tracked.
 - World mutation is intentionally disabled.
-
-Verification:
-- Pending GitHub Actions for the current operator-dev head.
-- Required: gradle clean test build, dedicated Fabric server startup, /operator status RCON check, schema-3 persistence and clean server shutdown.
