@@ -29,6 +29,6 @@ Verification must still pass on the exact current commit before this release is 
 Known limitations:
 - Placement capture depends on ordinary BlockItem interactions confirmed on the following tick.
 - Enclosed voids are inferred from recorded placements, not a complete world scan.
-- Components with bounding-box volume above 32,768 cells skip interior flood-fill.
+- Components with bounding-box volume above 32,768 cells, or components exceeding the 65,536-cell profile budget, skip interior flood-fill.
 - Block-entity NBT and container contents are not captured.
 - No house relocation, reconstruction or rollback is implemented.
