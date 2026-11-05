@@ -28,30 +28,96 @@ jobs:
           gradle-version: '9.8.2'
       - name: Run tests and build mod
         run: gradle clean test build --no-daemon
-      - name: Smoke-test dedicated server startup
+      - name: Smoke-test dedicated server startup and commands
         shell: bash
         run: |
-          mkdir -p run run/server
+          mkdir -p run
           printf 'eula=true\n' > run/eula.txt
-          printf 'eula=true\n' > run/server/eula.txt
+          cat > run/server.properties <<'PROPERTIES'
+          enable-rcon=true
+          rcon.port=25575
+          rcon.password=operator-ci-smoke-password
+          online-mode=false
+          server-port=25565
+          PROPERTIES
+          gradle runServer --no-daemon > run-server-console.log 2>&1 &
+          gradle_pid=$!
           set +e
-          printf 'stop\n' | timeout 180s gradle runServer --no-daemon
-          result=$?
+          python3 - <<'PY'
+          import socket
+          import struct
+          import time
+          import sys
+
+          HOST = "127.0.0.1"
+          PORT = 25575
+          PASSWORD = "operator-ci-smoke-password"
+
+          def read_exact(sock, length):
+              data = b""
+              while len(data) < length:
+                  chunk = sock.recv(length - len(data))
+                  if not chunk:
+                      raise ConnectionError("RCON connection closed")
+                  data += chunk
+              return data
+
+          def read_packet(sock):
+              length = struct.unpack("<i", read_exact(sock, 4))[0]
+              packet = read_exact(sock, length)
+              request_id, packet_type = struct.unpack("<ii", packet[:8])
+              return request_id, packet_type, packet[8:-2].decode("utf-8", errors="replace")
+
+          def send_packet(sock, request_id, packet_type, payload):
+              body = struct.pack("<ii", request_id, packet_type) + payload.encode("utf-8") + b"\0\0"
+              sock.sendall(struct.pack("<i", len(body)) + body)
+
+          last_error = None
+          for attempt in range(150):
+              try:
+                  with socket.create_connection((HOST, PORT), timeout=3) as sock:
+                      sock.settimeout(5)
+                      send_packet(sock, 1, 3, PASSWORD)
+                      auth_id, _, _ = read_packet(sock)
+                      if auth_id != 1:
+                          raise RuntimeError("RCON authentication failed")
+                      send_packet(sock, 2, 2, "operator status")
+                      command_id, _, output = read_packet(sock)
+                      if command_id != 2:
+                          raise RuntimeError("RCON status command did not return a response")
+                      if "PASSIVE OBSERVATION" not in output:
+                          raise RuntimeError("Unexpected Operator status response: " + output)
+                      print("RCON status command passed: " + output)
+                      send_packet(sock, 3, 2, "stop")
+                      print("RCON stop command sent.")
+                  break
+              except Exception as exc:
+                  last_error = exc
+                  time.sleep(1)
+          else:
+              print("Could not complete RCON smoke test: " + str(last_error), file=sys.stderr)
+              sys.exit(1)
+          PY
+          smoke_result=$?
           set -e
-          if [ "$result" -ne 0 ]; then
-            echo "Dedicated server smoke test failed with exit code $result"
-            exit "$result"
+          if [ "$smoke_result" -ne 0 ]; then
+            kill "$gradle_pid" 2>/dev/null || true
+            wait "$gradle_pid" 2>/dev/null || true
+            cat run-server-console.log
+            exit "$smoke_result"
           fi
-          log_file=""
-          for candidate in run/logs/latest.log run/server/logs/latest.log; do
-            if [ -f "$candidate" ]; then log_file="$candidate"; fi
-          done
-          if [ -z "$log_file" ] || ! grep -q "Done (" "$log_file"; then
+          wait "$gradle_pid"
+          if [ ! -f run/logs/latest.log ] || ! grep -q "Done (" run/logs/latest.log; then
             echo "Minecraft server did not reach the ready state."
+            cat run-server-console.log
             find run -maxdepth 4 -type f -name '*.log' -print
             exit 1
           fi
-          echo "Dedicated server reached the ready state and accepted the stop command."
+          if ! grep -q "schemaVersion.*2" run/world/operator_reality/operator-memory.json; then
+            echo "Operator world memory was not persisted."
+            exit 1
+          fi
+          echo "Dedicated server started, Operator loaded, status command passed, and world memory persisted."
       - name: Upload mod JARs
         uses: actions/upload-artifact@v4
         with:
