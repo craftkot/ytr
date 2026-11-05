@@ -109,6 +109,39 @@ class TunnelAnalyzerTest {
     }
 
     @Test
+    void keepsDimensionsSeparateWhenAnalysingAllDimensions() {
+        List<PlayerMemory.TunnelCell> cells = List.of(
+                cell(0, 20, 0, "minecraft:overworld"),
+                cell(1, 20, 0, "minecraft:overworld"),
+                cell(0, 20, 0, "minecraft:the_nether"),
+                cell(1, 20, 0, "minecraft:the_nether")
+        );
+
+        TunnelAnalyzer.Analysis result = TunnelAnalyzer.analyze(cells, null);
+
+        assertEquals(4, result.mappedCells);
+        assertEquals(2, result.components);
+        assertEquals(2, result.smallComponents);
+    }
+
+    @Test
+    void doesNotClassifyLongWideCorridorAsChamber() {
+        List<PlayerMemory.TunnelCell> cells = new ArrayList<>();
+        for (int x = 0; x < 8; x++) {
+            for (int y = 20; y < 23; y++) {
+                for (int z = 0; z < 3; z++) {
+                    cells.add(cell(x, y, z, "minecraft:overworld"));
+                }
+            }
+        }
+
+        TunnelAnalyzer.Analysis result = TunnelAnalyzer.analyze(cells, "minecraft:overworld");
+
+        assertEquals(TunnelAnalyzer.ComponentType.LINEAR, result.largest.type);
+        assertEquals(TunnelAnalyzer.Axis.X, result.largest.axis);
+    }
+
+    @Test
     void deduplicatesRepeatedCoordinates() {
         List<PlayerMemory.TunnelCell> cells = List.of(
                 cell(0, 20, 0, "minecraft:overworld"),
