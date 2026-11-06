@@ -209,7 +209,9 @@ public final class ServerRelocationSmoke {
                 != RecoveryPlanner.Status.UNCHANGED)
             return "OPERATOR_CI_FAILED: source world not persisted before crash test";
 
-        final int crashOnWrite = 12;
+        // 26 target writes copy the full shell; the next 7 writes clear
+        // source cells. Crash at 33 to leave both real chunks partially mutated.
+        final int crashOnWrite = 33;
         RecoveryExecutor.MutableWorld injected = new RecoveryExecutor.MutableWorld() {
             private int writes;
 
@@ -227,7 +229,22 @@ public final class ServerRelocationSmoke {
                     // This is a deliberate abrupt JVM termination; no save hooks
                     // or shutdown callbacks run. Gated by the CI flag AND world
                     // marker, no players, a fixed test journal and test world.
-                    System.err.println("OPERATOR_CI_UNCLEAN_HALT_AFTER_WRITE_12");
+                    boolean saved = server.saveEverything(true, true, true);
+                    if (!saved) {
+                        System.err.println("OPERATOR_CI_PARTIAL_CHUNK_SAVE_FAILED");
+                        System.err.flush();
+                        Runtime.getRuntime().halt(138);
+                    }
+                    RecoveryPlanner.Plan flushed = RecoveryPlanner.inspect(journal, realWorld);
+                    if (flushed.status() != RecoveryPlanner.Status.RESTORE_NEEDED
+                            || flushed.appliedCells() != crashOnWrite) {
+                        System.err.println("OPERATOR_CI_PARTIAL_CHUNK_SAVE_MISMATCH: "
+                                + flushed.status() + " applied=" + flushed.appliedCells());
+                        System.err.flush();
+                        Runtime.getRuntime().halt(139);
+                    }
+                    System.err.println("OPERATOR_CI_PARTIAL_CHUNKS_FLUSHED_33");
+                    System.err.println("OPERATOR_CI_UNCLEAN_HALT_AFTER_WRITE_33");
                     System.err.flush();
                     Runtime.getRuntime().halt(137);
                 }
@@ -247,7 +264,7 @@ public final class ServerRelocationSmoke {
         if (!JOURNAL_ID.equals(journal.journalId)
                 || !"APPLYING".equals(ledger.phase)
                 || !"APPLY".equals(ledger.pendingOperation)
-                || ledger.appliedWrites != 11 || ledger.totalWrites != EXPECTED_WRITES)
+                || ledger.appliedWrites != 32 || ledger.totalWrites != EXPECTED_WRITES)
             return "OPERATOR_CI_FAILED: WAL did not survive abrupt shutdown as expected";
 
         MinecraftSafeBlockWorld world = new MinecraftSafeBlockWorld(level);
@@ -258,17 +275,22 @@ public final class ServerRelocationSmoke {
                     + " unloaded=" + state.unloaded();
 
         int persistedChanges = state.appliedCells();
+        if (persistedChanges != 33) {
+            return "OPERATOR_CI_FAILED: expected 33 partially persisted cells across"
+                    + " source and target chunks, found " + persistedChanges;
+        }
         SandboxTransactionEngine.Result recovered =
                 SandboxTransactionEngine.rollback(journal, ledger, world,
                         level::getGameTime, new DiskLedger(server));
         if (recovered.outcome() != SandboxTransactionEngine.Outcome.ROLLED_BACK
+                || recovered.confirmedWrites() != 33
                 || RecoveryPlanner.inspect(journal, world).status()
                         != RecoveryPlanner.Status.UNCHANGED)
             return "OPERATOR_CI_FAILED: unclean rollback refused: "
                     + recovered.outcome() + " " + recovered.reason();
 
         return "OPERATOR_CI_PHASE6_OK: abrupt JVM exit recovered"
-                + " | WAL durable intent=APPLY, ACKs=11"
+                + " | WAL durable intent=APPLY, ACKs=32"
                 + " | loaded after restart writes=" + persistedChanges
                 + " | restored=" + recovered.confirmedWrites();
     }
