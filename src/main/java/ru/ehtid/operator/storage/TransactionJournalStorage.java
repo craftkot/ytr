@@ -6,11 +6,13 @@ import com.google.gson.GsonBuilder;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -35,12 +37,17 @@ public final class TransactionJournalStorage {
     public static Path save(MinecraftServer server, TransactionJournal journal)
             throws IOException {
         String owner = UUID.fromString(journal.ownerUuid).toString();
+        return saveToDirectory(directory(server, owner), journal);
+    }
+
+    /** Package-private so storage durability can be tested without a Minecraft server. */
+    static Path saveToDirectory(Path directory, TransactionJournal journal) throws IOException {
+        String owner = UUID.fromString(journal.ownerUuid).toString();
         String journalId = UUID.fromString(journal.journalId).toString();
         if (!"PREPARED".equals(journal.phase) || journal.formatVersion != 1
                 || !TransactionIntegrity.valid(journal))
             throw new IOException("Invalid or non-PREPARED transaction journal");
 
-        Path directory = directory(server, owner);
         Files.createDirectories(directory);
         try (Stream<Path> files = Files.list(directory)) {
             if (files.filter(TransactionJournalStorage::isJournalFile).count()
@@ -57,10 +64,21 @@ public final class TransactionJournalStorage {
             }
             if (Files.size(temporary) > MAX_FILE_BYTES)
                 throw new IOException("Journal exceeds the 8 MiB file limit");
+            // Persist file contents before making the journal discoverable.
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                channel.force(true);
+            }
             try {
                 Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException unsupported) {
                 Files.move(temporary, destination);
+            }
+            // Persist the directory entry where supported (Windows/filesystem dependent).
+            try (FileChannel directoryChannel = FileChannel.open(directory,
+                    StandardOpenOption.READ)) {
+                directoryChannel.force(true);
+            } catch (IOException | UnsupportedOperationException unsupportedDirectoryFsync) {
+                // File content is still fsynced; some platforms cannot fsync directories.
             }
             return destination;
         } finally {
@@ -73,20 +91,7 @@ public final class TransactionJournalStorage {
         String owner = UUID.fromString(playerUuid).toString();
         String id = UUID.fromString(journalId).toString();
         Path file = directory(server, owner).resolve(id + ".json");
-        if (!Files.isRegularFile(file)) throw new IOException("Prepared journal not found");
-        if (Files.size(file) > MAX_FILE_BYTES)
-            throw new IOException("Journal exceeds size limit");
-        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            TransactionJournal journal = GSON.fromJson(reader, TransactionJournal.class);
-            if (journal != null && owner.equals(journal.ownerUuid)
-                    && id.equals(journal.journalId) && "PREPARED".equals(journal.phase)
-                    && journal.formatVersion == 1 && TransactionIntegrity.valid(journal)) {
-                return journal;
-            }
-        } catch (RuntimeException invalid) {
-            throw new IOException("Prepared journal is malformed", invalid);
-        }
-        throw new IOException("Prepared journal failed integrity checks");
+        return read(file, owner, id);
     }
 
     public static TransactionJournal loadLatest(MinecraftServer server, String playerUuid)
@@ -108,15 +113,30 @@ public final class TransactionJournalStorage {
         if (Files.size(latest) > MAX_FILE_BYTES) {
             throw new IOException("Latest journal exceeds size limit; no fallback allowed");
         }
-        try (Reader reader = Files.newBufferedReader(latest, StandardCharsets.UTF_8)) {
+        String latestId = latest.getFileName().toString().replaceFirst("\\.json$", "");
+        try {
+            return read(latest, owner, latestId);
+        } catch (IOException invalid) {
+            throw new IOException("Latest journal failed integrity checks; no fallback allowed",
+                    invalid);
+        }
+    }
+
+    static TransactionJournal read(Path file, String owner, String id)
+            throws IOException {
+        if (!Files.isRegularFile(file)) throw new IOException("Prepared journal not found");
+        if (Files.size(file) > MAX_FILE_BYTES)
+            throw new IOException("Journal exceeds size limit");
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             TransactionJournal journal = GSON.fromJson(reader, TransactionJournal.class);
             if (journal != null && owner.equals(journal.ownerUuid)
+                    && (id == null || id.equals(journal.journalId))
                     && "PREPARED".equals(journal.phase) && journal.formatVersion == 1
                     && TransactionIntegrity.valid(journal)) return journal;
         } catch (RuntimeException invalid) {
-            throw new IOException("Latest journal is malformed; no fallback allowed", invalid);
+            throw new IOException("Prepared journal is malformed", invalid);
         }
-        throw new IOException("Latest journal failed integrity checks; no fallback allowed");
+        throw new IOException("Prepared journal failed integrity checks");
     }
 
     private static long modifiedTime(Path path) {
