@@ -46,6 +46,26 @@ class RecoveryExecutorTest {
     }
 
     @Test
+    void fullyMovedPlainBlocksCanBeRestoredAndRepeatedSafely() {
+        TransactionJournal journal = journal();
+        FakeWorld world = new FakeWorld(journal);
+        world.data.put(new RecoveryPlanner.Position(0, 64, 0), AIR);
+        world.data.put(new RecoveryPlanner.Position(1, 64, 0), AIR);
+        world.data.put(new RecoveryPlanner.Position(10, 64, 0), STONE);
+        world.data.put(new RecoveryPlanner.Position(11, 64, 0), OAK);
+
+        assertEquals(RecoveryPlanner.Status.RESTORE_NEEDED,
+                RecoveryPlanner.inspect(journal, world).status());
+        var first = RecoveryExecutor.restore(journal, world);
+        assertEquals(RecoveryExecutor.Outcome.COMPLETED, first.outcome());
+        assertEquals(4, first.restored());
+
+        var repeated = RecoveryExecutor.restore(journal, world);
+        assertEquals(RecoveryExecutor.Outcome.NOTHING_TO_RESTORE, repeated.outcome());
+        assertEquals(4, world.writes, "retry must never duplicate writes");
+    }
+
+    @Test
     void forcedInterruptionCanBeResumedWithSameJournal() {
         TransactionJournal journal = journal();
         FakeWorld world = new FakeWorld(journal);
