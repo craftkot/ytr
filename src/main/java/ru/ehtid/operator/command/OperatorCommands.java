@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.server.permissions.Permissions;
 import net.minecraft.network.chat.Component;
 
 import ru.ehtid.operator.observe.ObservationEngine;
@@ -114,7 +115,7 @@ public final class OperatorCommands {
                                                         })))))
                 )
                 .then(Commands.literal("sandbox")
-                        .requires(source -> source.hasPermission(2))
+                        .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
                         .then(Commands.literal("status").executes(context -> {
                             var source = context.getSource();
                             var player = source.getPlayerOrException();
