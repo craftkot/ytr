@@ -64,6 +64,18 @@ def rcon(command: str) -> str:
         return body
 
 
+def send_stop() -> None:
+    # Server can terminate the RCON socket immediately after processing stop.
+    # Waiting for a command response here is not reliable across versions.
+    with socket.create_connection((HOST, PORT), timeout=4) as sock:
+        sock.settimeout(5)
+        send(sock, 1, 3, PASSWORD)
+        auth, _, _ = packet(sock)
+        if auth != 1:
+            raise RuntimeError("RCON login rejected on stop")
+        send(sock, 2, 2, "stop")
+
+
 def run_phase(number: int) -> None:
     env = os.environ.copy()
     env["JAVA_TOOL_OPTIONS"] = (
@@ -103,8 +115,8 @@ def run_phase(number: int) -> None:
             if f"OPERATOR_CI_PHASE{number}_OK:" not in result:
                 raise RuntimeError(f"Actual block integration phase {number} failed: {result}")
 
-            stop = rcon("stop")
-            print(f"Stopping server after phase {number}: {stop}", flush=True)
+            send_stop()
+            print(f"Stopping server after phase {number}", flush=True)
             process.wait(timeout=120)
             if process.returncode != 0:
                 raise RuntimeError(f"Server/Gradle failed on shutdown: {process.returncode}")
