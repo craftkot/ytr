@@ -24,6 +24,26 @@ class TransactionJournalStorageTest {
                 () -> TransactionJournalStorage.saveToDirectory(temp, journal));
     }
 
+    @Test
+    void changedPreimageIsRejectedWhenReloaded() throws IOException {
+        TransactionJournal journal = journal();
+        Path file = TransactionJournalStorage.saveToDirectory(temp, journal);
+        String modified = Files.readString(file).replace("minecraft:stone", "minecraft:dirt");
+        Files.writeString(file, modified);
+        assertThrows(IOException.class,
+                () -> TransactionJournalStorage.read(
+                        file, journal.ownerUuid, journal.journalId));
+    }
+
+    @Test
+    void nonPreparedJournalIsRefusedBeforePublish() {
+        TransactionJournal journal = journal();
+        journal.phase = "COMMITTED";
+        assertThrows(IOException.class,
+                () -> TransactionJournalStorage.saveToDirectory(temp, journal));
+        assertFalse(Files.exists(temp.resolve(journal.journalId + ".json")));
+    }
+
     private static TransactionJournal journal() {
         TransactionJournal j = new TransactionJournal();
         j.journalId = "c52d8126-b6b4-48f4-b9e9-c04d90a3d3d7";
