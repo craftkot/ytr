@@ -30,6 +30,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.12.0 loaded. Bounded source-and-target transaction preimages, journal integrity checks and read-only recovery planning are enabled; world mutation remains disabled.");
+        LOGGER.info("Operator: Reality 0.13.0 loaded. Conflict-aware transaction recovery audits, retryable simulation, and protected PREPARED journals are enabled; in-game world mutations remain disabled.");
     }
 }
