@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0 — Recovery Audit and Fault-Injection Engine
+
+- Implemented a deterministic recovery planner comparing every journal preimage with the original and predicted translated whole-AABB state.
+- Added fail-closed outcomes for corrupted journal, unloaded cells, unknown third-party edits and unsupported BlockEntity NBT translation.
+- Added an abstract compare-and-restore engine with mandatory full preflight and post-restore verification; it is deliberately NOT connected to live Minecraft world writes.
+- Added unit tests covering fully and partially simulated moves, forced mid-operation interruption, idempotent retry, concurrent modifications, unloaded cells and NBT safety gating.
+- Added `/operator transaction audit` to inspect loaded Minecraft world blocks against the latest PREPARED journal, without changing blocks.
+- Fixed a journal safety issue: if the newest saved journal is malformed or checksum-invalid, refuse instead of silently falling back to an older journal.
+- Hardened bounded AABB validation against malformed huge bounds and inconsistent source/destination offsets.
+- World mutations, real Minecraft rollback and autonomous house movement remain disabled.
+
+Known limitations:
+- Simulated recovery works only through an abstract compare-and-restore adapter; live in-game writes and durable phase transitions are not implemented.
+- The predicted AFTER world assumes a complete AABB translation, not sparse-only block relocation.
+- BlockEntity inventory NBT is captured but not automatically replayed or restored: source journals containing it are unsupported by the recovery planner.
+- A matching predicted AFTER state does not prove that Operator performed the change; recovery must never be automatically triggered on that evidence alone.
+
 ## 0.12.0 — Transaction Preimage Journals (read-only)
 
 - Added bounded complete source/target AABB before-image capture, including air, natural blocks, serialized BlockState and BlockEntity NBT.
