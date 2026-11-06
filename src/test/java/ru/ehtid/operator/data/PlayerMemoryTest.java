@@ -423,4 +423,49 @@ class PlayerMemoryTest {
         assertEquals(0.0D, memory.largestWallCoverage, 0.0001D);
     }
 
+
+    @Test
+    void shiftingConstructionDoesNotPretendOperatorBlocksWerePlayerPlaced() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordPlacedBlock(1,64,1,"minecraft:overworld",
+                "minecraft:oak_planks","Block{minecraft:oak_planks}",10L);
+        memory.recordPlacedBlock(2,64,1,"minecraft:overworld",
+                "minecraft:stone","Block{minecraft:stone}",11L);
+        memory.recordPlacedBlock(1,64,1,"minecraft:the_nether",
+                "minecraft:stone","Block{minecraft:stone}",12L);
+        long recorded = memory.blocksPlaced;
+        int shifted = memory.shiftTrackedConstruction(
+                "minecraft:overworld", 1,64,1,2,64,1,10,0,0,20L);
+        assertEquals(2, shifted);
+        assertEquals(recorded, memory.blocksPlaced);
+        assertEquals(0L, memory.constructionBlocksRemoved);
+        assertNull(memory.constructionBlocks.get("minecraft:overworld|1,64,1"));
+        assertEquals("minecraft:oak_planks",
+                memory.constructionBlocks.get("minecraft:overworld|11,64,1").blockId);
+        assertNotNull(memory.constructionBlocks.get("minecraft:the_nether|1,64,1"));
+        assertTrue(memory.constructionAnalysisDirty);
+
+        int restored = memory.shiftTrackedConstruction(
+                "minecraft:overworld", 11,64,1,12,64,1,-10,0,0,30L);
+        assertEquals(2, restored);
+        assertNotNull(memory.constructionBlocks.get("minecraft:overworld|1,64,1"));
+        assertEquals(recorded, memory.blocksPlaced);
+    }
+
+    @Test
+    void shiftingConstructionNeverOverwritesTrackedForeignDestination() {
+        PlayerMemory memory = new PlayerMemory();
+        memory.recordPlacedBlock(1,64,1,"minecraft:overworld",
+                "minecraft:stone","Block{minecraft:stone}",10);
+        memory.recordPlacedBlock(11,64,1,"minecraft:overworld",
+                "minecraft:glass","Block{minecraft:glass}",11);
+        assertEquals(-1, memory.shiftTrackedConstruction(
+                "minecraft:overworld",1,64,1,1,64,1,10,0,0,20));
+        assertEquals(2, memory.getConstructionBlockCount());
+        assertEquals("minecraft:stone",
+                memory.constructionBlocks.get("minecraft:overworld|1,64,1").blockId);
+        assertEquals("minecraft:glass",
+                memory.constructionBlocks.get("minecraft:overworld|11,64,1").blockId);
+    }
+
 }
