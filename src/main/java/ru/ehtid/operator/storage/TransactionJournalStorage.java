@@ -80,18 +80,22 @@ public final class TransactionJournalStorage {
                             .reversed().thenComparing(Path::toString))
                     .toList();
         }
-        for (Path candidate : candidates) {
-            if (Files.size(candidate) > MAX_FILE_BYTES) continue;
-            try (Reader reader = Files.newBufferedReader(candidate, StandardCharsets.UTF_8)) {
-                TransactionJournal journal = GSON.fromJson(reader, TransactionJournal.class);
-                if (journal != null && owner.equals(journal.ownerUuid)
-                        && "PREPARED".equals(journal.phase) && journal.formatVersion == 1
-                        && TransactionIntegrity.valid(journal)) return journal;
-            } catch (RuntimeException invalid) {
-                // Never accept malformed or checksum-invalid journals.
-            }
+        if (candidates.isEmpty()) throw new IOException("No prepared journals");
+        // Fail closed if the newest journal is damaged. Silently falling back
+        // to an older journal could restore the wrong historical world state.
+        Path latest = candidates.get(0);
+        if (Files.size(latest) > MAX_FILE_BYTES) {
+            throw new IOException("Latest journal exceeds size limit; no fallback allowed");
         }
-        throw new IOException("No valid prepared journal found; files retained for inspection");
+        try (Reader reader = Files.newBufferedReader(latest, StandardCharsets.UTF_8)) {
+            TransactionJournal journal = GSON.fromJson(reader, TransactionJournal.class);
+            if (journal != null && owner.equals(journal.ownerUuid)
+                    && "PREPARED".equals(journal.phase) && journal.formatVersion == 1
+                    && TransactionIntegrity.valid(journal)) return journal;
+        } catch (RuntimeException invalid) {
+            throw new IOException("Latest journal is malformed; no fallback allowed", invalid);
+        }
+        throw new IOException("Latest journal failed integrity checks; no fallback allowed");
     }
 
     private static long modifiedTime(Path path) {
