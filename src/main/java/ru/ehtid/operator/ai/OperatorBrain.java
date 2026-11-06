@@ -160,10 +160,15 @@ public final class OperatorBrain {
         if (memory.recognizedBuildingCount > 0 && memory.largestBuildingBlockCount >= 24) {
             double placementCoverage = ratio(memory.blocksPlaced, 128.0D);
             double enclosureEvidence = ratio(memory.largestEnclosedVoidCells, 128.0D);
-            double score = 0.65D * scores.builder()
+            double score = Math.min(1.0D, 0.65D * scores.builder()
                     + 0.20D * placementCoverage
-                    + 0.15D * enclosureEvidence;
-            String reason = memory.recognizedEnclosedBuildingCount > 0
+                    + 0.15D * enclosureEvidence
+                    + 0.05D * ratio(memory.recognizedRoomCount, 4.0D));
+            String reason = memory.recognizedRoomCount >= 2
+                    ? "An inferred enclosed-room network has " + memory.recognizedRoomCount
+                            + " rooms and " + memory.recognizedRoomConnections
+                            + " recorded door connections; HOME_ECHO remains a read-only shadow plan."
+                    : memory.recognizedEnclosedBuildingCount > 0
                     ? "A player-placed structure has an enclosed geometric void with floor, roof and wall coverage; the shadow planner can target a measured constructed space."
                     : "A connected player-placed 3D component matches building-candidate geometry, but an enclosed interior has not been confirmed.";
             candidates.add(new Candidate("HOME_ECHO", score, reason));
