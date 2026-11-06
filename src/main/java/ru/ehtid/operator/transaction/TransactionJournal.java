@@ -43,6 +43,9 @@ public final class TransactionJournal {
             long sy = (long) maxY - minY + 1;
             long sz = (long) maxZ - minZ + 1;
             if (sx <= 0 || sy <= 0 || sz <= 0) return -1;
+            // Avoid positive wraparound for malformed or externally edited bounds.
+            if (sx > MAX_CELLS_PER_REGION || sy > MAX_CELLS_PER_REGION
+                    || sz > MAX_CELLS_PER_REGION) return -1;
             return sx * sy * sz;
         }
 
