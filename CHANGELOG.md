@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0 — Shared Sandbox Transaction Engine and Fault-Injection Verification
+
+- Refactored manual Minecraft `sandbox apply` and `sandbox rollback` to use the **same** pure-Java `SandboxTransactionEngine` tested with deterministic simulated worlds.
+- Added full source/target AABB preflight and strict no-partial-write rejection before starting the write-ahead log.
+- Added two-stage guarded application: copy all eligible blocks to the target, then clear the source; every write must have a durable intent and subsequent acknowledgement.
+- Added explicit post-write full-world verification; mark a transaction COMMITTED only if all intended cell writes are acknowledged and the resulting source/target match predicted states.
+- Strengthened `RelocationExecutionLedger`: an incomplete `appliedWrites` count can no longer transition to or validate as COMMITTED; invalid phase/pending-intent pairings are rejected.
+- Refactored manual recovery through the same engine and RecoveryExecutor, with fail-closed conflict preflight, WAL-backed restore intents and safe restart behavior.
+- Added end-to-end tests of a 26-block hollow construction, full apply/rollback, interrupted WAL creation, crash after a block write but before ACK, interrupted rollback, idempotent retry, and foreign edits.
+- Removed property-bearing ordinary deepslate from the default-state-only palette; only ten simple block IDs are currently allowed.
+- The GitHub Actions smoke test remains limited to build/tests, server startup and basic status. It does **not** exercise a live game-world apply/rollback.
+
+Known limits:
+- Experimental sandbox mode is operator-only and must be tested on disposable world backups.
+- No automatic AI world mutation, entity transport, inventories, fluid/redstone/physics guarantees or multi-chunk disk atomicity.
+- SHA-256 ensures accidental integrity detection but not authenticated protection against malicious filesystem modification.
+
 ## 0.15.0 — Experimental Manual Sandbox Relocation
 
 - Introduced the first opt-in **live Minecraft block writes**, restricted to a privileged `/operator sandbox apply` command and a small whitelist of default-state vanilla blocks.
