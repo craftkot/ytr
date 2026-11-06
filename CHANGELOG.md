@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.0 — Transaction Preimage Journals (read-only)
+
+- Added bounded complete source/target AABB before-image capture, including air, natural blocks, serialized BlockState and BlockEntity NBT.
+- Added deterministic transaction checksum over both regions and all journal metadata, plus duplicate/missing-cell and overlap rejection.
+- Added non-overwriting per-player journal storage with 8 MiB per-file and four-file retention limits.
+- Added opt-in `/operator transaction prepare <x> <y> <z>`, which requires a valid current source snapshot, a successful preflight, all chunks loaded and a completely empty target AABB.
+- Added read-only `/operator transaction status`, which checks journal integrity without exposing NBT/inventory data.
+- Added a pure sorted reverse-preimage plan for future recovery and tests for its completeness, tamper detection and limit enforcement.
+- Maximum of 4096 cells per region, 8192 total, 256 KiB per block entity and 2 MiB total NBT.
+- **No world mutation, automatic rollback, crash recovery or actual house movement is enabled in 0.12.0.**
+
+Known limitations:
+- The preimages are a necessary prerequisite for rollback, not an executable transaction coordinator.
+- The journal only reflects a coherent moment during an explicit command; it does not lock other mods, players or asynchronous chunk changes.
+- Source construction detection remains restricted to observed player placements and bounded geometry.
+- Inventory NBT is sensitive; server operators must protect world-folder access and backups.
+
 ## 0.11.0 — Snapshot Integrity & Relocation Preflight
 
 - Added a bounded, pure-Java selection of the nearest connected recorded building, never combining unrelated components or dimensions.
