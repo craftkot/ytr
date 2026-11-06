@@ -71,6 +71,32 @@ public final class OperatorCommands {
                                                             false);
                                                     return 1;
                                                 })))))
+                .then(Commands.literal("transaction")
+                        .then(Commands.literal("status").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.getConstructionTransactionStatus(player, source.getServer())),
+                                    false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("prepare")
+                                .then(Commands.argument("x", IntegerArgumentType.integer())
+                                        .then(Commands.argument("y", IntegerArgumentType.integer())
+                                                .then(Commands.argument("z", IntegerArgumentType.integer())
+                                                        .executes(context -> {
+                                                            var source = context.getSource();
+                                                            var player = source.getPlayerOrException();
+                                                            int x = IntegerArgumentType.getInteger(context, "x");
+                                                            int y = IntegerArgumentType.getInteger(context, "y");
+                                                            int z = IntegerArgumentType.getInteger(context, "z");
+                                                            source.sendSuccess(() -> Component.literal(
+                                                                    observer.prepareConstructionTransaction(
+                                                                            player, source.getServer(), x, y, z)),
+                                                                    false);
+                                                            return 1;
+                                                        })))))
+                )
                 .then(Commands.literal("profile").executes(context -> {
                     var source = context.getSource();
                     var player = source.getPlayerOrException();
