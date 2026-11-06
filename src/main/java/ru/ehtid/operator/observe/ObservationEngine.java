@@ -37,6 +37,7 @@ import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
 import ru.ehtid.operator.snapshot.StructureSnapshotService;
+import ru.ehtid.operator.transaction.TransactionPreparationService;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
@@ -738,7 +739,7 @@ public final class ObservationEngine {
                 .mapToInt(memory -> memory.recognizedRoomCount).sum();
         int roomLinks = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedRoomConnections).sum();
-        return "Operator 0.11 | " + phase
+        return "Operator 0.12 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -771,6 +772,19 @@ public final class ObservationEngine {
                                                 int x, int y, int z) {
         if (!loaded) return "Operator memory is not loaded";
         return StructureSnapshotService.preflight(server, player, x, y, z).message();
+    }
+
+    /** Explicit read-only prepare with durable source and target before-images. */
+    public String prepareConstructionTransaction(ServerPlayer player, MinecraftServer server,
+                                                 int x, int y, int z) {
+        if (!loaded) return "Operator memory is not loaded";
+        return TransactionPreparationService.prepare(server, player, x, y, z).message();
+    }
+
+    /** Reads and verifies the most recent prepared journal; no world change. */
+    public String getConstructionTransactionStatus(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        return TransactionPreparationService.status(server, player).message();
     }
 
     public String getBrainProfile(ServerPlayer player) {
