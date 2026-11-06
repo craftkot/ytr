@@ -1,6 +1,19 @@
 Operator Reality 0.14.0
 
-Verification: PENDING GitHub Actions for the current operator-dev source commit.
+Verification: PASSED on source commit b32bcfec2d222c55285003c831fd0b3b70b0c85a.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42172443702
+
+Successful checks:
+- gradle clean test build --no-daemon
+- Minecraft Java 26.3 Fabric dedicated server boot and RCON /operator status
+- World memory saved with schemaVersion 8
+- All JUnit tests passed, including persistent checkpoint JSON/temporary-file round trips,
+  SHA-256 tamper detection, write-ahead fault injection and relocation hazard classification.
+
+Artifacts:
+- operator-reality-0.14.0 (281999-byte GitHub artifact archive)
+- operator-reality-0.14.0-source (123286-byte GitHub artifact archive)
+
 Previous verified release: Operator 0.13.0, https://github.com/craftkot/ytr/actions/runs/42159974093
 
 Required CI:
