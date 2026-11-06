@@ -35,6 +35,19 @@ public final class RecoveryAuditService {
             return "Recovery audit refused: world state could not be read safely";
         }
 
+        String risks;
+        try {
+            RelocationHazardAnalyzer.Risks sourceRisks =
+                    RelocationHazardAnalyzer.inspect(journal);
+            RecoveryBoundaryInspector.Assessment boundary =
+                    RecoveryBoundaryInspector.inspect(level, journal);
+            risks = " | source/target hazards: " + sourceRisks.summary()
+                    + " | neighborhood: " + boundary.summary()
+                    + " | no hazard scan guarantees safe relocation";
+        } catch (RuntimeException inspectionFailure) {
+            risks = " | neighborhood risk scan failed: REVIEW REQUIRED";
+        }
+
         String checkpointStatus;
         try {
             RecoveryCheckpointLedger ledger = RecoveryCheckpointStorage.appendAudit(
@@ -56,6 +69,7 @@ public final class RecoveryAuditService {
                 + " | inaccessible cells: " + plan.unloaded()
                 + " | modeled restore actions: " + plan.changes().size()
                 + checkpointStatus
+                + risks
                 + " | a matching AFTER state does not prove Operator caused it"
                 + " | automatic recovery and live block writes disabled";
     }
