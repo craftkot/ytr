@@ -1,37 +1,32 @@
-Operator Reality 0.21.0
+Operator Reality 0.22.0
 
-Verification: PENDING GitHub Actions for exact operator-dev source commit.
-Last verified baseline 0.20.0:
-https://github.com/craftkot/ytr/actions/runs/42232524535
+Verification: PENDING GitHub Actions for latest operator-dev code commit.
+Previously verified 0.21.0: https://github.com/craftkot/ytr/actions/runs/42234181800
 
-New 0.21 checks:
-- Compile and run JUnit tests.
-- TransactionJournalStorageTest:
-  * prepared journal is written to a same-directory temp file and published;
-  * exact owner/journal identity reloads with matching SHA-256;
-  * duplicate create is refused;
-  * modified before-image is rejected after reload;
-  * non-PREPARED journal is refused before publication.
-- Existing RelocationExecutionStorage fsync and WAL fault-injection tests remain required.
-- Dedicated Fabric server startup and RCON status.
-- Graceful apply/rollback across server restarts.
-- Partial APPLY crash across two Anvil region files.
-- Partial RESTORE crash across two Anvil region files.
-- WAL terminal phase ordering and world flush failure tests.
-- Publish 0.21.0 JAR and source artifacts.
+New features:
+- Read-only, bounded server-wide execution WAL scan across offline players.
+- Every WAL is validated against the exact per-owner PREPARED journal and SHA-256.
+- /operator sandbox monitor: gamemaster-only, works from RCON/console.
+- Warn at startup when a cross-player transfer is unfinished or a journal is damaged.
+- Refuse ALL new sandbox apply writes if any owner's execution WAL is unresolved,
+  malformed, missing its PREPARED journal or inaccessible.
+- Limit scan to 128 owners / 512 execution files; reject symlink/malformed paths.
+- No automatic rollback or forced chunk loads.
+- 8 additional JUnit tests for WAL corruption, offline owners, ownership and scan caps.
+- Extended real Fabric unclean-crash integration with monitor assertions after
+  cold restarts during APPLYING and ROLLING_BACK, and after ROLLED_BACK.
 
-Prepared journal persistence:
-- JSON temp file is forced with FileChannel.force(true) before rename.
-- Atomic move is used where supported; same-directory fallback otherwise.
-- Parent directory fsync is best effort because Windows/filesystem support varies.
-- Execution WAL already uses the same file force + atomic replacement + directory fsync strategy.
+Required CI:
+- gradle clean test build --no-daemon, Java 25 / Minecraft Java 26.3.
+- Dedicated Fabric boot with RCON /operator status, persisted schemaVersion 8.
+- Existing real-world graceful apply/rollback across server restarts.
+- Cross-region partial APPLY/RESTORE crashes, flush-before-terminal-phase tests.
+- New monitor check of abandoned WALs from the dedicated-server RCON console.
+- Upload 0.22.0 compiled JAR and source ZIP.
 
-Known limits:
-- Hardware power loss, kernel crash, storage controller volatile cache loss and
-  filesystem corruption are not established by normal CI.
-- Directory fsync can be unsupported.
-- WAL, PREPARED journal and Anvil region files are separate files, not one atomic transaction.
-- Block entities/inventories, entities, liquids, redstone, modded blocks, arbitrary
-  states and autonomous world mutation remain unsupported.
-
-Sandbox remains experimental, manual and operator-only.
+Limits:
+- Offline owner's rollback is not yet available through an administrator command.
+- New transfers remain globally blocked until an existing interrupted operation
+  is resolved; monitor never deletes, repairs or overwrites its file.
+- WAL/Anvil multi-file atomicity, hardware power loss, mods and inventories
+  remain unsupported. Use only disposable worlds for manual sandbox testing.
