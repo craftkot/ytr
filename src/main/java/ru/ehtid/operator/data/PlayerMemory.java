@@ -491,6 +491,48 @@ public final class PlayerMemory {
         constructionAnalysisDirty = false;
     }
 
+    /**
+     * Move only the remembered coordinates after a VERIFIED operator relocation
+     * or rollback. This is NOT a player placement or mining event.
+     *
+     * Returns -1 if any target key already belongs to another remembered block,
+     * so foreign constructions are never overwritten in player memory.
+     */
+    public int shiftTrackedConstruction(String dimension,
+                                        int minX, int minY, int minZ,
+                                        int maxX, int maxY, int maxZ,
+                                        int dx, int dy, int dz, long gameTick) {
+        if (constructionBlocks == null || dimension == null) return 0;
+        Map<String, ConstructionBlock> selected = new LinkedHashMap<>();
+        Map<String, ConstructionBlock> moved = new LinkedHashMap<>();
+        for (var entry : constructionBlocks.entrySet()) {
+            ConstructionBlock block = entry.getValue();
+            if (block == null || !dimension.equals(block.dimension)
+                    || block.x < minX || block.x > maxX
+                    || block.y < minY || block.y > maxY
+                    || block.z < minZ || block.z > maxZ) continue;
+            int x = Math.addExact(block.x, dx);
+            int y = Math.addExact(block.y, dy);
+            int z = Math.addExact(block.z, dz);
+            String destination = constructionBlockKey(dimension, x, y, z);
+            if (moved.containsKey(destination)
+                    || (constructionBlocks.containsKey(destination)
+                            && !selected.containsKey(destination))) {
+                return -1;
+            }
+            selected.put(entry.getKey(), block);
+            moved.put(destination, new ConstructionBlock(
+                    x, y, z, dimension, block.blockId, block.blockState, block.gameTick
+            ));
+        }
+        if (selected.isEmpty()) return 0;
+        for (String key : selected.keySet()) constructionBlocks.remove(key);
+        constructionBlocks.putAll(moved);
+        lastConstructionChangeAt = gameTick;
+        constructionAnalysisDirty = true;
+        return moved.size();
+    }
+
     public int getConstructionBlockCount() {
         return constructionBlocks == null ? 0 : constructionBlocks.size();
     }
