@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "Minecraft observer with opt-in guarded sandbox simple-block relocation, durable mutation intents, and manually controlled rollback.",
+  "description": "Minecraft observer with opt-in guarded sandbox block relocation, durable WAL rollback and multi-restart server integration testing.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
