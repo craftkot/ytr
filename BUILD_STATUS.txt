@@ -1,27 +1,38 @@
-Operator Reality 0.15.0
+Operator Reality 0.16.0
 
-Verification: PENDING final GitHub Actions build and dedicated server smoke test.
-Previous verified baseline: 0.14.0, https://github.com/craftkot/ytr/actions/runs/42172443702
+Verification: PENDING GitHub Actions on the exact operator-dev source commit.
+Previous verified baseline: Operator 0.15.0 code commit
+422f3ce4b7c575e0f984360880fe50aa5d252334
+CI success: https://github.com/craftkot/ytr/actions/runs/42181800385
 
-Current intended platform:
-- Minecraft Java 26.3, Fabric Loader 0.20.1, Fabric API 0.165.2+26.3
-- Java 25 / Gradle 9.8.2
-- gradle clean test build --no-daemon
-- Dedicated server startup, RCON /operator status, world-memory schema 8
+Required verification:
+- gradle clean test build --no-daemon (Java 25 / Gradle 9.8.2)
+- Minecraft Java 26.3 dedicated Fabric server startup and RCON /operator status
+- Operator persistent memory schemaVersion 8
+- Publish JAR and source ZIP artifact archives.
 
-New experimental capabilities:
-- Manual /operator sandbox apply, sandbox rollback and sandbox status, OP permission level 2.
-- Live Minecraft BlockState replacement with an explicit default-state allowlist (11 block IDs).
-- Entire 128-cell source/target AABB limits; no BlockEntity NBT, fluid, multipart, special states, entities within the volume or unsafe neighboring blocks.
-- Source/target BEFORE journals and player construction snapshot must still agree exactly with loaded world.
-- Per-cell fsynced write-ahead intent and post-write acknowledgement in a separate durable execution ledger tied to journal checksum and player UUID.
-- Rollback only with a previously created execution ledger, checked current world state and no conflicts or unloaded cells.
-- Remap player construction-memory positions only after verified completion, no false placement or demolition counts.
-- New tests for ledger phase transition, persistence across restart, integrity corruption and source identity, plus memory remapping and strict block palette.
+0.16 changes:
+- Manual sandbox apply now uses SandboxTransactionEngine, the same pure-Java
+  core as end-to-end crash/fault-injection tests.
+- Sandbox rollback now uses the same core for WAL phase transitions and
+  RecoveryExecutor world compare-and-restore calls.
+- Fail closed before first world write unless the full source/target AABB
+  matches its BEFORE preimages and the target region is recorded air.
+- Every mutation must have a durable WAL intent before a CAS world change,
+  and a confirmed ACK after it. Postcheck validates the entire world.
+- COMMITTED phase cannot be reached before all intended write ACKs.
+- Regression test for hollow 26-block house full apply/rollback.
+- Fault-injection tests for WAL creation error, ACK crash after world write,
+  intermediate rollback interruption, retry, unknown edits, wrong offsets,
+  occupied destination, write CAS failure.
+- Excluded axis-bearing deepslate; 10 simple vanilla block IDs remain.
 
 SAFETY:
-- This changes game blocks and is not a production-ready transaction engine.
-- It is an explicitly invoked sandbox function for disposable worlds with backups.
-- No automatic AI world chaos or move; no inventories, scheduled ticks, entity transfers, cross-chunk disk atomicity or comprehensive physics/restart guarantees.
-- Live sandbox apply/rollback on a loaded game world is NOT covered by the existing RCON smoke test.
-- GitHub Actions artifact-name labels may still show 0.14.0 due to a workflow-file update restriction; inspect actual build/libs JAR filenames to identify version 0.15.0.
+- OP-only manual sandbox function, 128-cell per-region maximum.
+- No BlockEntity NBT, inventories, non-default states, liquids,
+  power/attached/gravity blocks, modded blocks or entities in the AABB.
+- No scheduled automatic AI world rewrites.
+- WAL and Minecraft chunk disk persistence are not one atomic transaction.
+- Existing CI tests DO NOT perform live-world sandbox apply/rollback.
+- GitHub workflow artifact labels may still say 0.14.0; the actual 0.16.0
+  JAR version must be checked inside the archive.
