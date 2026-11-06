@@ -1,7 +1,6 @@
 package ru.ehtid.operator.transaction;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -100,60 +99,28 @@ public final class ExperimentalRelocationService {
             return "Sandbox rollback refused: " + preflight.status()
                     + " (foreign changes or unloaded cells must not be overwritten)";
 
-        try {
-            if ("COMMITTED".equals(ledger.phase)) {
-                ledger.setPhase("ROLLING_BACK", level.getGameTime());
-            } else if ("APPLYING".equals(ledger.phase) || "ROLLING_BACK".equals(ledger.phase)) {
-                // An unacknowledged pending write is possible after a crash.
-                // Re-read every world cell above; it is safe to resume only
-                // when all states agree with BEFORE or predicted AFTER.
-                ledger.beginRollbackAfterInterruptedWrite(level.getGameTime());
-            } else {
-                return "Sandbox rollback refused: invalid execution phase";
-            }
-            RelocationExecutionStorage.update(server, journal, ledger);
-        } catch (IOException | RuntimeException failure) {
-            return "Sandbox rollback refused: cannot persist recovery phase: " + failure.getMessage();
+        SandboxTransactionEngine.Result recovery = SandboxTransactionEngine.rollback(
+                journal, ledger, world, level::getGameTime,
+                new SandboxTransactionEngine.LedgerStore() {
+                    @Override
+                    public void create(TransactionJournal transaction,
+                                       RelocationExecutionLedger state) throws IOException {
+                        throw new IOException("Existing execution ledger is required for rollback");
+                    }
+
+                    @Override
+                    public void update(TransactionJournal transaction,
+                                       RelocationExecutionLedger state) throws IOException {
+                        RelocationExecutionStorage.update(server, transaction, state);
+                    }
+                });
+        if (recovery.outcome() == SandboxTransactionEngine.Outcome.ROLLED_BACK) {
+            return "Sandbox rollback ROLLED_BACK | restored " + recovery.confirmedWrites()
+                    + " blocks | original regions verified | journal " + journal.journalId
+                    + " | " + recovery.reason();
         }
-
-        RecoveryExecutor.CheckpointSink sink = new RecoveryExecutor.CheckpointSink() {
-            @Override
-            public void beforeWrite(int sequence, RecoveryPlanner.Change change) {
-                ledger.beginWrite("RESTORE", change.position().x(),
-                        change.position().y(), change.position().z(), level.getGameTime());
-                persist();
-            }
-
-            @Override
-            public void afterWrite(int sequence, RecoveryPlanner.Change change) {
-                ledger.acknowledgeWrite("RESTORE", level.getGameTime());
-                persist();
-            }
-
-            private void persist() {
-                try {
-                    RelocationExecutionStorage.update(server, journal, ledger);
-                } catch (IOException problem) {
-                    throw new UncheckedIOException(problem);
-                }
-            }
-        };
-
-        RecoveryExecutor.Result result = RecoveryExecutor.restore(journal, world, sink);
-        if (result.outcome() == RecoveryExecutor.Outcome.COMPLETED
-                || result.outcome() == RecoveryExecutor.Outcome.NOTHING_TO_RESTORE) {
-            try {
-                ledger.setPhase("ROLLED_BACK", level.getGameTime());
-                RelocationExecutionStorage.update(server, journal, ledger);
-                return "Sandbox rollback ROLLED_BACK | restored " + result.restored()
-                        + " blocks | original regions verified | journal " + journal.journalId;
-            } catch (IOException | RuntimeException failure) {
-                return "Sandbox blocks restored, but rollback completion could not be saved; "
-                        + "retry /operator sandbox rollback";
-            }
-        }
-        return "Sandbox rollback " + result.outcome() + ": " + result.reason()
-                + " | restored " + result.restored()
+        return "Sandbox rollback " + recovery.outcome() + ": " + recovery.reason()
+                + " | restored " + recovery.confirmedWrites()
                 + " | retry only after resolving conflicts, without deleting the journal";
     }
 
