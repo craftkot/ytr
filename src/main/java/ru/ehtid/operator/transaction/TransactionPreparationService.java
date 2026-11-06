@@ -15,6 +15,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import ru.ehtid.operator.snapshot.StructureSnapshot;
 import ru.ehtid.operator.snapshot.StructureSnapshotService;
 import ru.ehtid.operator.storage.StructureSnapshotStorage;
+import ru.ehtid.operator.storage.RecoveryCheckpointStorage;
 import ru.ehtid.operator.storage.TransactionJournalStorage;
 
 /**
@@ -96,8 +97,19 @@ public final class TransactionPreparationService {
         journal.sha256 = TransactionIntegrity.fingerprint(journal);
         try {
             Path saved = TransactionJournalStorage.save(server, journal);
+            // The journal is durable first; its checkpoint is a separate
+            // recoverable sidecar. Never claim both persisted if this fails.
+            try {
+                RecoveryCheckpointStorage.initialize(server, journal);
+            } catch (IOException checkpointFailure) {
+                return new Result(false, "Before-images saved to " + saved.getFileName()
+                        + " but recovery checkpoint initialization failed: "
+                        + checkpointFailure.getMessage()
+                        + " | no world changes or recovery authorization");
+            }
             return new Result(true,
                     "PREPARED " + saved.getFileName()
+                            + " | checkpoint #0 saved"
                             + " | source cells: " + journal.source.before.size()
                             + " | destination cells: " + journal.target.before.size()
                             + " | block entities: " + journal.blockEntityCount
