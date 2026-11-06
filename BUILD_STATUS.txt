@@ -1,39 +1,31 @@
-Operator Reality 0.17.0
+Operator Reality 0.18.0
 
-Verification: PASSED on exact code commit 9d51919e7aa9b5daffbb821300525bfe5114e0f0.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42185046805
-- gradle clean test build: PASSED.
-- Dedicated Fabric server startup and /operator status via RCON: PASSED.
-- Real-world 3-server integration: PASSED.
-  phase1: OPERATOR_CI_PHASE1_OK: live blocks=26 verified WAL writes=52
-  phase2: OPERATOR_CI_PHASE2_OK: persisted blocks verified; rollback=52
-  phase3: OPERATOR_CI_PHASE3_OK: recovered blocks persisted across restart; cells=54
-  final marker: OPERATOR_LIVE_RELOCATION_INTEGRATION_SUCCESS
-- JAR and source archives uploaded under correct version names.
-  operator-reality-0.17.0 (GitHub artifact ZIP: 335309 bytes)
-  operator-reality-0.17.0-source (GitHub artifact ZIP: 152854 bytes)
+Verification: PENDING GitHub Actions for the exact operator-dev code commit.
+Baseline: Operator 0.17.0 real-server integration PASSED:
+https://github.com/craftkot/ytr/actions/runs/42185046805
 
-Previously verified release: 0.16.0, https://github.com/craftkot/ytr/actions/runs/42183885352
-Build toolchain: Minecraft Java 26.3, Fabric API 0.165.2+26.3, Java 25, Gradle 9.8.2.
+Required CI:
+- gradle clean test build --no-daemon, Java 25 / Minecraft Java 26.3.
+- Initial dedicated Fabric server boot, RCON status and persisted schemaVersion 8.
+- Existing 3-boot real-Minecraft guarded transfer/rollback integration.
+- New unclean-JVM-termination integration on a separate disposable crash-world:
+  phase 4: create source stone shell and persist BEFORE journal before transfer.
+  phase 5: Runtime.halt(137) after the 12th real block write, BEFORE WAL ACK #12.
+           Verify 11 ACKs persisted and pending APPLY intent remains on disk.
+  phase 6: cold restart; verify checksum-bound WAL, source/target before-images
+           and real-world block states, then invoke guarded manual rollback.
+  phase 7: second cold restart; verify restored original states of all 54 cells,
+           and persisted execution phase ROLLED_BACK.
+- Upload 0.18.0 compiled JAR and source ZIP as build artifacts.
 
-New required CI checks:
-- gradle clean test build --no-daemon, including JUnit fault-injection tests.
-- Dedicated Fabric server boot and /operator status over RCON.
-- REAL Minecraft block-state relocation and rollback using the actual sandbox transaction engine.
-- Three separate Fabric server JVM lifetimes sharing a disposable test world:
-  phase1: 26-block shell transferred, 52 guarded block writes, COMMITTED WAL.
-  phase2: source/destination chunks and WAL checked AFTER restart, rollback executed.
-  phase3: original cells and ROLLED_BACK WAL checked AFTER another restart.
-- Keep world-memory schemaVersion 8 and publish 0.17.0 JAR/source artifacts.
+Security:
+- Hard-crash test stages require CI env, JVM flag, world-local test marker,
+  admin permissions, zero players and fresh isolated level-name=crash-world.
+- No world writes or hard JVM kill are triggered by autonomous Operator decisions.
+- Never run these tests against an important or live player world.
 
-Server integration test security:
-- Test-only command gated by -Doperator.reality.ciSmoke=true,
-  in-world operator_reality/ci-smoke.allow marker, admin privileges and zero players.
-- Runner requires GITHUB_ACTIONS=true and operates on the CI run/world directory.
-- The fixture uses actual stone and air BlockStates only; no inventories/BlockEntities.
-- Runs on two separate chunks and uses the same WAL storage as gameplay.
-
-Not yet proven:
-- Abrupt unclean process termination during setBlock or chunk saving.
-- Multi-chunk disk atomicity, block entities, modded blocks, physics and redstone.
-- Automatic AI-driven world changes or autonomous rollback are still disabled.
+Not yet established:
+- The crash test covers a single interruption point, not arbitrary power loss,
+  partial filesystem commits or disk corruption.
+- No block entity inventories, redstone, liquids, complex block states or entity
+  transfers; no multi-chunk atomic write guarantee.
