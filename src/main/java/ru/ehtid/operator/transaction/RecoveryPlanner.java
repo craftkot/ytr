@@ -43,7 +43,7 @@ public final class RecoveryPlanner {
     public record Change(Position position, State applied, State before) { }
 
     public enum Status {
-        INVALID_JOURNAL, UNLOADED, CONFLICT, UNCHANGED, RESTORE_NEEDED
+        INVALID_JOURNAL, UNSUPPORTED_BLOCK_ENTITY, UNLOADED, CONFLICT, UNCHANGED, RESTORE_NEEDED
     }
 
     public record Plan(Status status, int examined, int alreadyOriginal,
@@ -60,6 +60,20 @@ public final class RecoveryPlanner {
     public static Plan inspect(TransactionJournal journal, WorldView world) {
         if (world == null || !TransactionIntegrity.valid(journal)
                 || !"PREPARED".equals(journal.phase))
+            return new Plan(Status.INVALID_JOURNAL, 0, 0, 0, 0, 0, List.of());
+
+        // Block-entity NBT usually embeds original world coordinates.
+        // Until we have a verified relocation-specific NBT rewrite/restore
+        // adapter, reporting it recoverable would risk inventory duplication.
+        if (journal.source.before.stream().anyMatch(cell -> cell.blockEntitySnbt() != null))
+            return new Plan(Status.UNSUPPORTED_BLOCK_ENTITY, 0, 0, 0, 0, 0, List.of());
+
+        if ((long) journal.source.minX + journal.offsetX != journal.target.minX
+                || (long) journal.source.minY + journal.offsetY != journal.target.minY
+                || (long) journal.source.minZ + journal.offsetZ != journal.target.minZ
+                || (long) journal.source.maxX + journal.offsetX != journal.target.maxX
+                || (long) journal.source.maxY + journal.offsetY != journal.target.maxY
+                || (long) journal.source.maxZ + journal.offsetZ != journal.target.maxZ)
             return new Plan(Status.INVALID_JOURNAL, 0, 0, 0, 0, 0, List.of());
 
         Map<Position, State> originalSource = new HashMap<>();
