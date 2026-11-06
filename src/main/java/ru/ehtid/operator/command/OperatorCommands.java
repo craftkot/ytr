@@ -80,6 +80,14 @@ public final class OperatorCommands {
                                     false);
                             return 1;
                         }))
+                        .then(Commands.literal("checkpoint").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.getRecoveryCheckpointStatus(player, source.getServer())),
+                                    false);
+                            return 1;
+                        }))
                         .then(Commands.literal("audit").executes(context -> {
                             var source = context.getSource();
                             var player = source.getPlayerOrException();
