@@ -30,6 +30,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.17.0 loaded. Opt-in sandbox relocation has dedicated-server integration tests with WAL persistence and restart verification; complex block transfers and autonomous world chaos remain disabled.");
+        LOGGER.info("Operator: Reality 0.18.0 loaded. Opt-in sandbox relocation now includes unclean JVM crash/restart recovery CI tests; complex block transfers and autonomous world chaos remain disabled.");
     }
 }
