@@ -16,6 +16,7 @@ import ru.ehtid.operator.snapshot.StructureSnapshot;
 import ru.ehtid.operator.snapshot.StructureSnapshotService;
 import ru.ehtid.operator.storage.StructureSnapshotStorage;
 import ru.ehtid.operator.storage.RecoveryCheckpointStorage;
+import ru.ehtid.operator.storage.RelocationExecutionStorage;
 import ru.ehtid.operator.storage.TransactionJournalStorage;
 
 /**
@@ -32,6 +33,24 @@ public final class TransactionPreparationService {
 
     public static Result prepare(MinecraftServer server, ServerPlayer player,
                                  int anchorX, int anchorY, int anchorZ) {
+        // The manual sandbox rollback currently operates on the latest prepared
+        // journal. Do not allow a newer journal to hide an unfinished operation.
+        try {
+            TransactionJournal latest =
+                    TransactionJournalStorage.loadLatest(server, player.getUUID().toString());
+            if (RelocationExecutionStorage.exists(server, latest)) {
+                var execution = RelocationExecutionStorage.load(server, latest);
+                if (!"ROLLED_BACK".equals(execution.phase)) {
+                    return new Result(false, "An existing sandbox transfer is "
+                            + execution.phase + "; rollback it before preparing a new transaction");
+                }
+            }
+        } catch (IOException unavailable) {
+            // Fresh worlds have no journals. Any damaged journal is checked again
+            // by the normal non-overwriting journal storage; this is not approval
+            // to execute a prior operation.
+        }
+
         StructureSnapshot snapshot;
         try {
             snapshot = StructureSnapshotStorage.loadLatest(
