@@ -1,53 +1,27 @@
-Operator Reality 0.16.0
+Operator Reality 0.17.0
 
-Verification: PASSED for source commit e98294c33ccb979bf13a1e7151020ee61514058f.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42183885352
+Verification: PENDING GitHub Actions on exact source commit.
+Previously verified release: 0.16.0, https://github.com/craftkot/ytr/actions/runs/42183885352
+Build toolchain: Minecraft Java 26.3, Fabric API 0.165.2+26.3, Java 25, Gradle 9.8.2.
 
-Successful checks:
-- gradle clean test build --no-daemon: success
-- Minecraft Java 26.3 Fabric dedicated server boot: success
-- RCON /operator status smoke test: success
-- Persisted Operator world memory schemaVersion 8: success
-- All JUnit tests, including shared apply/rollback fault injection: success
-- JAR and source ZIP upload: success
+New required CI checks:
+- gradle clean test build --no-daemon, including JUnit fault-injection tests.
+- Dedicated Fabric server boot and /operator status over RCON.
+- REAL Minecraft block-state relocation and rollback using the actual sandbox transaction engine.
+- Three separate Fabric server JVM lifetimes sharing a disposable test world:
+  phase1: 26-block shell transferred, 52 guarded block writes, COMMITTED WAL.
+  phase2: source/destination chunks and WAL checked AFTER restart, rollback executed.
+  phase3: original cells and ROLLED_BACK WAL checked AFTER another restart.
+- Keep world-memory schemaVersion 8 and publish 0.17.0 JAR/source artifacts.
 
-Actual GitHub artifact names currently retain the older workflow labels:
-- operator-reality-0.14.0 (324974-byte ZIP wrapper; contains 0.16.0 build/libs JARs)
-- operator-reality-0.14.0-source (146405-byte source ZIP wrapper)
-This label discrepancy does not alter the Gradle mod_version=0.16.0.
+Server integration test security:
+- Test-only command gated by -Doperator.reality.ciSmoke=true,
+  in-world operator_reality/ci-smoke.allow marker, admin privileges and zero players.
+- Runner requires GITHUB_ACTIONS=true and operates on the CI run/world directory.
+- The fixture uses actual stone and air BlockStates only; no inventories/BlockEntities.
+- Runs on two separate chunks and uses the same WAL storage as gameplay.
 
-Previous verified baseline: Operator 0.15.0 code commit
-422f3ce4b7c575e0f984360880fe50aa5d252334
-CI success: https://github.com/craftkot/ytr/actions/runs/42181800385
-
-Required verification:
-- gradle clean test build --no-daemon (Java 25 / Gradle 9.8.2)
-- Minecraft Java 26.3 dedicated Fabric server startup and RCON /operator status
-- Operator persistent memory schemaVersion 8
-- Publish JAR and source ZIP artifact archives.
-
-0.16 changes:
-- Manual sandbox apply now uses SandboxTransactionEngine, the same pure-Java
-  core as end-to-end crash/fault-injection tests.
-- Sandbox rollback now uses the same core for WAL phase transitions and
-  RecoveryExecutor world compare-and-restore calls.
-- Fail closed before first world write unless the full source/target AABB
-  matches its BEFORE preimages and the target region is recorded air.
-- Every mutation must have a durable WAL intent before a CAS world change,
-  and a confirmed ACK after it. Postcheck validates the entire world.
-- COMMITTED phase cannot be reached before all intended write ACKs.
-- Regression test for hollow 26-block house full apply/rollback.
-- Fault-injection tests for WAL creation error, ACK crash after world write,
-  intermediate rollback interruption, retry, unknown edits, wrong offsets,
-  occupied destination, write CAS failure.
-- Excluded axis-bearing deepslate; 10 simple vanilla block IDs remain.
-
-SAFETY:
-- OP-only manual sandbox function, 128-cell per-region maximum.
-- No BlockEntity NBT, inventories, non-default states, liquids,
-  power/attached/gravity blocks, modded blocks or entities in the AABB.
-- No scheduled automatic AI world rewrites.
-- WAL and Minecraft chunk disk persistence are not one atomic transaction.
-- Existing CI tests DO NOT perform live-world sandbox apply/rollback.
-- GitHub workflow artifact labels may still say 0.14.0; the actual 0.16.0
-  JAR version must be checked inside the archive.
+Not yet proven:
+- Abrupt unclean process termination during setBlock or chunk saving.
+- Multi-chunk disk atomicity, block entities, modded blocks, physics and redstone.
+- Automatic AI-driven world changes or autonomous rollback are still disabled.
