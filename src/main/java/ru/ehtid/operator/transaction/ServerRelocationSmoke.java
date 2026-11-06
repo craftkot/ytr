@@ -358,5 +358,12 @@ public final class ServerRelocationSmoke {
                 throws IOException {
             RelocationExecutionStorage.update(server, journal, ledger);
         }
+
+        @Override
+        public void flushWorld() throws IOException {
+            if (!server.saveEverything(true, true, true)) {
+                throw new IOException("Minecraft world flush returned false");
+            }
+        }
     }
 }
