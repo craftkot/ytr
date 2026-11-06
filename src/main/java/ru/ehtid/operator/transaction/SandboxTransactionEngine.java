@@ -24,6 +24,9 @@ public final class SandboxTransactionEngine {
     public interface LedgerStore {
         void create(TransactionJournal journal, RelocationExecutionLedger state) throws IOException;
         void update(TransactionJournal journal, RelocationExecutionLedger state) throws IOException;
+
+        /** Flush the affected Minecraft world state before a WAL terminal phase is durable. */
+        void flushWorld() throws IOException;
     }
 
     public enum Outcome {
@@ -97,6 +100,12 @@ public final class SandboxTransactionEngine {
         }
 
         try {
+            // The terminal WAL state must never get ahead of the chunk data.
+            store.flushWorld();
+        } catch (IOException | RuntimeException failure) {
+            return new Result(Outcome.INTERRUPTED, "WORLD_FLUSH_FAILED", count, acknowledged);
+        }
+        try {
             ledger.setPhase("COMMITTED", gameTick.getAsLong());
             store.update(journal, ledger);
         } catch (IOException | RuntimeException failure) {
@@ -135,15 +144,31 @@ public final class SandboxTransactionEngine {
                     "PRECHECK_" + before.status(), 0, 0);
         }
 
+        boolean pendingRestoreAlreadyApplied = false;
+        if ("RESTORE".equals(execution.pendingOperation)) {
+            RecoveryPlanner.Position pending = new RecoveryPlanner.Position(
+                    execution.pendingX, execution.pendingY, execution.pendingZ);
+            boolean belongsToJournal = containsCell(journal.source.before, pending)
+                    || containsCell(journal.target.before, pending);
+            if (!belongsToJournal) {
+                return new Result(Outcome.REFUSED, "INVALID_PENDING_RESTORE_POSITION", 0, 0);
+            }
+            // A pending restore absent from the current change list already
+            // matches its BEFORE image: the world write survived, its ACK did not.
+            pendingRestoreAlreadyApplied = before.changes().stream()
+                    .noneMatch(change -> change.position().equals(pending));
+        }
+
         try {
             if ("COMMITTED".equals(execution.phase)) {
                 execution.setPhase("ROLLING_BACK", gameTick.getAsLong());
             } else if ("APPLYING".equals(execution.phase)
                     || "ROLLING_BACK".equals(execution.phase)) {
-                // Interrupted writes may have happened before their WAL ACK.
-                // The full world preflight above must succeed before clearing
-                // any stale intent; then restore can safely re-evaluate cells.
-                execution.beginRollbackAfterInterruptedWrite(gameTick.getAsLong());
+                // Reconcile the interrupted intent only after full BEFORE/AFTER
+                // world preflight; an already-restored pending cell gets its ACK
+                // accounted for, otherwise it remains in the restore plan.
+                execution.beginRollbackAfterInterruptedWrite(
+                        gameTick.getAsLong(), pendingRestoreAlreadyApplied);
             } else {
                 return new Result(Outcome.REFUSED, "INVALID_PHASE", 0, 0);
             }
@@ -181,6 +206,24 @@ public final class SandboxTransactionEngine {
                     "RECOVERY_" + restored.outcome() + "_" + restored.reason(),
                     0, restored.restored());
         }
+        RecoveryPlanner.Plan postRestore;
+        try {
+            postRestore = RecoveryPlanner.inspect(journal, world);
+        } catch (RuntimeException failure) {
+            return new Result(Outcome.INTERRUPTED, "RECOVERY_POSTCHECK_READ_FAILED",
+                    0, restored.restored());
+        }
+        if (postRestore.status() != RecoveryPlanner.Status.UNCHANGED) {
+            return new Result(Outcome.INTERRUPTED, "RECOVERY_POSTCHECK_MISMATCH",
+                    0, restored.restored());
+        }
+        try {
+            // Persist the restored chunk state BEFORE declaring ROLLED_BACK.
+            store.flushWorld();
+        } catch (IOException | RuntimeException failure) {
+            return new Result(Outcome.INTERRUPTED, "WORLD_FLUSH_FAILED",
+                    0, restored.restored());
+        }
         try {
             execution.setPhase("ROLLED_BACK", gameTick.getAsLong());
             store.update(journal, execution);
@@ -190,6 +233,15 @@ public final class SandboxTransactionEngine {
         }
         return new Result(Outcome.ROLLED_BACK, "VERIFIED",
                 0, restored.restored());
+    }
+
+    private static boolean containsCell(List<TransactionJournal.Cell> cells,
+                                        RecoveryPlanner.Position position) {
+        for (TransactionJournal.Cell cell : cells) {
+            if (cell.x() == position.x() && cell.y() == position.y()
+                    && cell.z() == position.z()) return true;
+        }
+        return false;
     }
 
     private static boolean validLayout(TransactionJournal journal) {
