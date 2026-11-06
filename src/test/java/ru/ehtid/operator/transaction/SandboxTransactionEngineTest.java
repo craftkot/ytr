@@ -152,7 +152,8 @@ class SandboxTransactionEngineTest {
         var interrupted = SandboxTransactionEngine.rollback(
                 journal, store.reload(), world, () -> 102L, store);
         assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
-        assertEquals("RESTORE", store.reload().pendingOperation);
+        assertEquals("", store.reload().pendingOperation,
+                "A failed intent write must not appear as durable WAL state");
         assertEquals(52, RecoveryPlanner.inspect(journal, world).appliedCells());
 
         store.failUpdateAt = -1;
