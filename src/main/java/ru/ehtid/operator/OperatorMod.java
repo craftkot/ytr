@@ -30,6 +30,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.13.0 loaded. Conflict-aware transaction recovery audits, retryable simulation, and protected PREPARED journals are enabled; in-game world mutations remain disabled.");
+        LOGGER.info("Operator: Reality 0.14.0 loaded. Persistent recovery audit checkpoints, read-only Minecraft recovery inspection, neighbor-risk analysis and fault-injection recovery tests are enabled; live world mutation remains disabled.");
     }
 }
