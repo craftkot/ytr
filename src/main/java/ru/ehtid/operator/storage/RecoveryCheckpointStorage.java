@@ -47,7 +47,12 @@ public final class RecoveryCheckpointStorage {
     public static RecoveryCheckpointLedger loadVerified(MinecraftServer server,
                                                          TransactionJournal journal)
             throws IOException {
-        Path path = path(server, journal);
+        return readCheckpoint(path(server, journal), journal);
+    }
+
+    /** Package-private file helper for restart and corruption tests. */
+    static RecoveryCheckpointLedger readCheckpoint(Path path, TransactionJournal journal)
+            throws IOException {
         if (!Files.isRegularFile(path)) throw new IOException("Recovery checkpoint file not found");
         if (Files.size(path) > MAX_FILE_BYTES)
             throw new IOException("Recovery checkpoint exceeds 1 MiB");
@@ -91,7 +96,14 @@ public final class RecoveryCheckpointStorage {
             throws IOException {
         if (!ledger.valid() || !ledger.matches(journal))
             throw new IOException("Cannot persist invalid recovery checkpoint");
-        Path destination = path(server, journal);
+        writeCheckpoint(path(server, journal), ledger, replace);
+    }
+
+    /** Package-private atomic write helper for restart and corruption tests. */
+    static void writeCheckpoint(Path destination, RecoveryCheckpointLedger ledger,
+                                boolean replace) throws IOException {
+        if (ledger == null || !ledger.valid())
+            throw new IOException("Cannot persist invalid recovery checkpoint");
         Files.createDirectories(destination.getParent());
         if (!replace && Files.exists(destination)) {
             throw new IOException("Recovery checkpoint already exists");
