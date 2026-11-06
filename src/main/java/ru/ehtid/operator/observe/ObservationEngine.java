@@ -288,10 +288,7 @@ public final class ObservationEngine {
                     // Never attribute existing or unrelated neighbour blocks to the builder.
                     if (companionState.getBlock() != placedState.getBlock()) continue;
                     if (isDoor && !companion.equals(check.position().above())) continue;
-                    if (isBed && companionState.toString().equals(placedState.toString())) {
-                        // Same properties are permitted for modded beds, but vanilla
-                        // head/foot differs. Type and pre-use air are the core checks.
-                    }
+                    // Both positions were air before use and now share the same block type.
                     for (PlayerMemory profile : data.players.values()) {
                         if (profile.removePlacedBlock(
                                 companion.getX(), companion.getY(), companion.getZ(),
