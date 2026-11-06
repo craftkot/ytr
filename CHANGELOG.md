@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.21.0 — Fsync Prepared Journal Before WAL Publication
+
+- Refactored `TransactionJournalStorage.save` into a testable directory-based writer and made the server-facing save use it.
+- Prepared transaction journal JSON is written to a same-directory temporary file, size-checked, and forced with `FileChannel.force(true)` before it becomes visible at its UUID destination.
+- Journal publication uses atomic move where supported, with the existing non-atomic fallback on filesystems that reject it.
+- The parent directory is best-effort fsynced after rename so journal discovery metadata is persisted where supported.
+- Exact-ID and latest-journal loading now share the same strict file/integrity validation path.
+- Added `TransactionJournalStorageTest`: reload by exact owner/ID, reject duplicate create, reject altered before-images, reject invalid non-PREPARED phase.
+- This makes the initial PREPARED journal persistence sequence consistent with the execution WAL's existing fsync-backed temp-file replacement.
+
+Limits:
+- Directory fsync is not supported by all OS/filesystem combinations; failure is explicitly tolerated after the file itself has been forced.
+- This does not prove hardware power-loss durability, eliminate storage-controller volatile cache behavior, or create atomicity between journal/WAL and Minecraft Anvil files.
+- All 0.20.0 durability barriers and apply/rollback crash integration tests remain required.
+
 ## 0.20.0 — Durable WAL Commit/Rollback and Rollback-Crash Recovery
 
 - Added a mandatory `LedgerStore.flushWorld()` durability barrier before WAL terminal phases.
