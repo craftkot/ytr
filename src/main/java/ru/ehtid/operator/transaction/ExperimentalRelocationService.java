@@ -2,10 +2,7 @@ package ru.ehtid.operator.transaction;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import net.minecraft.server.MinecraftServer;
@@ -47,72 +44,32 @@ public final class ExperimentalRelocationService {
         String validation = validate(journal, server, player, level, world);
         if (validation != null) return "Sandbox relocation refused: " + validation;
 
-        Map<RecoveryPlanner.Position, RecoveryPlanner.State> before = new HashMap<>();
-        for (TransactionJournal.Cell cell : journal.source.before) {
-            before.put(new RecoveryPlanner.Position(cell.x(), cell.y(), cell.z()),
-                    RecoveryPlanner.State.of(cell));
-        }
-        List<Move> moves = new ArrayList<>();
-        for (TransactionJournal.Cell cell : journal.source.before) {
-            if (SafeBlockPalette.isOrdinaryAir(cell.blockId())) continue;
-            RecoveryPlanner.Position src =
-                    new RecoveryPlanner.Position(cell.x(), cell.y(), cell.z());
-            RecoveryPlanner.Position dst = new RecoveryPlanner.Position(
-                    Math.addExact(cell.x(), journal.offsetX),
-                    Math.addExact(cell.y(), journal.offsetY),
-                    Math.addExact(cell.z(), journal.offsetZ));
-            moves.add(new Move(src, dst, RecoveryPlanner.State.of(cell)));
-        }
-        moves.sort(Comparator.comparingInt((Move move) -> move.from().x())
-                .thenComparingInt(move -> move.from().y())
-                .thenComparingInt(move -> move.from().z()));
-        if (moves.isEmpty() || moves.size() * 2 > 256)
-            return "Sandbox relocation refused: unsupported block count";
+        SandboxTransactionEngine.Result transfer = SandboxTransactionEngine.apply(
+                journal, world, level::getGameTime, new SandboxTransactionEngine.LedgerStore() {
+                    @Override
+                    public void create(TransactionJournal transaction,
+                                       RelocationExecutionLedger state) throws IOException {
+                        RelocationExecutionStorage.create(server, transaction, state);
+                    }
 
-        RelocationExecutionLedger ledger = RelocationExecutionLedger.start(
-                journal, moves.size() * 2, level.getGameTime());
-        try {
-            // This persisted state is the authorization that the mod truly
-            // began an operation. The PREPARED journal alone never is.
-            RelocationExecutionStorage.create(server, journal, ledger);
-        } catch (IOException failure) {
-            return "Sandbox relocation refused: cannot persist initial write-ahead ledger: "
-                    + failure.getMessage();
-        }
+                    @Override
+                    public void update(TransactionJournal transaction,
+                                       RelocationExecutionLedger state) throws IOException {
+                        RelocationExecutionStorage.update(server, transaction, state);
+                    }
+                });
 
-        // Stage 1: copy to the entirely empty target; Stage 2: clear source.
-        // Every cell gets a durable intent BEFORE its setBlock and ACK AFTER.
-        for (Move move : moves) {
-            if (!write(server, level, journal, ledger, world, move.to(),
-                    RecoveryPlanner.State.air(), move.value())) {
-                return "Sandbox relocation INTERRUPTED at target; manual /operator sandbox rollback required";
-            }
+        if (!transfer.committed()) {
+            return "Sandbox relocation " + transfer.outcome()
+                    + ": " + transfer.reason()
+                    + " | WAL-confirmed writes: " + transfer.confirmedWrites()
+                    + " | if an execution ledger exists, only manual rollback is allowed";
         }
-        for (Move move : moves) {
-            if (!write(server, level, journal, ledger, world, move.from(),
-                    move.value(), RecoveryPlanner.State.air())) {
-                return "Sandbox relocation INTERRUPTED at source; manual /operator sandbox rollback required";
-            }
-        }
-
-        RecoveryPlanner.Plan verification = RecoveryPlanner.inspect(journal, world);
-        if (verification.status() != RecoveryPlanner.Status.RESTORE_NEEDED
-                || verification.appliedCells() != moves.size() * 2) {
-            return "Sandbox relocation incomplete: verification failed; use /operator sandbox rollback";
-        }
-
-        try {
-            ledger.setPhase("COMMITTED", level.getGameTime());
-            RelocationExecutionStorage.update(server, journal, ledger);
-        } catch (IOException | RuntimeException failure) {
-            return "Sandbox relocation writes finished, but commit ledger was not persisted; "
-                    + "use /operator sandbox rollback or inspect status";
-        }
-        return "Sandbox relocation COMMITTED: " + moves.size()
-                + " plain blocks moved, " + ledger.appliedWrites
+        return "Sandbox relocation COMMITTED: " + transfer.transferredBlocks()
+                + " plain blocks moved, " + transfer.confirmedWrites()
                 + " guarded writes | transaction " + journal.journalId
                 + " | /operator sandbox rollback can restore preimages"
-                + " | this remains experimental; use a disposable world backup";
+                + " | experimental: use only a disposable world backup";
     }
 
     public static String rollback(MinecraftServer server, ServerPlayer player) {
@@ -220,22 +177,6 @@ public final class ExperimentalRelocationService {
         }
     }
 
-    private static boolean write(MinecraftServer server, ServerLevel level,
-                                 TransactionJournal journal, RelocationExecutionLedger ledger,
-                                 MinecraftSafeBlockWorld world, RecoveryPlanner.Position position,
-                                 RecoveryPlanner.State expected, RecoveryPlanner.State next) {
-        try {
-            ledger.beginWrite("APPLY", position.x(), position.y(), position.z(), level.getGameTime());
-            RelocationExecutionStorage.update(server, journal, ledger);
-            if (!world.compareAndRestore(position, expected, next)) return false;
-            ledger.acknowledgeWrite("APPLY", level.getGameTime());
-            RelocationExecutionStorage.update(server, journal, ledger);
-            return true;
-        } catch (IOException | RuntimeException failure) {
-            return false;
-        }
-    }
-
     private static String validate(TransactionJournal journal, MinecraftServer server,
                                    ServerPlayer player, ServerLevel level,
                                    MinecraftSafeBlockWorld world) {
@@ -303,6 +244,5 @@ public final class ExperimentalRelocationService {
         return !level.getEntities(null, box).isEmpty();
     }
 
-    private record Move(RecoveryPlanner.Position from, RecoveryPlanner.Position to,
-                        RecoveryPlanner.State value) { }
+
 }
