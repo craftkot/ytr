@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "An adaptive Minecraft observer with persistent behaviour memory, room-graph analysis of recorded buildings and a non-mutating decision planner.",
+  "description": "An adaptive observer with construction memory, room graphs, integrity-checked snapshots, dry-run relocation validation and no automatic world mutation.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
