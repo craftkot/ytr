@@ -95,6 +95,8 @@ public final class RelocationExecutionLedger {
                 || ("COMMITTED".equals(phase) && "ROLLING_BACK".equals(next))
                 || ("ROLLING_BACK".equals(phase) && "ROLLED_BACK".equals(next));
         if (!allowed) throw new IllegalStateException("Invalid execution transition: " + phase + " -> " + next);
+        if ("COMMITTED".equals(next) && appliedWrites != totalWrites)
+            throw new IllegalStateException("Cannot commit incomplete write sequence");
         phase = next;
         updatedTick = tick;
         sign();
@@ -120,8 +122,10 @@ public final class RelocationExecutionLedger {
                 && appliedWrites >= 0 && appliedWrites <= totalWrites
                 && restoredWrites >= 0 && restoredWrites <= totalWrites
                 && pendingOperation != null
-                && (pendingOperation.isEmpty() || pendingOperation.equals("APPLY")
-                    || pendingOperation.equals("RESTORE"))
+                && (pendingOperation.isEmpty()
+                    || ("APPLYING".equals(phase) && pendingOperation.equals("APPLY"))
+                    || ("ROLLING_BACK".equals(phase) && pendingOperation.equals("RESTORE")))
+                && (!"COMMITTED".equals(phase) || appliedWrites == totalWrites)
                 && sha256 != null && sha256.equals(fingerprint());
     }
 
