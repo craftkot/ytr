@@ -56,6 +56,7 @@ class SandboxTransactionEngineTest {
         assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, rolledBack.outcome());
         assertEquals(52, rolledBack.confirmedWrites());
         assertEquals("ROLLED_BACK", store.reload().phase);
+        assertEquals(52, store.reload().restoredWrites);
         assertEquals(RecoveryPlanner.Status.UNCHANGED,
                 RecoveryPlanner.inspect(journal, world).status());
 
@@ -131,8 +132,57 @@ class SandboxTransactionEngineTest {
         assertEquals(writesAfterFailure + 51, world.writes,
                 "The already recovered cell must not be written twice");
         assertEquals("ROLLED_BACK", store.reload().phase);
+        assertEquals(52, store.reload().restoredWrites,
+                "The unacknowledged restore is reconciled from its verified BEFORE image");
         assertEquals(RecoveryPlanner.Status.UNCHANGED,
                 RecoveryPlanner.inspect(journal, world).status());
+    }
+
+    @Test
+    void applyDoesNotCommitWalWhenWorldFlushFails() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+        store.failFlush = true;
+
+        var interrupted = SandboxTransactionEngine.apply(journal, world, () -> 101L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("WORLD_FLUSH_FAILED", interrupted.reason());
+        assertEquals("APPLYING", store.reload().phase);
+        assertEquals(52, store.reload().appliedWrites);
+        assertEquals("", store.reload().pendingOperation);
+
+        store.failFlush = false;
+        var recovered = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, recovered.outcome());
+        assertEquals("ROLLED_BACK", store.reload().phase);
+    }
+
+    @Test
+    void rollbackDoesNotCommitWalBeforeRestoredWorldFlush() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED,
+                SandboxTransactionEngine.apply(journal, world, () -> 101L, store).outcome());
+
+        store.failFlush = true;
+        var interrupted = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("WORLD_FLUSH_FAILED", interrupted.reason());
+        assertEquals("ROLLING_BACK", store.reload().phase);
+        assertEquals("", store.reload().pendingOperation);
+        assertEquals(RecoveryPlanner.Status.UNCHANGED,
+                RecoveryPlanner.inspect(journal, world).status());
+
+        store.failFlush = false;
+        var resumed = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 103L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, resumed.outcome());
+        assertEquals("ROLLED_BACK", store.reload().phase);
+        assertEquals(52, store.reload().restoredWrites);
     }
 
     @Test
@@ -257,8 +307,10 @@ class SandboxTransactionEngineTest {
     private static final class Store implements SandboxTransactionEngine.LedgerStore {
         String state;
         int updates;
+        int flushes;
         int failUpdateAt = -1;
         boolean failCreate;
+        boolean failFlush;
 
         RelocationExecutionLedger reload() {
             return new Gson().fromJson(state, RelocationExecutionLedger.class);
@@ -278,6 +330,12 @@ class SandboxTransactionEngineTest {
             updates++;
             if (updates == failUpdateAt) throw new IOException("injected WAL failure");
             state = new Gson().toJson(ledger);
+        }
+
+        @Override
+        public void flushWorld() throws IOException {
+            flushes++;
+            if (failFlush) throw new IOException("injected world flush failure");
         }
     }
 
