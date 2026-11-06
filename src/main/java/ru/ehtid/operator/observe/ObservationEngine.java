@@ -38,6 +38,7 @@ import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
 import ru.ehtid.operator.snapshot.StructureSnapshotService;
 import ru.ehtid.operator.transaction.TransactionPreparationService;
+import ru.ehtid.operator.transaction.RecoveryAuditService;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
@@ -739,7 +740,7 @@ public final class ObservationEngine {
                 .mapToInt(memory -> memory.recognizedRoomCount).sum();
         int roomLinks = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedRoomConnections).sum();
-        return "Operator 0.12 | " + phase
+        return "Operator 0.13 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -785,6 +786,12 @@ public final class ObservationEngine {
     public String getConstructionTransactionStatus(ServerPlayer player, MinecraftServer server) {
         if (!loaded) return "Operator memory is not loaded";
         return TransactionPreparationService.status(server, player).message();
+    }
+
+    /** Check the latest PREPARED journal against the actual loaded world without writes. */
+    public String auditConstructionRecovery(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        return RecoveryAuditService.audit(server, player);
     }
 
     public String getBrainProfile(ServerPlayer player) {
