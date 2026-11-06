@@ -1,6 +1,7 @@
 package ru.ehtid.operator.command;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -47,6 +48,29 @@ public final class OperatorCommands {
                     );
                     return 1;
                 }))
+                .then(Commands.literal("snapshot").executes(context -> {
+                    var source = context.getSource();
+                    var player = source.getPlayerOrException();
+                    source.sendSuccess(() -> Component.literal(
+                            observer.captureConstructionSnapshot(player, source.getServer())), false);
+                    return 1;
+                }))
+                .then(Commands.literal("preview")
+                        .then(Commands.argument("x", IntegerArgumentType.integer())
+                                .then(Commands.argument("y", IntegerArgumentType.integer())
+                                        .then(Commands.argument("z", IntegerArgumentType.integer())
+                                                .executes(context -> {
+                                                    var source = context.getSource();
+                                                    var player = source.getPlayerOrException();
+                                                    int x = IntegerArgumentType.getInteger(context, "x");
+                                                    int y = IntegerArgumentType.getInteger(context, "y");
+                                                    int z = IntegerArgumentType.getInteger(context, "z");
+                                                    source.sendSuccess(() -> Component.literal(
+                                                            observer.previewConstructionRelocation(
+                                                                    player, source.getServer(), x, y, z)),
+                                                            false);
+                                                    return 1;
+                                                })))))
                 .then(Commands.literal("profile").executes(context -> {
                     var source = context.getSource();
                     var player = source.getPlayerOrException();
