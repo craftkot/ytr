@@ -30,6 +30,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.11.0 loaded. Bounded building snapshots, BlockEntity NBT capture, relocation preflight and shadow planning are enabled; world mutation remains disabled.");
+        LOGGER.info("Operator: Reality 0.12.0 loaded. Bounded source-and-target transaction preimages, journal integrity checks and read-only recovery planning are enabled; world mutation remains disabled.");
     }
 }
