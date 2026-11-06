@@ -1,39 +1,31 @@
-Operator: Reality 0.10.0
+Operator Reality 0.11.0
 
-Verification: PASSED for source commit 6e7e978ed83c7b41c53f4ec085e9663d0f5332e6.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42138745446
-All steps succeeded:
+Verification: PENDING GitHub Actions on exact source commit.
+Baseline: Operator 0.10.0 verified; https://github.com/craftkot/ytr/actions/runs/42138745446
+
+Required CI checks:
 - gradle clean test build --no-daemon
-- Dedicated Fabric server startup and RCON /operator status
-- Persisted world memory schemaVersion 8
-- Uploaded mod JAR artifacts and source snapshot ZIP
-
-Artifacts:
-- operator-reality-0.10.0 (174,739-byte GitHub artifact archive)
-- operator-reality-0.10.0-source (76,306-byte GitHub artifact archive)
-
-Previous verified release: Operator 0.9.0, https://github.com/craftkot/ytr/actions/runs/42121017075
-
-Target:
-- Minecraft Java 26.3; Fabric Loader 0.20.1; Fabric API 0.165.2+26.3.
-- Java 25 / Gradle 9.8.2.
-- gradle clean test build --no-daemon
-- Dedicated Fabric server startup, RCON /operator status, memory schemaVersion 8.
-- Upload release JAR and full source snapshot ZIP.
+- Dedicated Fabric 26.3 server startup with Java 25 / Gradle 9.8.2
+- RCON /operator status and persisted memory schema 8
+- Upload 0.11.0 mod JAR and source ZIP
 
 Implemented:
-- RoomAnalyzer: exterior flood-fill, bounded interior room segmentation, per-room bounds/cell counts.
-- Door graph connections between adjacent distinct enclosed rooms.
-- Functional room marker roles for beds/storage/workstations/furnaces.
-- Verified multi-block companions when installing doors and beds.
-- Per-player persisted room count, door connections, furnished rooms and largest room size.
-- /operator rooms and extended /operator status, /operator profile and /operator structures.
-- Room-aware HOME_ECHO shadow reasoning.
-- Schema 7 to 8 migration preserving previous memories.
-- World changes disabled.
+- Pure bounded selection of nearest connected placed-block building (up to 4096 blocks).
+- Full loaded-world snapshot of BlockState and BlockEntity SNBT for recorded source cells.
+- SHA-256 checksum across positions, serialized states and NBT.
+- Explicit /operator snapshot, atomic per-player snapshot storage (max 8).
+- Explicit /operator preview x y z without block/world mutations.
+- Destination height, world border, overlap, range, unloaded chunk, occupancy checks.
+- Snapshot verification against current source states and NBT before preview.
+- Unit tests for selection, preflight and checksum integrity.
 
-Safety / technical limitations:
-- Inferred geometry is based only on tracked placed blocks, not actual full-world occupancy.
-- Open/closed door state is not modeled as physical pathfinding; door blocks partition the inferred rooms.
-- Room analysis bounded to 32,768 cells per connected component, 65,536 per profile analysis, 128 rooms and 128 door links per component.
-- Block-entity NBT, inventory contents, actual house movement/rebuilding, and rollback remain absent.
+Limits:
+- 4096 recorded blocks per captured component; 48-block radius for selection.
+- 256 KiB SNBT per block entity, 2 MiB total, 4 MiB JSON snapshot.
+- 4096-block translation per axis.
+- 8 stored snapshots per player, with no automatic deletion.
+
+Unimplemented and unsafe to assume:
+- Full-world source preimage (natural blocks and air), support/physics validation, rollback journal.
+- Multi-chunk atomic relocation, neighbor updates, entity/vehicle relocation.
+- Automatic world rewriting and actual house movement remain disabled.
