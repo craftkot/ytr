@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0 — Snapshot Integrity & Relocation Preflight
+
+- Added a bounded, pure-Java selection of the nearest connected recorded building, never combining unrelated components or dimensions.
+- Added an explicit `/operator snapshot` command: server-local read-only preimage capture of up to 4096 tracked placed blocks.
+- Captures current BlockState properties and full BlockEntity NBT (including container contents) only when source chunks are loaded and each tracked block matches the world.
+- Added per-block 256 KiB and aggregate 2 MiB NBT caps and an overall 4 MiB snapshot-file cap.
+- Added deterministic SHA-256 integrity checks over snapshot metadata, source positions, block states and serialized BlockEntity NBT.
+- Stores up to eight separately named snapshots per player in atomic, non-overwriting JSON files inside the world folder; no NBT is printed to chat or sent externally.
+- Added `/operator preview <x> <y> <z>`, a non-mutating destination inspection using the latest valid snapshot.
+- Preflight rejects changed source blocks/NBT, unloaded source or destination chunks, occupied destination cells, source/destination bounding-box overlap, excessive displacement and invalid height/border coordinates.
+- Added unit tests for source component selection, size limits, load/occupancy checks, bounds and snapshot checksums.
+- **World mutation remains disabled.** This is not a rollback system: natural terrain, gaps/air and adjacent modded dependencies are not yet captured.
+
+Known limitations:
+- Structure detection still relies on remembered player placements, not all physical blocks in the world.
+- The snapshot includes inventory NBT; secure access to the server world directory is essential.
+- Preflight cannot guarantee a later move would be safe or reversible; no atomic chunk transaction, rollback or entity relocation is implemented.
+- Existing snapshots are never automatically deleted. After eight snapshots per player, manual archival is required.
+
 ## 0.10.0 — Room Intelligence
 
 - Added a bounded offline RoomAnalyzer that separates exterior-connected air from enclosed cavities, then labels separate connected enclosed volumes as room candidates.
