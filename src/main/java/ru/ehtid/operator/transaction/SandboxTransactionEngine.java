@@ -1,6 +1,7 @@
 package ru.ehtid.operator.transaction;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -26,7 +27,7 @@ public final class SandboxTransactionEngine {
     }
 
     public enum Outcome {
-        REFUSED, INTERRUPTED, COMMITTED
+        REFUSED, INTERRUPTED, COMMITTED, ROLLED_BACK
     }
 
     public record Result(Outcome outcome, String reason, int transferredBlocks,
@@ -102,6 +103,93 @@ public final class SandboxTransactionEngine {
             return new Result(Outcome.INTERRUPTED, "WAL_COMMIT_FAILED", count, acknowledged);
         }
         return new Result(Outcome.COMMITTED, "VERIFIED", count, acknowledged);
+    }
+
+    /**
+     * Manual recovery for an operation previously started BY THIS MOD. Unlike
+     * an audit checkpoint, the execution ledger proves an opt-in mutation
+     * began and its current phase. In-game entity/neighbor checks remain the
+     * caller's responsibility and cannot be skipped.
+     */
+    public static Result rollback(TransactionJournal journal,
+                                  RelocationExecutionLedger execution,
+                                  RecoveryExecutor.MutableWorld world,
+                                  LongSupplier gameTick, LedgerStore store) {
+        if (journal == null || execution == null || world == null
+                || gameTick == null || store == null
+                || !SafeBlockPalette.accepts(journal) || !validLayout(journal)
+                || !execution.matches(journal)) {
+            return new Result(Outcome.REFUSED, "INVALID_EXECUTION_OR_JOURNAL", 0, 0);
+        }
+        if ("ROLLED_BACK".equals(execution.phase)) {
+            return new Result(Outcome.ROLLED_BACK, "ALREADY_ROLLED_BACK", 0, 0);
+        }
+        RecoveryPlanner.Plan before;
+        try {
+            before = RecoveryPlanner.inspect(journal, world);
+        } catch (RuntimeException failure) {
+            return new Result(Outcome.REFUSED, "PRECHECK_READ_FAILED", 0, 0);
+        }
+        if (!before.safeToRestore()) {
+            return new Result(Outcome.REFUSED,
+                    "PRECHECK_" + before.status(), 0, 0);
+        }
+
+        try {
+            if ("COMMITTED".equals(execution.phase)) {
+                execution.setPhase("ROLLING_BACK", gameTick.getAsLong());
+            } else if ("APPLYING".equals(execution.phase)
+                    || "ROLLING_BACK".equals(execution.phase)) {
+                // Interrupted writes may have happened before their WAL ACK.
+                // The full world preflight above must succeed before clearing
+                // any stale intent; then restore can safely re-evaluate cells.
+                execution.beginRollbackAfterInterruptedWrite(gameTick.getAsLong());
+            } else {
+                return new Result(Outcome.REFUSED, "INVALID_PHASE", 0, 0);
+            }
+            store.update(journal, execution);
+        } catch (IOException | RuntimeException failure) {
+            return new Result(Outcome.REFUSED, "WAL_ROLLBACK_PHASE_FAILED", 0, 0);
+        }
+
+        RecoveryExecutor.CheckpointSink sink = new RecoveryExecutor.CheckpointSink() {
+            @Override
+            public void beforeWrite(int sequence, RecoveryPlanner.Change change) {
+                execution.beginWrite("RESTORE", change.position().x(),
+                        change.position().y(), change.position().z(), gameTick.getAsLong());
+                persist();
+            }
+
+            @Override
+            public void afterWrite(int sequence, RecoveryPlanner.Change change) {
+                execution.acknowledgeWrite("RESTORE", gameTick.getAsLong());
+                persist();
+            }
+
+            private void persist() {
+                try {
+                    store.update(journal, execution);
+                } catch (IOException failure) {
+                    throw new UncheckedIOException(failure);
+                }
+            }
+        };
+        RecoveryExecutor.Result restored = RecoveryExecutor.restore(journal, world, sink);
+        if (restored.outcome() != RecoveryExecutor.Outcome.COMPLETED
+                && restored.outcome() != RecoveryExecutor.Outcome.NOTHING_TO_RESTORE) {
+            return new Result(Outcome.INTERRUPTED,
+                    "RECOVERY_" + restored.outcome() + "_" + restored.reason(),
+                    0, restored.restored());
+        }
+        try {
+            execution.setPhase("ROLLED_BACK", gameTick.getAsLong());
+            store.update(journal, execution);
+        } catch (IOException | RuntimeException failure) {
+            return new Result(Outcome.INTERRUPTED, "WAL_ROLLBACK_COMMIT_FAILED",
+                    0, restored.restored());
+        }
+        return new Result(Outcome.ROLLED_BACK, "VERIFIED",
+                0, restored.restored());
     }
 
     private static boolean validLayout(TransactionJournal journal) {
