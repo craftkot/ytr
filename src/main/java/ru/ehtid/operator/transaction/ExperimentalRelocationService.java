@@ -12,6 +12,7 @@ import net.minecraft.world.phys.AABB;
 import ru.ehtid.operator.snapshot.StructureSnapshot;
 import ru.ehtid.operator.storage.StructureSnapshotStorage;
 import ru.ehtid.operator.storage.RelocationExecutionStorage;
+import ru.ehtid.operator.storage.RelocationWatchdogStorage;
 import ru.ehtid.operator.storage.TransactionJournalStorage;
 
 /**
@@ -28,6 +29,22 @@ public final class ExperimentalRelocationService {
     private ExperimentalRelocationService() { }
 
     public static String apply(MinecraftServer server, ServerPlayer player) {
+        // A different player's abandoned WAL must not be hidden just because
+        // this player's latest transaction is clean. Until an explicit admin
+        // recovery resolves it, fail closed for ALL new sandbox world writes.
+        try {
+            var census = RelocationWatchdogStorage.scan(server);
+            if (census.blocksNewWrites()) {
+                return "Sandbox relocation refused: unresolved or damaged server WAL"
+                        + " | use /operator sandbox monitor"
+                        + " | " + census.unfinished() + " unfinished, "
+                        + census.invalid() + " invalid";
+            }
+        } catch (IOException unreadable) {
+            return "Sandbox relocation refused: cannot audit existing WALs: "
+                    + unreadable.getMessage();
+        }
+
         TransactionJournal journal;
         try {
             journal = TransactionJournalStorage.loadLatest(server, player.getUUID().toString());
