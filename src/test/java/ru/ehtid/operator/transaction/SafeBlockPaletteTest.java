@@ -24,6 +24,8 @@ class SafeBlockPaletteTest {
                 "minecraft:oak_planks", "Block{minecraft:oak_planks}", "{Items:[]}"));
         assertFalse(SafeBlockPalette.accepts(
                 "minecraft:oak_log", "Block{minecraft:oak_log}[axis=x]", null));
+        assertFalse(SafeBlockPalette.accepts(
+                "minecraft:deepslate", "Block{minecraft:deepslate}[axis=y]", null));
     }
 
     @Test
