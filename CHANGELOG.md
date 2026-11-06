@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.22.0 — Server-Wide WAL Watchdog and Offline Recovery Visibility
+
+- Added `RelocationWatchdogStorage`, a bounded, read-only scan of every server-side execution ledger, independent of which players are currently online.
+- Each WAL is checked against the exact matching PREPARED before-image file, player UUID, journal UUID and SHA-256; missing, malformed, renamed or tampered files fail closed.
+- New privileged `/operator sandbox monitor` command works from player operators and the server console/RCON. It reports unfinished, invalid, committed and rolled-back transactions, including the first four unsafe journal identifiers, without emitting any NBT or inventory contents.
+- Added a startup log warning when unfinished or invalid WALs are discovered after an unclean Minecraft server shutdown; the scan NEVER loads chunks or alters world blocks.
+- New manual `/operator sandbox apply` operations are rejected server-wide whenever any owner's WAL is unfinished, corrupted or the scan cannot finish. Existing manual rollback remains available to resolve an operation.
+- The scan is limited to 128 owner directories and 512 execution files. Symbolic links, malformed identifiers and unexpected files are treated as unsafe; unfinished temporary files are ignored without treating them as committed WALs.
+- Added tests for multiple owners, offline unfinished operations, committed/rolled-back states, corrupted WALs, missing before-images, invalid paths, scan-size limits and crash leftovers.
+- The real Fabric hard-crash CI scenario now invokes the monitor on the restarted server BEFORE rollback and verifies that unresolved APPLYING and ROLLING_BACK operations block new transfers. The completed stages verify that no unfinished WAL remains.
+
+Known limitations:
+- No automatic rollback of offline players. The monitor reports unresolved operations but does not authorize world mutations or circumvent the original player's journal/permission checks.
+- A corrupt WAL cannot be repaired by ignoring or deleting it without risking loss of recovery information.
+- The watchdog provides a safety interlock, not atomic filesystem transactions or proof of hardware power-failure durability.
+- Block entities, inventories, modded blocks, fluids, redstone, entities and autonomous world rewrites remain unsupported.
+
 ## 0.21.0 — Fsync Prepared Journal Before WAL Publication
 
 - Refactored `TransactionJournalStorage.save` into a testable directory-based writer and made the server-facing save use it.
