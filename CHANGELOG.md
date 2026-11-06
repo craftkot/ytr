@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.20.0 — Durable WAL Commit/Rollback and Rollback-Crash Recovery
+
+- Added a mandatory `LedgerStore.flushWorld()` durability barrier before WAL terminal phases.
+- `SandboxTransactionEngine.apply` now flushes Minecraft world data after the complete applied-state postcheck and BEFORE writing `COMMITTED`.
+- `SandboxTransactionEngine.rollback` now requires a complete `UNCHANGED` postcheck, flushes world data, and only then writes `ROLLED_BACK`.
+- A failed world flush leaves the execution in a recoverable nonterminal phase; it cannot falsely claim a durable commit or rollback.
+- Production `DiskLedger` implements the barrier with `MinecraftServer.saveEverything(true, true, true)`; this is a synchronous all-loaded-world save and may cause a server pause on large worlds.
+- Improved interrupted RESTORE reconciliation: after a full BEFORE/AFTER preflight, if the pending RESTORE coordinate already matches its BEFORE image, the missing WAL ACK is reconciled. If it still matches AFTER, it remains in the restore plan and is retried.
+- Added exact-ID prepared-journal loading so CI can maintain multiple independent transactions without selecting the wrong journal by timestamp.
+- Added JUnit cases for: unacknowledged RESTORE whose block write did happen; unacknowledged RESTORE whose block write did not happen; failed flush before COMMITTED; failed flush before ROLLED_BACK.
+- Extended real Fabric CI integration with phases 8–11:
+  * Commit a second full move with the new pre-COMMITTED world flush.
+  * Crash after 10 rollback writes have been flushed across both region files but before RESTORE ACK #10.
+  * Cold-restart and verify 42 cells remain applied, 12 are already original, WAL has 9 restore ACKs plus a pending RESTORE intent.
+  * Reconcile the already-restored unacknowledged cell, restore the remaining 42, flush the world, then commit ROLLED_BACK.
+  * Cold-restart again and verify all 54 original cells plus all 52 reconciled RESTORE acknowledgements.
+- Retains the 0.19 partial-apply crash test, graceful move/rollback test and all previous JUnit fault injection.
+
+Limits:
+- `saveEverything(..., flush=true, ...)` is a broad synchronous world flush, not an atomic transaction across WAL and Anvil files.
+- Hardware power loss, kernel crash, volatile storage caches, disk corruption and arbitrary filesystem write reordering remain untested.
+- Block entities/inventories, entities, fluids, redstone, modded blocks and autonomous world rewrites remain unsupported.
+
 ## 0.19.0 — Cross-Region Partial-Chunk Crash Recovery
 
 - Moved the test destination from chunk 2 to chunk 32, so the source and destination are in separate Anvil region files (region 0 and region 1).
