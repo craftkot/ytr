@@ -1,62 +1,40 @@
-Operator Reality 0.18.0
+Operator Reality 0.19.0
 
-Verification: PASSED on exact code commit 66561c8fa6c5d4b7ee4ccdba093cd3a4eab10af1.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42196399649
+Verification: PENDING GitHub Actions for the exact operator-dev code commit.
+Last verified baseline: 0.18.0
+https://github.com/craftkot/ytr/actions/runs/42196399649
 
-PASS:
-- gradle clean test build with all JUnit tests.
-- Dedicated Fabric server startup, RCON /operator status, persisted schema 8.
-- Graceful three-process real-Minecraft integration:
-  phase1: 26 source blocks, 52 guarded block writes, committed WAL
-  phase2: 52 live block changes rolled back after cold restart
-  phase3: original 54 cells persisted across second restart
-  marker: OPERATOR_LIVE_RELOCATION_INTEGRATION_SUCCESS
-- Actual unclean-JVM termination test:
-  phase4: original source shell and BEFORE journal persisted gracefully
-  phase5: intentional hard halt after setBlock #12 BEFORE ACK #12,
-          verified persistent WAL phase APPLYING / 11 durable ACKs / pending APPLY
-  phase6: after cold restart, Minecraft loaded 0 transferred blocks;
-          rollback correctly recognized unchanged preimages and performed 0 writes,
-          then marked the operation ROLLED_BACK.
-  phase7: original 54 cells and ROLLED_BACK WAL persisted across next restart.
-  marker: OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS
-- GitHub artifact ZIPs:
-  operator-reality-0.18.0 (339032 bytes)
-  operator-reality-0.18.0-source (163545 bytes)
+New 0.19 crash test:
+- Source AABB: chunk 0 in Anvil region r.0.0.mca.
+- Destination AABB: chunk 32 in Anvil region r.1.0.mca.
+- Apply order: 26 destination writes, then source clearing.
+- After actual Minecraft setBlock #33 (26 destination placements + 7 source clears),
+  call MinecraftServer.saveEverything(true, true, true).
+- Verify exactly 33 cells match expected applied images in the running server.
+- Hard-halt JVM before WAL ACK #33.
+- Python CI must verify crash marker, forced-save marker, durable WAL phase APPLYING,
+  32 ACKs, pending APPLY intent, totalWrites=52.
+- Cold-restart: actual world must load exactly 33 changed cells from separate
+  source/destination Anvil region files.
+- Rollback must execute exactly 33 guarded restore writes and mark ROLLED_BACK.
+- Another cold restart must verify all 54 cells are original and WAL remains ROLLED_BACK.
+- Existing normal three-process relocation integration, previous hard-crash checks,
+  all JUnit tests and initial dedicated-server boot remain required.
+- Publish 0.19.0 JAR and source artifacts.
 
-IMPORTANT LIMIT:
-The hard-crash test confirms handling of durable unacknowledged WAL intent when
-Minecraft's previously modified chunk cells were NOT persisted (0 observed after
-restart). It does NOT yet test recovery from PARTIALLY PERSISTED chunk changes
-after an unclean crash. JUnit synthetic-world tests cover partial-state recovery,
-but a future live-server scenario must force a subset of dirty chunk data to disk
-before abrupt termination and verify nonzero restore writes.
-
-Baseline: Operator 0.17.0 real-server integration PASSED:
-https://github.com/craftkot/ytr/actions/runs/42185046805
-
-Required CI:
-- gradle clean test build --no-daemon, Java 25 / Minecraft Java 26.3.
-- Initial dedicated Fabric server boot, RCON status and persisted schemaVersion 8.
-- Existing 3-boot real-Minecraft guarded transfer/rollback integration.
-- New unclean-JVM-termination integration on a separate disposable crash-world:
-  phase 4: create source stone shell and persist BEFORE journal before transfer.
-  phase 5: Runtime.halt(137) after the 12th real block write, BEFORE WAL ACK #12.
-           Verify 11 ACKs persisted and pending APPLY intent remains on disk.
-  phase 6: cold restart; verify checksum-bound WAL, source/target before-images
-           and real-world block states, then invoke guarded manual rollback.
-  phase 7: second cold restart; verify restored original states of all 54 cells,
-           and persisted execution phase ROLLED_BACK.
-- Upload 0.18.0 compiled JAR and source ZIP as build artifacts.
+Previously verified 0.18.0:
+- JUnit, build, Fabric server smoke and graceful three-boot relocation: PASS.
+- Unclean JVM crash with 11 ACKs and pending #12: PASS, but no chunk changes
+  survived restart (zero persisted cells); this was a WAL-only crash test.
+  https://github.com/craftkot/ytr/actions/runs/42196399649
 
 Security:
-- Hard-crash test stages require CI env, JVM flag, world-local test marker,
-  admin permissions, zero players and fresh isolated level-name=crash-world.
-- No world writes or hard JVM kill are triggered by autonomous Operator decisions.
-- Never run these tests against an important or live player world.
+- All deliberate crashes are gated by GitHub Actions, JVM property, test-world
+  marker, admin permissions, no players, and a fresh disposable crash-world.
+- Never execute crash integration against an actual player world.
+- Autonomous world mutation remains disabled.
 
-Not yet established:
-- The crash test covers a single interruption point, not arbitrary power loss,
-  partial filesystem commits or disk corruption.
-- No block entity inventories, redstone, liquids, complex block states or entity
-  transfers; no multi-chunk atomic write guarantee.
+Not established:
+- Hardware power loss, OS kernel crash, filesystem/controller cache loss or disk corruption.
+- Inventories/BlockEntities, modded blocks, fluids, redstone, entities or physics.
+- Atomic transactions spanning Minecraft region files and the custom WAL.
