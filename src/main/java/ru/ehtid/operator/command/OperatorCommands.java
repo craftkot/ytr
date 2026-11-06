@@ -10,6 +10,8 @@ import net.minecraft.network.chat.Component;
 
 import ru.ehtid.operator.observe.ObservationEngine;
 import ru.ehtid.operator.transaction.ServerRelocationSmoke;
+import ru.ehtid.operator.storage.RelocationWatchdogStorage;
+import java.io.IOException;
 
 public final class OperatorCommands {
     private OperatorCommands() { }
@@ -123,6 +125,19 @@ public final class OperatorCommands {
                             source.sendSuccess(() -> Component.literal(
                                     observer.getSandboxRelocationStatus(player, source.getServer())),
                                     false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("monitor").executes(context -> {
+                            var source = context.getSource();
+                            String output;
+                            try {
+                                output = RelocationWatchdogStorage.scan(source.getServer()).summary();
+                            } catch (IOException failure) {
+                                output = "Sandbox WAL monitor FAILED: " + failure.getMessage()
+                                        + " | new writes must remain disabled";
+                            }
+                            String response = output;
+                            source.sendSuccess(() -> Component.literal(response), false);
                             return 1;
                         }))
                         .then(Commands.literal("apply").executes(context -> {
