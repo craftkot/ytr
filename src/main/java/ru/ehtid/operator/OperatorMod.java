@@ -30,6 +30,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.9.0 loaded. Passive observation, persistent construction maps, block-state tracking, structural shell analysis and shadow decision planning are enabled; world mutation remains disabled.");
+        LOGGER.info("Operator: Reality 0.10.0 loaded. Persistent construction tracking, bounded room topology, door connectivity, furnishing heuristics and shadow planning are enabled; world mutation remains disabled.");
     }
 }
