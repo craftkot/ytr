@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.0 — Cross-Region Partial-Chunk Crash Recovery
+
+- Moved the test destination from chunk 2 to chunk 32, so the source and destination are in separate Anvil region files (region 0 and region 1).
+- Increased the hard-crash point from block write #12 to #33: all 26 target placements and 7 source removals have occurred, leaving both source and target chunks partially changed.
+- Before the deliberate crash, CI now calls the Minecraft 26.3 `MinecraftServer.saveEverything(true, true, true)` API, which saves all levels with `flush=true`; the test verifies all 33 expected changed cells in memory after the save returns.
+- JVM then halts before WAL acknowledgement #33. The expected durable ledger is APPLYING with 32 acknowledged writes and one pending APPLY intent.
+- After cold restart, the test requires exactly 33 actual changed cells to have been read from the two region files and requires exactly 33 guarded restore writes.
+- A further cold restart verifies all 54 cells match their original before-images and the WAL is ROLLED_BACK.
+- Retains prior graceful relocation/rollback test and all JUnit fault-injection coverage.
+
+Important limits:
+- `saveEverything(..., flush=true, ...)` is a controlled Minecraft save, not a power-loss simulation.
+- This proves recovery from a deliberately persisted partial state across two region files; it does not prove hardware-level atomicity, storage-controller cache behavior, filesystem crash consistency, or recovery from disk corruption.
+- Block entities/inventories, fluids, redstone, entities, complex block states and autonomous world changes remain unsupported.
+
 ## 0.18.0 — Real Unclean-JVM-Crash Recovery Test
 
 - Added a second, isolated CI integration test world and a four-boot hard-failure scenario running the actual Minecraft BlockState adapter and transaction ledger.
