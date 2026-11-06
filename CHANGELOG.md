@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.0 — Room Intelligence
+
+- Added a bounded offline RoomAnalyzer that separates exterior-connected air from enclosed cavities, then labels separate connected enclosed volumes as room candidates.
+- Added door-link edges between two enclosed rooms on opposite sides of the same recorded door. An exterior door does not create an internal link.
+- Added per-room functional markers for beds, storage, workstations and smelting blocks, yielding BEDROOM, STORAGE, WORKSHOP, SMELTERY, MIXED or UNCLASSIFIED roles.
+- Preserved the previous construction shell analysis and its 32,768-cell per-component and 65,536-cell per-profile work limits.
+- Added hard limits of 128 rooms and 128 door links per component. Highly fragmented scans do not claim complete results.
+- Captured verified companion block cells for ordinary door/bed placement if the companion position was air before the interaction and matched the placed block afterwards.
+- Added read-only `/operator rooms` diagnostics with bounded room/door output and persisted per-player room counts, door links and furnished-room metrics.
+- Migrated memory schema 7 -> 8 while preserving BlockState, route, mining and construction history and scheduling room summary recomputation.
+- Updated HOME_ECHO shadow-plan reasoning to consider room counts and internal door links; world changes are still disabled.
+- Added tests for enclosure, paired rooms, internal vs exterior doors, missing partitions, role markers, scan limits and migration.
+
+Known limitations:
+- Room and function labels are heuristic, from recorded player-placed blocks only.
+- An untracked natural or command-placed block is treated as absent; open doors are still treated as partitions.
+- A doorway without recorded door blocks may not separate two spaces.
+- No block-entity NBT, container contents, house relocation, world rewriting or undo mechanism is implemented.
+
 ## 0.9.0 — Structural Semantics
 
 - Persist serialized Minecraft BlockState values for each confirmed player-placed block, including available orientation, half, shape, open and waterlogged properties.
