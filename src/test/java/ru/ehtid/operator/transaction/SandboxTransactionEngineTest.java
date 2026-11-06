@@ -139,6 +139,32 @@ class SandboxTransactionEngineTest {
     }
 
     @Test
+    void interruptedRestoreIntentStillInAfterImageIsRetriedWithoutFalseAck() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED,
+                SandboxTransactionEngine.apply(journal, world, () -> 101L, store).outcome());
+
+        // Rollback phase is persisted, but the first RESTORE intent write fails
+        // before the world compare-and-set can run.
+        store.failUpdateAt = store.updates + 2;
+        var interrupted = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("RESTORE", store.reload().pendingOperation);
+        assertEquals(52, RecoveryPlanner.inspect(journal, world).appliedCells());
+
+        store.failUpdateAt = -1;
+        var resumed = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 103L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, resumed.outcome());
+        assertEquals(52, store.reload().restoredWrites);
+        assertEquals(RecoveryPlanner.Status.UNCHANGED,
+                RecoveryPlanner.inspect(journal, world).status());
+    }
+
+    @Test
     void applyDoesNotCommitWalWhenWorldFlushFails() {
         TransactionJournal journal = shellJournal();
         World world = new World(journal);
