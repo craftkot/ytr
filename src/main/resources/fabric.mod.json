@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "An adaptive observer with integrity-checked transaction journals, conflict-aware recovery audit and simulation; live-world relocation remains disabled.",
+  "description": "A Minecraft observer with hash-chained recovery audit checkpoints, bounded neighbor-risk analysis and non-mutating recovery diagnostics.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
