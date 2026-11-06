@@ -1,6 +1,18 @@
 Operator Reality 0.17.0
 
-Verification: PENDING GitHub Actions on exact source commit.
+Verification: PASSED on exact code commit 9d51919e7aa9b5daffbb821300525bfe5114e0f0.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42185046805
+- gradle clean test build: PASSED.
+- Dedicated Fabric server startup and /operator status via RCON: PASSED.
+- Real-world 3-server integration: PASSED.
+  phase1: OPERATOR_CI_PHASE1_OK: live blocks=26 verified WAL writes=52
+  phase2: OPERATOR_CI_PHASE2_OK: persisted blocks verified; rollback=52
+  phase3: OPERATOR_CI_PHASE3_OK: recovered blocks persisted across restart; cells=54
+  final marker: OPERATOR_LIVE_RELOCATION_INTEGRATION_SUCCESS
+- JAR and source archives uploaded under correct version names.
+  operator-reality-0.17.0 (GitHub artifact ZIP: 335309 bytes)
+  operator-reality-0.17.0-source (GitHub artifact ZIP: 152854 bytes)
+
 Previously verified release: 0.16.0, https://github.com/craftkot/ytr/actions/runs/42183885352
 Build toolchain: Minecraft Java 26.3, Fabric API 0.165.2+26.3, Java 25, Gradle 9.8.2.
 
