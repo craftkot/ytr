@@ -515,6 +515,16 @@ public final class ObservationEngine {
                     .orElse(null);
             int enclosedBuildings = (int) analysis.structures().stream()
                     .filter(ConstructionAnalyzer.Structure::enclosedBuildingCandidate).count();
+            int roomCount = analysis.structures().stream().mapToInt(
+                    ConstructionAnalyzer.Structure::roomCount).sum();
+            int roomLinks = analysis.structures().stream().mapToInt(
+                    ConstructionAnalyzer.Structure::doorLinkCount).sum();
+            int furnishedRooms = analysis.structures().stream().mapToInt(
+                    ConstructionAnalyzer.Structure::furnishedRoomCount).sum();
+            int largestRoom = analysis.structures().stream()
+                    .flatMap(structure -> structure.rooms().stream())
+                    .mapToInt(room -> room.cells()).max().orElse(0);
+            memory.updateRoomSummary(roomCount, roomLinks, furnishedRooms, largestRoom);
             memory.updateConstructionSemanticsSummary(
                     enclosedBuildings,
                     bestBuilding == null ? 0 : bestBuilding.enclosedVoidCells(),
@@ -681,7 +691,11 @@ public final class ObservationEngine {
                 .mapToInt(memory -> memory.recognizedBuildingCount).sum();
         int enclosedBuildings = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedEnclosedBuildingCount).sum();
-        return "Operator 0.9 | " + phase
+        int roomCount = data.players.values().stream()
+                .mapToInt(memory -> memory.recognizedRoomCount).sum();
+        int roomLinks = data.players.values().stream()
+                .mapToInt(memory -> memory.recognizedRoomConnections).sum();
+        return "Operator 0.10 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -697,6 +711,8 @@ public final class ObservationEngine {
                 + " | player-placed blocks: " + constructionBlocks
                 + " | building candidates: " + buildingCandidates
                 + " | enclosed buildings: " + enclosedBuildings
+                + " | enclosed rooms: " + roomCount
+                + " | door connections: " + roomLinks
                 + " | world mutations: disabled (shadow planning only)";
     }
 
@@ -748,6 +764,9 @@ public final class ObservationEngine {
                 + " | largest structure: " + memory.largestStructureBlockCount + " blocks"
                 + " | largest building candidate: " + memory.largestBuildingBlockCount + " blocks"
                 + " | enclosed void estimate: " + memory.largestEnclosedVoidCells + " cells"
+                + " | enclosed rooms: " + memory.recognizedRoomCount
+                + " | door links: " + memory.recognizedRoomConnections
+                + " | furnished rooms: " + memory.recognizedFurnishedRoomCount
                 + " | shell coverage floor/roof/walls: "
                 + Math.round(memory.largestFloorCoverage * 100.0D) + "/"
                 + Math.round(memory.largestRoofCoverage * 100.0D) + "/"
@@ -787,6 +806,7 @@ public final class ObservationEngine {
                         + structure.doorCount() + "/" + structure.windowBlockCount() + "/"
                         + structure.stairBlockCount() + "/" + structure.slabBlockCount()
                         + " | floors: " + structure.floorLayerCount()
+                        + " | rooms/links: " + structure.roomCount() + "/" + structure.doorLinkCount()
                         + " | block states: " + structure.uniqueBlockStates()
                         + " | ticks " + structure.firstPlacedAt() + "-" + structure.lastPlacedAt()
                         + " | " + Math.round(structure.confidence() * 100.0D) + "%")
@@ -820,6 +840,54 @@ public final class ObservationEngine {
                         + ConstructionAnalyzer.MIN_STRUCTURE_BLOCKS + " blocks yet"
                         : " | largest components: " + details)
                 + " | note: enclosed voids are inferred only from recorded placements; this is not a complete world scan and does not capture block-entity NBT.";
+    }
+
+    /** Read-only, dimension-scoped room graph diagnostics. */
+    public String getRoomProfile(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) return "Room Intelligence: no player profile yet.";
+        String dimension = player.level().dimension().toString();
+        ConstructionAnalyzer.Analysis analysis =
+                ConstructionAnalyzer.analyze(memory.constructionBlocks.values(), dimension);
+        StringBuilder summary = new StringBuilder("Room Intelligence | dimension: ")
+                .append(dimension);
+        int roomCount = 0;
+        int linkCount = 0;
+        int furnished = 0;
+        int shownRooms = 0;
+        int shownLinks = 0;
+        int capped = 0;
+        for (ConstructionAnalyzer.Structure structure : analysis.structures()) {
+            if (!structure.interiorScanComplete()) {
+                capped++;
+                continue;
+            }
+            roomCount += structure.roomCount();
+            linkCount += structure.doorLinkCount();
+            furnished += structure.furnishedRoomCount();
+            for (var room : structure.rooms()) {
+                if (shownRooms++ >= 5) break;
+                summary.append(" ; room ").append(room.id())
+                        .append(" @ ").append(room.bounds())
+                        .append(" | cells ").append(room.cells())
+                        .append(" | role ").append(room.role())
+                        .append(" | bed/storage/work/smelt ")
+                        .append(room.beds()).append("/").append(room.storage()).append("/")
+                        .append(room.workstations()).append("/").append(room.smelters());
+            }
+            for (var link : structure.doorLinks()) {
+                if (shownLinks++ >= 5) break;
+                summary.append(" ; door ").append(link.roomA()).append("<->")
+                        .append(link.roomB()).append(" @ ")
+                        .append(link.x()).append(",").append(link.y()).append(",").append(link.z());
+            }
+        }
+        return "Rooms: " + roomCount
+                + " | door links: " + linkCount
+                + " | furnished: " + furnished
+                + " | incomplete scans: " + capped
+                + " | " + summary
+                + " | geometric estimates from recorded placed blocks only";
     }
 
     public String getTunnelProfile(ServerPlayer player) {
