@@ -44,9 +44,9 @@ class TransactionJournalTest {
         assertThrows(IllegalArgumentException.class,
                 () -> TransactionIntegrity.fingerprint(journal));
 
-        journal = validJournal();
-        journal.source.before.set(1, journal.source.before.get(0));
-        assertFalse(TransactionJournal.hasCompleteDisjointPreimages(journal));
+        TransactionJournal duplicate = validJournal();
+        duplicate.source.before.set(1, duplicate.source.before.get(0));
+        assertFalse(TransactionJournal.hasCompleteDisjointPreimages(duplicate));
     }
 
     @Test
