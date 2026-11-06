@@ -80,6 +80,14 @@ public final class OperatorCommands {
                                     false);
                             return 1;
                         }))
+                        .then(Commands.literal("audit").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.auditConstructionRecovery(player, source.getServer())),
+                                    false);
+                            return 1;
+                        }))
                         .then(Commands.literal("prepare")
                                 .then(Commands.argument("x", IntegerArgumentType.integer())
                                         .then(Commands.argument("y", IntegerArgumentType.integer())
