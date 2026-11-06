@@ -28,7 +28,6 @@ public final class MinecraftSafeBlockWorld implements RecoveryExecutor.MutableWo
             case "minecraft:oak_planks" -> Blocks.OAK_PLANKS.defaultBlockState();
             case "minecraft:spruce_planks" -> Blocks.SPRUCE_PLANKS.defaultBlockState();
             case "minecraft:birch_planks" -> Blocks.BIRCH_PLANKS.defaultBlockState();
-            case "minecraft:deepslate" -> Blocks.DEEPSLATE.defaultBlockState();
             case "minecraft:polished_deepslate" -> Blocks.POLISHED_DEEPSLATE.defaultBlockState();
             case "minecraft:bricks" -> Blocks.BRICKS.defaultBlockState();
             case "minecraft:glass" -> Blocks.GLASS.defaultBlockState();
