@@ -113,6 +113,33 @@ public final class OperatorCommands {
                                                             return 1;
                                                         })))))
                 )
+                .then(Commands.literal("sandbox")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("status").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.getSandboxRelocationStatus(player, source.getServer())),
+                                    false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("apply").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.executeSandboxRelocation(player, source.getServer())),
+                                    false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("rollback").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.rollbackSandboxRelocation(player, source.getServer())),
+                                    false);
+                            return 1;
+                        }))
+                )
                 .then(Commands.literal("profile").executes(context -> {
                     var source = context.getSource();
                     var player = source.getPlayerOrException();
