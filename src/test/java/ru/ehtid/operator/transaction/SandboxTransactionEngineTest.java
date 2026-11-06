@@ -41,6 +41,101 @@ class SandboxTransactionEngineTest {
     }
 
     @Test
+    void sameRollbackEngineUsedInGameRecoversCommittedMoveAndSurvivesRestart() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+
+        var applied = SandboxTransactionEngine.apply(journal, world, () -> 101L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED, applied.outcome());
+        RelocationExecutionLedger fromDisk = store.reload();
+        assertEquals("COMMITTED", fromDisk.phase);
+
+        var rolledBack = SandboxTransactionEngine.rollback(
+                journal, fromDisk, world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, rolledBack.outcome());
+        assertEquals(52, rolledBack.confirmedWrites());
+        assertEquals("ROLLED_BACK", store.reload().phase);
+        assertEquals(RecoveryPlanner.Status.UNCHANGED,
+                RecoveryPlanner.inspect(journal, world).status());
+
+        int writesAfter = world.writes;
+        var repeated = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 103L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, repeated.outcome());
+        assertEquals("ALREADY_ROLLED_BACK", repeated.reason());
+        assertEquals(writesAfter, world.writes);
+    }
+
+    @Test
+    void rollbackAfterAcknowledgementCrashUsesDurableIntentAndRestoresSource() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+        store.failUpdateAt = 2;
+        var failed = SandboxTransactionEngine.apply(journal, world, () -> 101L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, failed.outcome());
+        assertEquals(1, world.writes);
+        assertEquals("APPLY", store.reload().pendingOperation);
+        store.failUpdateAt = -1;
+
+        var recovery = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, recovery.outcome());
+        assertEquals(1, recovery.confirmedWrites());
+        assertEquals("ROLLED_BACK", store.reload().phase);
+        assertEquals(RecoveryPlanner.Status.UNCHANGED,
+                RecoveryPlanner.inspect(journal, world).status());
+    }
+
+    @Test
+    void rollbackRejectsForeignEditsBeforeAnyRestoreWrite() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED,
+                SandboxTransactionEngine.apply(journal, world, () -> 101L, store).outcome());
+        int oldWrites = world.writes;
+        world.cells.put(new RecoveryPlanner.Position(10, 64, 0),
+                new RecoveryPlanner.State("minecraft:diamond_block",
+                        "Block{minecraft:diamond_block}", null));
+
+        var refused = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.REFUSED, refused.outcome());
+        assertEquals("PRECHECK_CONFLICT", refused.reason());
+        assertEquals(oldWrites, world.writes);
+        assertEquals("COMMITTED", store.reload().phase);
+    }
+
+    @Test
+    void rollbackCheckpointFailureAfterBlockWriteCanResumeIdempotently() {
+        TransactionJournal journal = shellJournal();
+        World world = new World(journal);
+        Store store = new Store();
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED,
+                SandboxTransactionEngine.apply(journal, world, () -> 101L, store).outcome());
+        // Rollback phase update, then first RESTORE intent, then ACK fails.
+        store.failUpdateAt = store.updates + 3;
+        var interrupted = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("ROLLING_BACK", store.reload().phase);
+        assertEquals("RESTORE", store.reload().pendingOperation);
+        int writesAfterFailure = world.writes;
+        store.failUpdateAt = -1;
+
+        var resumed = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 103L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, resumed.outcome());
+        assertEquals(writesAfterFailure + 51, world.writes,
+                "The already recovered cell must not be written twice");
+        assertEquals("ROLLED_BACK", store.reload().phase);
+        assertEquals(RecoveryPlanner.Status.UNCHANGED,
+                RecoveryPlanner.inspect(journal, world).status());
+    }
+
+    @Test
     void walCreationFailureGuaranteesZeroWrites() {
         TransactionJournal journal = shellJournal();
         World world = new World(journal);
