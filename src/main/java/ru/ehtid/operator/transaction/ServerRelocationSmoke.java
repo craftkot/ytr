@@ -43,6 +43,9 @@ public final class ServerRelocationSmoke {
         if (!Files.isRegularFile(marker)) {
             return "OPERATOR_CI_DENIED: isolated test-world marker absent";
         }
+        if (number >= 4 && !"true".equals(System.getenv("GITHUB_ACTIONS"))) {
+            return "OPERATOR_CI_DENIED: hard-crash test requires GitHub Actions";
+        }
         if (!server.getPlayerList().getPlayers().isEmpty()) {
             return "OPERATOR_CI_DENIED: players are connected";
         }
