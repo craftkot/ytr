@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.0 — Experimental Manual Sandbox Relocation
+
+- Introduced the first opt-in **live Minecraft block writes**, restricted to a privileged `/operator sandbox apply` command and a small whitelist of default-state vanilla blocks.
+- Maximum 128 cells in each source/destination AABB; requires a valid PREPARED journal and source snapshot, fully empty destination, no entities in either region, matching loaded-world BEFORE state and a conservative one-block neighbor risk screen.
+- Rejects all block entity NBT/inventories, fluids, falling or attached blocks, redstone, modded blocks, non-default BlockStates and all geometry outside the recognized player-placed construction.
+- Introduced a separate `RelocationExecutionLedger`, bound to the exact journal checksum, recording whether this mod actually initiated block writes, with durable per-cell APPLY/RESTORE intents and acknowledgements.
+- Added fsynced, atomic, per-journal execution WAL files, refusing damaged files and any implicit fallback to an unrelated historical operation.
+- Added `/operator sandbox status`, `/operator sandbox apply`, `/operator sandbox rollback`. The latter requires an execution WAL, checks all current cells against the preimages, refuses foreign edits and uses the CAS-based RecoveryExecutor for idempotent manual restoration.
+- After a verified complete move or rollback, translates remembered player construction coordinates without incrementing placement or break counters.
+- Added tests for write intent persistence, mid-operation crash state, invalid phase transitions, WAL file corruption, wrong journal binding, block palette rejection and construction memory remapping.
+
+Known limitations:
+- The feature is **experimental and destructive**; it must be tested on a disposable world copy, not an important save.
+- No multi-chunk filesystem atomicity, block entity inventory relocation, entity relocation, physics/redstone restoration, scheduled ticks, or autonomous AI usage is implemented.
+- The source/destination block writes use a small palette with no neighbor-dependent block states; a successful server smoke test does not constitute full integration testing of live apply/rollback in a real game world.
+- An unexpected server crash can leave partial world changes. Manual rollback will refuse foreign edits rather than overwriting them.
+
 ## 0.14.0 — Durable Recovery Checkpoints and Neighbor Safety
 
 - Added hash-chained, audit-only `RecoveryCheckpointLedger` bound to the exact journal checksum, world, player and transaction UUID.
