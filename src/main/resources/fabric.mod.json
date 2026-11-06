@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "An adaptive observer with structure snapshots, full-region transaction preimages, integrity-checked journals and no world mutation.",
+  "description": "An adaptive observer with integrity-checked transaction journals, conflict-aware recovery audit and simulation; live-world relocation remains disabled.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
