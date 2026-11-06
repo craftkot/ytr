@@ -26,7 +26,7 @@ public final class ServerRelocationSmoke {
     private static final String OWNER = "18762a20-b35d-48af-9807-0c995ea0d853";
     private static final String JOURNAL_ID = "0dc225ce-087f-4bf1-b24a-940b130230fe";
     private static final String SNAPSHOT_ID = "782af254-5ae5-4112-b41d-064344c58b60";
-    private static final int SOURCE_X = 0, TARGET_X = 32;
+    private static final int SOURCE_X = 0, TARGET_X = 512;
     private static final int Y = 200, Z = 0;
     private static final int SIZE = 3;
     private static final int SHELL_BLOCKS = 26;
