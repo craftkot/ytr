@@ -1,40 +1,41 @@
 Operator Reality 0.19.0
 
-Verification: PENDING GitHub Actions for the exact operator-dev code commit.
-Last verified baseline: 0.18.0
+Verification: PASSED on exact code commit cc996cb1e5786217b67bb7b82477a946eb6a3150.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42229863008
+
+PASS:
+- gradle clean test build, Java 25 / Minecraft Java 26.3.
+- Dedicated Fabric server startup, RCON /operator status, world memory schemaVersion 8.
+- Existing real Minecraft graceful apply/rollback across three JVM processes.
+- Existing unclean-JVM WAL crash test.
+- NEW cross-region partial-persistence crash test:
+  * source chunk 0, region r.0.0.mca.
+  * destination chunk 32, region r.1.0.mca.
+  * after 26 target placements + 7 source clears, MinecraftServer.saveEverything(true,true,true)
+    successfully flushed dirty chunk data before the deliberate JVM halt.
+  * halt after setBlock #33, before WAL ACK #33.
+  * durable WAL on disk: APPLYING, 32 ACKs, pending APPLY intent #33, 52 total writes.
+  * after cold restart, actual world contained exactly 33 applied cells.
+  * recovery executed exactly 33 guarded restore writes.
+  * second cold restart: all 54 cells original and WAL ROLLED_BACK.
+  * marker: OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS.
+- Uploaded release artifacts:
+  operator-reality-0.19.0 (340172-byte artifact ZIP)
+  operator-reality-0.19.0-source (165359-byte artifact ZIP)
+
+Interpretation:
+The test proves the production relocation engine can recover a deliberately
+partially persisted state spread across two Anvil region files when the WAL's
+last APPLY intent is durable but its ACK is missing. It is stronger than the
+0.18 test, where no changed block survived restart.
+
+Not proven:
+- Physical power loss, OS/kernel crash, filesystem corruption, storage-controller
+  volatile cache loss, or arbitrary ordering of disk writes.
+- Cross-file atomic commit between Minecraft region files and the custom WAL.
+- BlockEntity NBT/inventories, entities, fluids, redstone, modded blocks, or
+  arbitrary block states.
+- Automatic AI world rewrites remain disabled; sandbox is manual/operator-only.
+
+Previous baseline 0.18.0:
 https://github.com/craftkot/ytr/actions/runs/42196399649
-
-New 0.19 crash test:
-- Source AABB: chunk 0 in Anvil region r.0.0.mca.
-- Destination AABB: chunk 32 in Anvil region r.1.0.mca.
-- Apply order: 26 destination writes, then source clearing.
-- After actual Minecraft setBlock #33 (26 destination placements + 7 source clears),
-  call MinecraftServer.saveEverything(true, true, true).
-- Verify exactly 33 cells match expected applied images in the running server.
-- Hard-halt JVM before WAL ACK #33.
-- Python CI must verify crash marker, forced-save marker, durable WAL phase APPLYING,
-  32 ACKs, pending APPLY intent, totalWrites=52.
-- Cold-restart: actual world must load exactly 33 changed cells from separate
-  source/destination Anvil region files.
-- Rollback must execute exactly 33 guarded restore writes and mark ROLLED_BACK.
-- Another cold restart must verify all 54 cells are original and WAL remains ROLLED_BACK.
-- Existing normal three-process relocation integration, previous hard-crash checks,
-  all JUnit tests and initial dedicated-server boot remain required.
-- Publish 0.19.0 JAR and source artifacts.
-
-Previously verified 0.18.0:
-- JUnit, build, Fabric server smoke and graceful three-boot relocation: PASS.
-- Unclean JVM crash with 11 ACKs and pending #12: PASS, but no chunk changes
-  survived restart (zero persisted cells); this was a WAL-only crash test.
-  https://github.com/craftkot/ytr/actions/runs/42196399649
-
-Security:
-- All deliberate crashes are gated by GitHub Actions, JVM property, test-world
-  marker, admin permissions, no players, and a fresh disposable crash-world.
-- Never execute crash integration against an actual player world.
-- Autonomous world mutation remains disabled.
-
-Not established:
-- Hardware power loss, OS kernel crash, filesystem/controller cache loss or disk corruption.
-- Inventories/BlockEntities, modded blocks, fluids, redstone, entities or physics.
-- Atomic transactions spanning Minecraft region files and the custom WAL.
