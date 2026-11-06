@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.0 — Real Unclean-JVM-Crash Recovery Test
+
+- Added a second, isolated CI integration test world and a four-boot hard-failure scenario running the actual Minecraft BlockState adapter and transaction ledger.
+- Before introducing a crash, phase 4 writes and gracefully persists a 26-block source shell with complete source/target before-images.
+- In phase 5, the JVM deliberately halts immediately after actual Minecraft block write #12, BEFORE WAL acknowledgement #12, without normal server shutdown hooks.
+- Python CI runner verifies that the process really exited abnormally, a unique hard-crash marker appears in the logs, the ledger remains APPLYING, the unacknowledged APPLY intent is preserved and exactly 11 ACKs are durable.
+- Phase 6 cold-restarts the JVM, reloads the persisted journal, WAL and both chunks, checks for conflicting/unrecognized block states, and applies manual idempotent rollback.
+- Phase 7 cold-restarts again to verify all 54 source/target cells exactly match the BEFORE images and the ledger phase is ROLLED_BACK on disk.
+- The test runner refuses to use a preexisting crash-world, and the intentional JVM crash command is additionally gated by GitHub Actions, JVM flag, world-local marker, administrator rights, and absence of players.
+- The existing three-restart graceful relocation/rollback integration and JUnit fault-injection tests are retained.
+
+Limits:
+- This is one precisely timed unclean JVM exit, not exhaustive crash-consistency proof and not a simulation of actual power failure, disk corruption or multithreaded mod interaction.
+- Inventories, BlockEntity NBT, entities, complicated blocks, redstone, liquids, and automatic world manipulation remain unavailable in sandbox mode.
+- A WAL fsync and Minecraft's chunk save are still separate storage operations, not a unified atomic transaction.
+
 ## 0.17.0 — Real Minecraft Relocation Integration
 
 - Added `ServerRelocationSmoke`, a strictly CI-gated command harness running the production `SandboxTransactionEngine` against actual `MinecraftSafeBlockWorld` BlockState writes on a dedicated Fabric server.
