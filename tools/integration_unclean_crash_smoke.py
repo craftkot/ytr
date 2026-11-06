@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Unclean JVM shutdown while the *real* Minecraft CAS write is in progress.
+"""Unclean JVM shutdown during both APPLY and RESTORE on a disposable CI level.
 
-Four separate Fabric JVM processes against a new disposable CI level:
-  4. prepare and *gracefully save* the original 26-block shell
-  5. place all 26 target blocks and clear 7 source blocks; flush both dirty chunks,
-     then Runtime.halt(137) after setBlock #33 and before WAL acknowledgement #33
-  6. cold-restart, verify WAL intent/actual block cells, manual rollback
-  7. cold-restart again and verify rollback was persisted to world chunks
+Eight separate Fabric JVM processes share the isolated world:
+  4-7. Persist a partial APPLY across two Anvil regions, hard-halt before ACK #33,
+       cold-restart, restore, then cold-restart and verify the original cells.
+  8-11. Commit a second move, persist 10 partial RESTORE writes, hard-halt before
+        RESTORE ACK #10, cold-restart, reconcile the missing ACK, restore the rest,
+        then cold-restart and verify the terminal WAL and original world.
 
 This intentionally runs only inside GitHub Actions; never on a user world.
 """
