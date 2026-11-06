@@ -1,40 +1,28 @@
-Operator: Reality 0.9.0
+Operator: Reality 0.10.0
 
-Verification: PASSED.
-Verified source commit: f1c42efaed122289ea122f11607be689e9b9bdf7
-GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42121017075
+Verification: PENDING current GitHub Actions run.
+Previous verified release: Operator 0.9.0, https://github.com/craftkot/ytr/actions/runs/42121017075
 
-Successful checks:
-- gradle clean test build --no-daemon.
-- Java 25 / Gradle 9.8.2 toolchain.
-- All JUnit tests passed, including closed/open/solid shell classification, internal floor-plane metrics, per-component and aggregate flood-fill budgets, block-state persistence/refresh, schema migration and builder-aware planning.
-- Dedicated Fabric server reached the ready state.
-- RCON /operator status returned the expected passive-observation state.
-- Operator world memory was persisted with schemaVersion 7.
-- Mod JAR and source ZIP artifacts were uploaded.
+Target:
+- Minecraft Java 26.3; Fabric Loader 0.20.1; Fabric API 0.165.2+26.3.
+- Java 25 / Gradle 9.8.2.
+- gradle clean test build --no-daemon
+- Dedicated Fabric server startup, RCON /operator status, memory schemaVersion 8.
+- Upload release JAR and full source snapshot ZIP.
 
-Artifacts:
-- operator-reality-0.9.0 (158,265 bytes).
-- operator-reality-0.9.0-source (68,561 bytes).
+Implemented:
+- RoomAnalyzer: exterior flood-fill, bounded interior room segmentation, per-room bounds/cell counts.
+- Door graph connections between adjacent distinct enclosed rooms.
+- Functional room marker roles for beds/storage/workstations/furnaces.
+- Verified multi-block companions when installing doors and beds.
+- Per-player persisted room count, door connections, furnished rooms and largest room size.
+- /operator rooms and extended /operator status, /operator profile and /operator structures.
+- Room-aware HOME_ECHO shadow reasoning.
+- Schema 7 to 8 migration preserving previous memories.
+- World changes disabled.
 
-Implemented in 0.9.0:
-- Persist serialized BlockState properties per confirmed player-placed block.
-- Refresh block state during loaded-chunk audits without counting another placement.
-- Floor, roof and four-wall shell coverage estimates.
-- Internal horizontal floor-plane detection that excludes the perimeter wall ring.
-- Door count (lower half counted once), glass/window blocks, stairs and slabs.
-- Enclosed void and unoccupied-cell flood-fill inside the component bounding box, capped at 32,768 cells per component and 65,536 cells per player analysis.
-- Semantic geometry labels: ENCLOSED_BUILDING, OPEN_BUILDING, BUILDING_CANDIDATE and STRUCTURE.
-- Solid filled volumes and incomplete interior scans are not mislabeled as open buildings.
-- Persisted shell and enclosed-volume summary metrics.
-- Schema 6 -> 7 migration, preserving construction records and scheduling semantic re-analysis.
-- Builder scoring and HOME_ECHO shadow planning now include shell and enclosed-volume evidence.
-- Expanded /operator structures diagnostics.
-- World mutations remain disabled.
-
-Known limitations:
-- Placement capture depends on ordinary BlockItem interactions confirmed on the following tick.
-- Enclosed voids are inferred from recorded placements, not a complete world scan.
-- Components with bounding-box volume above 32,768 cells, or components exceeding the 65,536-cell profile budget, skip interior flood-fill.
-- Block-entity NBT and container contents are not captured.
-- No house relocation, reconstruction or rollback is implemented.
+Safety / technical limitations:
+- Inferred geometry is based only on tracked placed blocks, not actual full-world occupancy.
+- Open/closed door state is not modeled as physical pathfinding; door blocks partition the inferred rooms.
+- Room analysis bounded to 32,768 cells per connected component, 65,536 per profile analysis, 128 rooms and 128 door links per component.
+- Block-entity NBT, inventory contents, actual house movement/rebuilding, and rollback remain absent.
