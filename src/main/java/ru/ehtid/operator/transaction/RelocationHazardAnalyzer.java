@@ -1,6 +1,5 @@
 package ru.ehtid.operator.transaction;
 
-import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -76,6 +75,8 @@ public final class RelocationHazardAnalyzer {
         String namespace = blockId.substring(0, colon);
         if (!"minecraft".equals(namespace)) return Category.MODDED;
         String path = blockId.substring(colon + 1);
+        if (blockState != null && blockState.contains("waterlogged=true"))
+            return Category.FLUID;
         if (path.equals("air") || path.equals("cave_air")
                 || path.equals("void_air") || path.equals("stone")
                 || path.equals("dirt") || path.equals("grass_block")
