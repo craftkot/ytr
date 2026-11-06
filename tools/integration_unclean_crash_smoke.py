@@ -3,8 +3,8 @@
 
 Four separate Fabric JVM processes against a new disposable CI level:
   4. prepare and *gracefully save* the original 26-block shell
-  5. relocate blocks then Runtime.halt(137) immediately after setBlock #12,
-     before write-ahead log acknowledgement #12
+  5. place all 26 target blocks and clear 7 source blocks; flush both dirty chunks,
+     then Runtime.halt(137) after setBlock #33 and before WAL acknowledgement #33
   6. cold-restart, verify WAL intent/actual block cells, manual rollback
   7. cold-restart again and verify rollback was persisted to world chunks
 
@@ -112,21 +112,23 @@ def run_forced_crash() -> None:
         if proc.returncode == 0:
             raise RuntimeError("Expected Gradle failure after deliberate JVM halt")
         log_text = path.read_text(errors="replace")
-        if "OPERATOR_CI_UNCLEAN_HALT_AFTER_WRITE_12" not in log_text:
+        if "OPERATOR_CI_UNCLEAN_HALT_AFTER_WRITE_33" not in log_text:
             raise RuntimeError("Missing hard-crash marker in server process log")
+        if "OPERATOR_CI_PARTIAL_CHUNKS_FLUSHED_33" not in log_text:
+            raise RuntimeError("Both dirty Minecraft chunks were not force-flushed before crash")
         if not WAL.is_file():
             raise RuntimeError("Crash occurred before the WAL was durable")
         ledger = json.loads(WAL.read_text())
         if (ledger.get("phase") != "APPLYING"
                 or ledger.get("pendingOperation") != "APPLY"
-                or ledger.get("appliedWrites") != 11
+                or ledger.get("appliedWrites") != 32
                 or ledger.get("totalWrites") != 52):
-            raise RuntimeError("Unexpected post-crash persisted WAL: "
+            raise RuntimeError("Unexpected post-crash persisted WAL (expected 32 ACKs + pending #33): "
                                + repr({k: ledger.get(k) for k in
                                        ("phase", "pendingOperation", "appliedWrites",
                                         "totalWrites")}))
         print("OPERATOR_CI_UNCLEAN_CRASH_CONFIRMED: server halted after "
-              "Minecraft setBlock #12, before WAL ACK #12; 11 durable ACKs", flush=True)
+              "33 block writes force-flushed across source/target chunks; crash before WAL ACK #33; 32 durable ACKs", flush=True)
     except BaseException:
         cleanup(proc, path)
         raise
