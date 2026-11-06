@@ -68,6 +68,27 @@ public final class TransactionJournalStorage {
         }
     }
 
+    public static TransactionJournal load(MinecraftServer server, String playerUuid,
+                                                String journalId) throws IOException {
+        String owner = UUID.fromString(playerUuid).toString();
+        String id = UUID.fromString(journalId).toString();
+        Path file = directory(server, owner).resolve(id + ".json");
+        if (!Files.isRegularFile(file)) throw new IOException("Prepared journal not found");
+        if (Files.size(file) > MAX_FILE_BYTES)
+            throw new IOException("Journal exceeds size limit");
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            TransactionJournal journal = GSON.fromJson(reader, TransactionJournal.class);
+            if (journal != null && owner.equals(journal.ownerUuid)
+                    && id.equals(journal.journalId) && "PREPARED".equals(journal.phase)
+                    && journal.formatVersion == 1 && TransactionIntegrity.valid(journal)) {
+                return journal;
+            }
+        } catch (RuntimeException invalid) {
+            throw new IOException("Prepared journal is malformed", invalid);
+        }
+        throw new IOException("Prepared journal failed integrity checks");
+    }
+
     public static TransactionJournal loadLatest(MinecraftServer server, String playerUuid)
             throws IOException {
         String owner = UUID.fromString(playerUuid).toString();
