@@ -19,6 +19,22 @@ public final class RecoveryExecutor {
                                   RecoveryPlanner.State restore);
     }
 
+    /**
+     * Optional durable write-ahead checkpoint callbacks.
+     * A future Minecraft adapter must fsync an intent BEFORE applying a cell
+     * and record completion only AFTER a successful compare-and-write.
+     * They are exercised through simulated-world fault injection in 0.14.
+     */
+    public interface CheckpointSink {
+        void beforeWrite(int sequence, RecoveryPlanner.Change change);
+        void afterWrite(int sequence, RecoveryPlanner.Change change);
+
+        CheckpointSink NOOP = new CheckpointSink() {
+            @Override public void beforeWrite(int sequence, RecoveryPlanner.Change change) { }
+            @Override public void afterWrite(int sequence, RecoveryPlanner.Change change) { }
+        };
+    }
+
     public enum Outcome {
         NOTHING_TO_RESTORE, COMPLETED, BLOCKED, INTERRUPTED, CONCURRENT_CHANGE
     }
@@ -30,6 +46,15 @@ public final class RecoveryExecutor {
      * inspected again. Already restored cells are naturally idempotent.
      */
     public static Result restore(TransactionJournal journal, MutableWorld world) {
+        return restore(journal, world, CheckpointSink.NOOP);
+    }
+
+    /** Compare/write never begins if the full journal preflight is unsafe. */
+    public static Result restore(TransactionJournal journal, MutableWorld world,
+                                 CheckpointSink checkpointSink) {
+        if (checkpointSink == null) {
+            return new Result(Outcome.BLOCKED, 0, 0, "NO_CHECKPOINT_SINK");
+        }
         RecoveryPlanner.Plan plan = RecoveryPlanner.inspect(journal, world);
         if (!plan.safeToRestore()) {
             return new Result(Outcome.BLOCKED, 0, plan.appliedCells(),
@@ -42,6 +67,8 @@ public final class RecoveryExecutor {
         int restored = 0;
         for (RecoveryPlanner.Change change : plan.changes()) {
             try {
+                // A caller-supplied sink can persist an intent *before* a write.
+                checkpointSink.beforeWrite(restored, change);
                 // A guarded write prevents overwriting a newly changed cell.
                 if (!world.compareAndRestore(change.position(),
                         change.applied(), change.before())) {
@@ -50,10 +77,11 @@ public final class RecoveryExecutor {
                             "WORLD_CHANGED_DURING_RESTORE");
                 }
                 restored++;
+                checkpointSink.afterWrite(restored, change);
             } catch (RuntimeException interrupted) {
                 return new Result(Outcome.INTERRUPTED, restored,
                         plan.changes().size() - restored,
-                        "RESTORATION_INTERRUPTED");
+                        "RESTORATION_OR_CHECKPOINT_INTERRUPTED");
             }
         }
         // A successful sequence of CAS writes is not proof of a complete
