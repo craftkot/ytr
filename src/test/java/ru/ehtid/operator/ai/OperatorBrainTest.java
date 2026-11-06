@@ -155,6 +155,28 @@ class OperatorBrainTest {
         assertTrue(decision.reason().contains("enclosed geometric void"));
     }
 
+    @Test
+    void multiRoomHouseChangesHomeEchoExplanationWithoutExecutingMutations() {
+        PlayerMemory memory = readyPlayer();
+        memory.blocksPlaced = 128L;
+        memory.recognizedBuildingCount = 1;
+        memory.recognizedEnclosedBuildingCount = 1;
+        memory.largestBuildingBlockCount = 96;
+        memory.largestEnclosedVoidCells = 40;
+        memory.recognizedRoomCount = 2;
+        memory.recognizedRoomConnections = 1;
+        memory.constructionComplexity = 0.8D;
+
+        OperatorBrain.Decision decision = OperatorBrain.evaluate(memory, true, 24_000L);
+
+        assertEquals("READY", decision.phase());
+        assertEquals("HOME_ECHO", decision.event());
+        assertTrue(decision.reason().contains("2 rooms"));
+        assertTrue(decision.reason().contains("1 recorded door connections"));
+        assertEquals("NONE", memory.plannedOperatorEvent,
+                "evaluating shadow plans must not apply world or memory mutations");
+    }
+
     private static PlayerMemory readyPlayer() {
         PlayerMemory memory = new PlayerMemory();
         memory.observedTicks = OperatorBrain.REQUIRED_PERSONAL_TICKS;
