@@ -1,6 +1,21 @@
 Operator Reality 0.16.0
 
-Verification: PENDING GitHub Actions on the exact operator-dev source commit.
+Verification: PASSED for source commit e98294c33ccb979bf13a1e7151020ee61514058f.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42183885352
+
+Successful checks:
+- gradle clean test build --no-daemon: success
+- Minecraft Java 26.3 Fabric dedicated server boot: success
+- RCON /operator status smoke test: success
+- Persisted Operator world memory schemaVersion 8: success
+- All JUnit tests, including shared apply/rollback fault injection: success
+- JAR and source ZIP upload: success
+
+Actual GitHub artifact names currently retain the older workflow labels:
+- operator-reality-0.14.0 (324974-byte ZIP wrapper; contains 0.16.0 build/libs JARs)
+- operator-reality-0.14.0-source (146405-byte source ZIP wrapper)
+This label discrepancy does not alter the Gradle mod_version=0.16.0.
+
 Previous verified baseline: Operator 0.15.0 code commit
 422f3ce4b7c575e0f984360880fe50aa5d252334
 CI success: https://github.com/craftkot/ytr/actions/runs/42181800385
