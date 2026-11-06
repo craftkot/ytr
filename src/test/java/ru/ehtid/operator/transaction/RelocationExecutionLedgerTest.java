@@ -52,6 +52,26 @@ class RelocationExecutionLedgerTest {
     }
 
     @Test
+    void cannotCommitBeforeAllApplicationWritesHaveDurableAcknowledgements() {
+        TransactionJournal j = journal();
+        RelocationExecutionLedger state = RelocationExecutionLedger.start(j, 2, 100);
+        state.beginWrite("APPLY", 10, 64, 0, 101);
+        state.acknowledgeWrite("APPLY", 101);
+        assertThrows(IllegalStateException.class, () -> state.setPhase("COMMITTED", 102));
+        assertEquals("APPLYING", state.phase);
+        assertTrue(state.valid());
+
+        state.beginWrite("APPLY", 0, 64, 0, 103);
+        state.acknowledgeWrite("APPLY", 103);
+        state.setPhase("COMMITTED", 104);
+        assertTrue(state.valid());
+
+        state.appliedWrites = 1;
+        state.sign();
+        assertFalse(state.valid(), "A re-signed but incomplete COMMITTED ledger is invalid");
+    }
+
+    @Test
     void rejectsCorruptionOwnershipChangesAndNullJournal() {
         TransactionJournal journal = journal();
         RelocationExecutionLedger state = RelocationExecutionLedger.start(journal, 2, 100);
