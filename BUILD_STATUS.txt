@@ -1,41 +1,27 @@
-Operator Reality 0.14.0
+Operator Reality 0.15.0
 
-Verification: PASSED on source commit b32bcfec2d222c55285003c831fd0b3b70b0c85a.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42172443702
+Verification: PENDING final GitHub Actions build and dedicated server smoke test.
+Previous verified baseline: 0.14.0, https://github.com/craftkot/ytr/actions/runs/42172443702
 
-Successful checks:
+Current intended platform:
+- Minecraft Java 26.3, Fabric Loader 0.20.1, Fabric API 0.165.2+26.3
+- Java 25 / Gradle 9.8.2
 - gradle clean test build --no-daemon
-- Minecraft Java 26.3 Fabric dedicated server boot and RCON /operator status
-- World memory saved with schemaVersion 8
-- All JUnit tests passed, including persistent checkpoint JSON/temporary-file round trips,
-  SHA-256 tamper detection, write-ahead fault injection and relocation hazard classification.
+- Dedicated server startup, RCON /operator status, world-memory schema 8
 
-Artifacts:
-- operator-reality-0.14.0 (281999-byte GitHub artifact archive)
-- operator-reality-0.14.0-source (123286-byte GitHub artifact archive)
+New experimental capabilities:
+- Manual /operator sandbox apply, sandbox rollback and sandbox status, OP permission level 2.
+- Live Minecraft BlockState replacement with an explicit default-state allowlist (11 block IDs).
+- Entire 128-cell source/target AABB limits; no BlockEntity NBT, fluid, multipart, special states, entities within the volume or unsafe neighboring blocks.
+- Source/target BEFORE journals and player construction snapshot must still agree exactly with loaded world.
+- Per-cell fsynced write-ahead intent and post-write acknowledgement in a separate durable execution ledger tied to journal checksum and player UUID.
+- Rollback only with a previously created execution ledger, checked current world state and no conflicts or unloaded cells.
+- Remap player construction-memory positions only after verified completion, no false placement or demolition counts.
+- New tests for ledger phase transition, persistence across restart, integrity corruption and source identity, plus memory remapping and strict block palette.
 
-Previous verified release: Operator 0.13.0, https://github.com/craftkot/ytr/actions/runs/42159974093
-
-Required CI:
-- gradle clean test build --no-daemon
-- Dedicated Minecraft Java 26.3 Fabric server startup and RCON /operator status
-- Verify persisted memory schemaVersion 8 (unchanged)
-- Upload Operator 0.14.0 JAR and source ZIP artifacts
-
-Implemented in 0.14:
-- Persistent hash-chained recovery audit checkpoints bound to exact PREPARED journal SHA-256.
-- Atomic per-journal checkpoint storage, 128-event and 1 MiB size limits.
-- /operator transaction prepare: create initial checkpoint #0 after journal is saved.
-- /operator transaction audit: save result and list bounded source + neighbor hazard counts.
-- /operator transaction checkpoint: verify persisted audit after server restart.
-- Read-only MinecraftRecoveryWorldView; cannot be used as a world-mutating adapter.
-- RecoveryBoundaryInspector: one-block halo, maximum 8192 neighbor samples, unloaded chunks skipped.
-- RelocationHazardAnalyzer: redstone, fluid, gravity, attachments, modded/unknown blocks and block entities.
-- Abstract RecoveryExecutor before/after write callbacks and fault-injected retry tests.
-- Tests for checkpoint persistence with real temporary files, JSON restart, tampering, bounds and source binding.
-
-Not implemented:
-- No direct block writes in Minecraft, no actual house movement or live-world restore.
-- No authenticated execution phase or automatic restart recovery.
-- No inventory-safe BlockEntity NBT relocation, entity displacement or physics/redstone replay.
-- An audit matching the expected AFTER state does not prove Operator performed that change.
+SAFETY:
+- This changes game blocks and is not a production-ready transaction engine.
+- It is an explicitly invoked sandbox function for disposable worlds with backups.
+- No automatic AI world chaos or move; no inventories, scheduled ticks, entity transfers, cross-chunk disk atomicity or comprehensive physics/restart guarantees.
+- Live sandbox apply/rollback on a loaded game world is NOT covered by the existing RCON smoke test.
+- GitHub Actions artifact-name labels may still show 0.14.0 due to a workflow-file update restriction; inspect actual build/libs JAR filenames to identify version 0.15.0.
