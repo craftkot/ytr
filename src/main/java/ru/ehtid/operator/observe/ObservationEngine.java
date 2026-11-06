@@ -1,5 +1,6 @@
 package ru.ehtid.operator.observe;
 
+import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -36,6 +37,7 @@ import ru.ehtid.operator.analysis.ConstructionAnalyzer;
 import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.OperatorStorage;
+import ru.ehtid.operator.storage.TransactionJournalStorage;
 import ru.ehtid.operator.snapshot.StructureSnapshotService;
 import ru.ehtid.operator.transaction.TransactionPreparationService;
 import ru.ehtid.operator.transaction.RecoveryAuditService;
@@ -804,13 +806,52 @@ public final class ObservationEngine {
     /** Explicit privileged sandbox only; no autonomous world mutation. */
     public String executeSandboxRelocation(ServerPlayer player, MinecraftServer server) {
         if (!loaded) return "Operator memory is not loaded";
-        return ExperimentalRelocationService.apply(server, player);
+        String result = ExperimentalRelocationService.apply(server, player);
+        if (result.startsWith("Sandbox relocation COMMITTED:")) {
+            return synchronizeConstructionAfterSandbox(player, server, false, result);
+        }
+        return result;
     }
 
     /** Manually restore exact simple-block preimages for this mod's executed operation. */
     public String rollbackSandboxRelocation(ServerPlayer player, MinecraftServer server) {
         if (!loaded) return "Operator memory is not loaded";
-        return ExperimentalRelocationService.rollback(server, player);
+        String result = ExperimentalRelocationService.rollback(server, player);
+        if (result.startsWith("Sandbox rollback ROLLED_BACK")
+                || result.startsWith("Sandbox transaction already ROLLED_BACK")) {
+            return synchronizeConstructionAfterSandbox(player, server, true, result);
+        }
+        return result;
+    }
+
+    private String synchronizeConstructionAfterSandbox(ServerPlayer player,
+                                                       MinecraftServer server, boolean reverse,
+                                                       String result) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null) return result + " | player construction memory is unavailable";
+        try {
+            var journal = TransactionJournalStorage.loadLatest(
+                    server, player.getUUID().toString());
+            var from = reverse ? journal.target : journal.source;
+            int shifted = memory.shiftTrackedConstruction(
+                    journal.dimension, from.minX, from.minY, from.minZ,
+                    from.maxX, from.maxY, from.maxZ,
+                    reverse ? -journal.offsetX : journal.offsetX,
+                    reverse ? -journal.offsetY : journal.offsetY,
+                    reverse ? -journal.offsetZ : journal.offsetZ,
+                    server.overworld().getGameTime());
+            if (shifted < 0) return result
+                    + " | WARNING: remembered destination has a conflict; construction map unchanged";
+            if (shifted > 0) {
+                dirty = true;
+                save(server);
+            }
+            return result + " | construction memory remapped: " + shifted
+                    + " | placement counters unchanged";
+        } catch (IOException | RuntimeException problem) {
+            return result + " | WARNING: construction memory could not synchronize: "
+                    + problem.getMessage();
+        }
     }
 
     /** Read only the durable write-ahead authorization and progress. */
