@@ -21,7 +21,7 @@ class OperatorWorldDataTest {
         data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(7, data.schemaVersion);
+        assertEquals(8, data.schemaVersion);
         assertNotNull(data.players);
     }
 
@@ -39,7 +39,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(7, data.schemaVersion);
+        assertEquals(8, data.schemaVersion);
         assertEquals(1, memory.getTunnelCellCount());
         assertEquals(1, memory.getMinedTunnelCellCount());
         assertEquals(0, memory.getObservedAirCellCount());
@@ -76,7 +76,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(7, data.schemaVersion);
+        assertEquals(8, data.schemaVersion);
         assertEquals(24_000L, memory.observedTicks);
         assertEquals(1234.5D, memory.distanceTravelled);
         assertEquals("NONE", memory.plannedOperatorEvent);
@@ -104,7 +104,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(7, data.schemaVersion);
+        assertEquals(8, data.schemaVersion);
         assertEquals(25_000L, memory.observedTicks);
         assertEquals(3L, memory.operatorDecisionCount);
         assertEquals(1, memory.getConstructionBlockCount());
@@ -131,7 +131,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(7, data.schemaVersion);
+        assertEquals(8, data.schemaVersion);
         assertEquals(30L, memory.blocksPlaced);
         assertEquals(1, memory.getConstructionBlockCount());
         PlayerMemory.ConstructionBlock migrated =
@@ -141,6 +141,34 @@ class OperatorWorldDataTest {
         assertTrue(memory.constructionAnalysisDirty);
         assertEquals(-1L, memory.lastConstructionAnalysisAt);
         assertEquals(0, memory.recognizedEnclosedBuildingCount);
+    }
+
+
+    @Test
+    void schemaSevenRetainsBlockStatesAndRecalculatesRoomMetrics() {
+        OperatorWorldData data = new OperatorWorldData();
+        data.schemaVersion = 7;
+        PlayerMemory memory = new PlayerMemory();
+        memory.uuid = "room-player";
+        memory.observedTicks = 25_000L;
+        memory.lastConstructionAnalysisAt = 500L;
+        memory.constructionAnalysisDirty = false;
+        memory.constructionBlocks.put("minecraft:overworld|10,70,12",
+                new PlayerMemory.ConstructionBlock(
+                        10, 70, 12, "minecraft:overworld", "minecraft:oak_stairs",
+                        "Block{minecraft:oak_stairs}[facing=north,half=bottom]", 200L));
+        data.players.put(memory.uuid, memory);
+
+        data.normalize();
+
+        assertEquals(8, data.schemaVersion);
+        assertEquals(25_000L, memory.observedTicks);
+        assertEquals(1, memory.getConstructionBlockCount());
+        assertTrue(memory.constructionBlocks.values().iterator().next().blockState
+                .contains("facing=north"));
+        assertTrue(memory.constructionAnalysisDirty);
+        assertEquals(-1L, memory.lastConstructionAnalysisAt);
+        assertEquals(0, memory.recognizedRoomCount);
     }
 
 }
