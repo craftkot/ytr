@@ -1,44 +1,26 @@
-Operator Reality 0.11.0
+Operator Reality 0.12.0
 
-Verification: PASSED on source commit 81fe4b9d8e95605ab63ebab97228ebe8e01cad54.
-GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42144268155
+Verification: PENDING GitHub Actions for the current source commit.
+Baseline: Operator 0.11.0 verified via https://github.com/craftkot/ytr/actions/runs/42144268155
 
-Successful checks:
+Required CI:
 - gradle clean test build --no-daemon
-- Dedicated Fabric server boot and RCON /operator status smoke test
-- Persisted Operator memory schemaVersion 8
-- All JUnit tests (including snapshot planner and checksum integrity) passed
-- Uploaded operator-reality-0.11.0 JAR artifact and source ZIP
+- Dedicated Fabric 26.3 server boot and RCON /operator status
+- Persisted world memory schemaVersion 8 (unchanged)
+- Upload 0.12.0 JAR and source ZIP artifacts
 
-GitHub artifacts:
-- operator-reality-0.11.0 (206630 bytes)
-- operator-reality-0.11.0-source (89217 bytes)
+Implemented in 0.12:
+- TransactionJournal full PREPARED source/target before-images, including natural blocks and air.
+- TransactionIntegrity deterministic SHA-256 over both before-image regions.
+- TransactionJournalStorage: non-overwriting atomic journal persistence, max four/player.
+- TransactionPreparationService: valid snapshot + preflight + bounded whole-AABB capture.
+- Target AABB must be entirely empty, not only its tracked block positions.
+- Explicit /operator transaction prepare x y z and /operator transaction status.
+- Pure reverse-preimage planning (no placement or rollback action).
+- Unit tests for journal completeness, overlap, duplicate cells, limits and tamper detection.
 
-Baseline: Operator 0.10.0 verified; https://github.com/craftkot/ytr/actions/runs/42138745446
+Limits: 4096 cells per region, 8192 total, 8 MiB journal JSON,
+256 KiB NBT per block, 2 MiB total NBT.
 
-Required CI checks:
-- gradle clean test build --no-daemon
-- Dedicated Fabric 26.3 server startup with Java 25 / Gradle 9.8.2
-- RCON /operator status and persisted memory schema 8
-- Upload 0.11.0 mod JAR and source ZIP
-
-Implemented:
-- Pure bounded selection of nearest connected placed-block building (up to 4096 blocks).
-- Full loaded-world snapshot of BlockState and BlockEntity SNBT for recorded source cells.
-- SHA-256 checksum across positions, serialized states and NBT.
-- Explicit /operator snapshot, atomic per-player snapshot storage (max 8).
-- Explicit /operator preview x y z without block/world mutations.
-- Destination height, world border, overlap, range, unloaded chunk, occupancy checks.
-- Snapshot verification against current source states and NBT before preview.
-- Unit tests for selection, preflight and checksum integrity.
-
-Limits:
-- 4096 recorded blocks per captured component; 48-block radius for selection.
-- 256 KiB SNBT per block entity, 2 MiB total, 4 MiB JSON snapshot.
-- 4096-block translation per axis.
-- 8 stored snapshots per player, with no automatic deletion.
-
-Unimplemented and unsafe to assume:
-- Full-world source preimage (natural blocks and air), support/physics validation, rollback journal.
-- Multi-chunk atomic relocation, neighbor updates, entity/vehicle relocation.
-- Automatic world rewriting and actual house movement remain disabled.
+Not implemented: world mutation, automatic relocation, rollback execution, crash recovery,
+chunk coordination, neighbor/redstone/physics safety and entity relocation.
