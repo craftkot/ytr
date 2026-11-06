@@ -9,6 +9,7 @@ import net.minecraft.server.permissions.Permissions;
 import net.minecraft.network.chat.Component;
 
 import ru.ehtid.operator.observe.ObservationEngine;
+import ru.ehtid.operator.transaction.ServerRelocationSmoke;
 
 public final class OperatorCommands {
     private OperatorCommands() { }
@@ -141,6 +142,21 @@ public final class OperatorCommands {
                             return 1;
                         }))
                 )
+                // This command is not registered unless the JVM was explicitly
+                // started in CI smoke mode. A separate world marker is also
+                // checked before running any test-only world mutation.
+                .then(Commands.literal("ci-smoke")
+                        .requires(source -> Boolean.getBoolean("operator.reality.ciSmoke")
+                                && source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                        .then(Commands.argument("phase", IntegerArgumentType.integer(1, 3))
+                                .executes(context -> {
+                                    var source = context.getSource();
+                                    String output = ServerRelocationSmoke.phase(
+                                            source.getServer(),
+                                            IntegerArgumentType.getInteger(context, "phase"));
+                                    source.sendSuccess(() -> Component.literal(output), false);
+                                    return output.contains("_OK:") ? 1 : 0;
+                                })))
                 .then(Commands.literal("profile").executes(context -> {
                     var source = context.getSource();
                     var player = source.getPlayerOrException();
