@@ -125,17 +125,17 @@ jobs:
       - name: Upload mod JARs
         uses: actions/upload-artifact@v4
         with:
-          name: operator-reality-0.14.0
+          name: operator-reality-0.17.0
           path: build/libs/*.jar
           if-no-files-found: error
       - name: Package source snapshot
         run: |
-          zip -qr operator-reality-0.14.0-source.zip \
+          zip -qr operator-reality-0.17.0-source.zip \
             src build.gradle settings.gradle gradle.properties .gitignore \
             LICENSE README.md CHANGELOG.md BUILD_STATUS.txt tools .github/workflows/build.yml
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: operator-reality-0.14.0-source
-          path: operator-reality-0.14.0-source.zip
+          name: operator-reality-0.17.0-source
+          path: operator-reality-0.17.0-source.zip
           if-no-files-found: error
