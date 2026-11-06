@@ -46,9 +46,11 @@ public final class TransactionPreparationService {
                 }
             }
         } catch (IOException unavailable) {
-            // Fresh worlds have no journals. Any damaged journal is checked again
-            // by the normal non-overwriting journal storage; this is not approval
-            // to execute a prior operation.
+            if (!"No prepared journals".equals(unavailable.getMessage())) {
+                return new Result(false, "Prior journal or sandbox ledger is unreadable: "
+                        + unavailable.getMessage() + "; refusing to hide it with a new journal");
+            }
+            // A fresh world with no saved journals is permitted to prepare one.
         }
 
         StructureSnapshot snapshot;
