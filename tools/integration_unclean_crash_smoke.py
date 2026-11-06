@@ -85,6 +85,17 @@ def run_normal(phase: int) -> None:
     proc, path = start(phase)
     try:
         ready(proc)
+        # An offline operation must be discovered by the server-wide WAL
+        # scanner BEFORE the manual rollback command is executed.
+        monitor = base.rcon("operator sandbox monitor")
+        print(f"WAL MONITOR PHASE {phase}: {monitor}", flush=True)
+        if phase in (6, 10):
+            expected = "APPLYING" if phase == 6 else "ROLLING_BACK"
+            if (expected not in monitor or "NEW SANDBOX WRITES BLOCKED" not in monitor):
+                raise RuntimeError("Unfinished WAL not detected on cold startup: " + monitor)
+        if phase in (7, 11):
+            if "0 unfinished" not in monitor or "NEW SANDBOX WRITES BLOCKED" in monitor:
+                raise RuntimeError("Rolled-back WAL was not released: " + monitor)
         result = base.rcon(f"operator ci-smoke {phase}")
         print(f"UNCLEAN TEST PHASE {phase}: {result}", flush=True)
         if f"OPERATOR_CI_PHASE{phase}_OK:" not in result:
