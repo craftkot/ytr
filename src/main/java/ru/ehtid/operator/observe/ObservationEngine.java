@@ -25,6 +25,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 
 import ru.ehtid.operator.OperatorMod;
 import ru.ehtid.operator.ai.OperatorBrain;
@@ -190,9 +191,28 @@ public final class ObservationEngine {
         if (serverPlayer.getItemInHand(hand).getItem() instanceof BlockItem
                 && level.hasChunkAt(target) && level.getBlockState(target).isAir()) {
             getOrCreate(serverPlayer, now);
+            // Snapshot which companion cells were air BEFORE use. A later match
+            // with the same block is evidence for a door's upper half or a bed's head.
+            String itemId = BuiltInRegistries.ITEM
+                    .getKey(serverPlayer.getItemInHand(hand).getItem()).toString();
+            List<BlockPos> secondaryAirTargets = new ArrayList<>();
+            if (itemId.endsWith("_door")) {
+                BlockPos above = target.above();
+                if (level.hasChunkAt(above) && level.getBlockState(above).isAir()) {
+                    secondaryAirTargets.add(above.immutable());
+                }
+            } else if (itemId.endsWith("_bed")) {
+                for (Direction direction : Direction.Plane.HORIZONTAL) {
+                    BlockPos neighbour = target.relative(direction);
+                    if (level.hasChunkAt(neighbour) && level.getBlockState(neighbour).isAir()) {
+                        secondaryAirTargets.add(neighbour.immutable());
+                    }
+                }
+            }
             pendingPlacementChecks.remove(key);
             pendingPlacementChecks.put(key, new PendingPlacementCheck(
-                    level, target, dimension, serverPlayer.getUUID().toString(), now + 1L
+                    level, target, dimension, serverPlayer.getUUID().toString(), now + 1L,
+                    List.copyOf(secondaryAirTargets)
             ));
             while (pendingPlacementChecks.size() > MAX_PENDING_PLACEMENT_CHECKS) {
                 Iterator<String> iterator = pendingPlacementChecks.keySet().iterator();
@@ -257,6 +277,30 @@ public final class ObservationEngine {
                     check.dimension(), blockId, placedState.toString(), check.level().getGameTime()
             )) {
                 dirty = true;
+            }
+
+            boolean isDoor = blockId.endsWith("_door");
+            boolean isBed = blockId.endsWith("_bed");
+            if (isDoor || isBed) {
+                for (BlockPos companion : check.secondaryAirTargets()) {
+                    if (!check.level().hasChunkAt(companion)) continue;
+                    BlockState companionState = check.level().getBlockState(companion);
+                    // Never attribute existing or unrelated neighbour blocks to the builder.
+                    if (companionState.getBlock() != placedState.getBlock()) continue;
+                    if (isDoor && !companion.equals(check.position().above())) continue;
+                    if (isBed && companionState.toString().equals(placedState.toString())) {
+                        // Same properties are permitted for modded beds, but vanilla
+                        // head/foot differs. Type and pre-use air are the core checks.
+                    }
+                    for (PlayerMemory profile : data.players.values()) {
+                        if (profile.removePlacedBlock(
+                                companion.getX(), companion.getY(), companion.getZ(),
+                                check.dimension(), check.level().getGameTime())) dirty = true;
+                    }
+                    if (memory.recordPlacedBlock(
+                            companion.getX(), companion.getY(), companion.getZ(), check.dimension(),
+                            blockId, companionState.toString(), check.level().getGameTime())) dirty = true;
+                }
             }
         }
     }
@@ -632,7 +676,8 @@ public final class ObservationEngine {
             BlockPos position,
             String dimension,
             String playerKey,
-            long dueGameTick
+            long dueGameTick,
+            List<BlockPos> secondaryAirTargets
     ) { }
 
     public void onServerStopping(MinecraftServer server) {
