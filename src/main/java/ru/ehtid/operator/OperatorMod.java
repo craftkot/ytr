@@ -47,6 +47,6 @@ public final class OperatorMod implements ModInitializer {
                 (dispatcher, buildContext, selection) -> OperatorCommands.register(dispatcher, OBSERVER)
         );
 
-        LOGGER.info("Operator: Reality 0.21.0 loaded. Prepared transaction journals are fsynced before publication; WAL terminal phases follow synchronous world flushes, with real-server crash tests during apply and rollback.");
+        LOGGER.info("Operator: Reality 0.22.0 loaded. Server-wide WAL monitoring detects offline unfinished transfers, blocks unsafe new sandbox writes and warns operators at startup; automatic recovery remains disabled.");
     }
 }
