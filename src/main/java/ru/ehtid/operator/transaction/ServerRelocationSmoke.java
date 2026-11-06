@@ -26,6 +26,8 @@ public final class ServerRelocationSmoke {
     private static final String OWNER = "18762a20-b35d-48af-9807-0c995ea0d853";
     private static final String JOURNAL_ID = "0dc225ce-087f-4bf1-b24a-940b130230fe";
     private static final String SNAPSHOT_ID = "782af254-5ae5-4112-b41d-064344c58b60";
+    private static final String ROLLBACK_JOURNAL_ID = "d3f9c06b-18d5-4b7c-98e1-9d91d06a4f73";
+    private static final String ROLLBACK_SNAPSHOT_ID = "8f8bb9d7-7b93-4ec6-99a4-fec9a3d4ab51";
     private static final int SOURCE_X = 0, TARGET_X = 512;
     private static final int Y = 200, Z = 0;
     private static final int SIZE = 3;
@@ -66,6 +68,10 @@ public final class ServerRelocationSmoke {
                 case 5 -> crashInUnacknowledgedWorldWrite(server, level);
                 case 6 -> recoverInterruptedCrash(server, level);
                 case 7 -> verifyInterruptedRecoveryAfterRestart(server, level);
+                case 8 -> prepareAndApplyRollbackCrash(server, level);
+                case 9 -> crashDuringRollbackRestore(server, level);
+                case 10 -> recoverInterruptedRollback(server, level);
+                case 11 -> verifyInterruptedRollbackAfterRestart(server, level);
                 default -> "OPERATOR_CI_FAILED: unknown test phase";
             };
         } catch (RuntimeException | IOException error) {
@@ -110,9 +116,15 @@ public final class ServerRelocationSmoke {
 
     private static String prepareFixture(MinecraftServer server, ServerLevel level)
             throws IOException {
+        return prepareFixture(server, level, JOURNAL_ID, SNAPSHOT_ID);
+    }
+
+    private static String prepareFixture(MinecraftServer server, ServerLevel level,
+                                         String journalId, String snapshotId)
+            throws IOException {
         if (Files.exists(server.getWorldPath(LevelResource.ROOT)
                 .resolve("operator_reality").resolve("transactions")
-                .resolve(OWNER).resolve(JOURNAL_ID + ".json"))) {
+                .resolve(OWNER).resolve(journalId + ".json"))) {
             return "OPERATOR_CI_FAILED: existing test transaction found";
         }
         for (int x = 0; x < SIZE; x++) {
@@ -138,7 +150,7 @@ public final class ServerRelocationSmoke {
             }
         }
 
-        TransactionJournal journal = journal(level);
+        TransactionJournal journal = journal(level, journalId, snapshotId);
         TransactionJournalStorage.save(server, journal);
         if (RecoveryPlanner.inspect(journal, new MinecraftSafeBlockWorld(level)).status()
                 != RecoveryPlanner.Status.UNCHANGED) {
@@ -311,11 +323,150 @@ public final class ServerRelocationSmoke {
                 + " | original cells=" + state.alreadyOriginal();
     }
 
+    private static String prepareAndApplyRollbackCrash(MinecraftServer server,
+                                                          ServerLevel level)
+            throws IOException {
+        String problem = prepareFixture(server, level,
+                ROLLBACK_JOURNAL_ID, ROLLBACK_SNAPSHOT_ID);
+        if (problem != null) return problem;
+        TransactionJournal journal = TransactionJournalStorage.load(
+                server, OWNER, ROLLBACK_JOURNAL_ID);
+        MinecraftSafeBlockWorld world = new MinecraftSafeBlockWorld(level);
+        SandboxTransactionEngine.Result applied =
+                SandboxTransactionEngine.apply(journal, world, level::getGameTime,
+                        new DiskLedger(server));
+        RelocationExecutionLedger ledger = RelocationExecutionStorage.load(server, journal);
+        if (!applied.committed() || applied.confirmedWrites() != EXPECTED_WRITES
+                || !"COMMITTED".equals(ledger.phase)
+                || RecoveryPlanner.inspect(journal, world).appliedCells() != EXPECTED_WRITES) {
+            return "OPERATOR_CI_FAILED: rollback-crash fixture apply "
+                    + applied.outcome() + " " + applied.reason();
+        }
+        return "OPERATOR_CI_PHASE8_OK: committed move persisted before rollback-crash test";
+    }
+
+    /** Real process halt after ten restored blocks, before RESTORE ACK #10. */
+    private static String crashDuringRollbackRestore(MinecraftServer server,
+                                                     ServerLevel level)
+            throws IOException {
+        TransactionJournal journal = TransactionJournalStorage.load(
+                server, OWNER, ROLLBACK_JOURNAL_ID);
+        RelocationExecutionLedger ledger = RelocationExecutionStorage.load(server, journal);
+        MinecraftSafeBlockWorld realWorld = new MinecraftSafeBlockWorld(level);
+        RecoveryPlanner.Plan before = RecoveryPlanner.inspect(journal, realWorld);
+        if (!"COMMITTED".equals(ledger.phase) || before.appliedCells() != EXPECTED_WRITES) {
+            return "OPERATOR_CI_FAILED: rollback crash precondition not fully applied";
+        }
+        final int crashOnRestore = 10;
+        RecoveryExecutor.MutableWorld injected = new RecoveryExecutor.MutableWorld() {
+            private int writes;
+
+            @Override
+            public RecoveryPlanner.State read(int x, int y, int z) {
+                return realWorld.read(x, y, z);
+            }
+
+            @Override
+            public boolean compareAndRestore(RecoveryPlanner.Position position,
+                                             RecoveryPlanner.State expected,
+                                             RecoveryPlanner.State restore) {
+                boolean changed = realWorld.compareAndRestore(position, expected, restore);
+                if (changed && ++writes == crashOnRestore) {
+                    boolean saved = server.saveEverything(true, true, true);
+                    if (!saved) {
+                        System.err.println("OPERATOR_CI_ROLLBACK_PARTIAL_SAVE_FAILED");
+                        System.err.flush();
+                        Runtime.getRuntime().halt(148);
+                    }
+                    RecoveryPlanner.Plan flushed = RecoveryPlanner.inspect(journal, realWorld);
+                    if (flushed.status() != RecoveryPlanner.Status.RESTORE_NEEDED
+                            || flushed.appliedCells() != EXPECTED_WRITES - crashOnRestore
+                            || flushed.alreadyOriginal() != 12) {
+                        System.err.println("OPERATOR_CI_ROLLBACK_PARTIAL_SAVE_MISMATCH: "
+                                + flushed.status() + " applied=" + flushed.appliedCells()
+                                + " original=" + flushed.alreadyOriginal());
+                        System.err.flush();
+                        Runtime.getRuntime().halt(149);
+                    }
+                    System.err.println("OPERATOR_CI_ROLLBACK_PARTIAL_CHUNKS_FLUSHED_10");
+                    System.err.println("OPERATOR_CI_UNCLEAN_HALT_DURING_RESTORE_AFTER_WRITE_10");
+                    System.err.flush();
+                    Runtime.getRuntime().halt(147);
+                }
+                return changed;
+            }
+        };
+        SandboxTransactionEngine.rollback(journal, ledger, injected,
+                level::getGameTime, new DiskLedger(server));
+        return "OPERATOR_CI_FAILED: forced rollback crash did not execute";
+    }
+
+    private static String recoverInterruptedRollback(MinecraftServer server,
+                                                     ServerLevel level)
+            throws IOException {
+        TransactionJournal journal = TransactionJournalStorage.load(
+                server, OWNER, ROLLBACK_JOURNAL_ID);
+        RelocationExecutionLedger ledger = RelocationExecutionStorage.load(server, journal);
+        if (!"ROLLING_BACK".equals(ledger.phase)
+                || !"RESTORE".equals(ledger.pendingOperation)
+                || ledger.restoredWrites != 9 || ledger.appliedWrites != EXPECTED_WRITES) {
+            return "OPERATOR_CI_FAILED: interrupted rollback WAL mismatch";
+        }
+        MinecraftSafeBlockWorld world = new MinecraftSafeBlockWorld(level);
+        RecoveryPlanner.Plan state = RecoveryPlanner.inspect(journal, world);
+        if (state.status() != RecoveryPlanner.Status.RESTORE_NEEDED
+                || state.appliedCells() != EXPECTED_WRITES - 10
+                || state.alreadyOriginal() != 12) {
+            return "OPERATOR_CI_FAILED: expected 42 applied/12 original after restart; found "
+                    + state.status() + " applied=" + state.appliedCells()
+                    + " original=" + state.alreadyOriginal();
+        }
+        SandboxTransactionEngine.Result resumed =
+                SandboxTransactionEngine.rollback(journal, ledger, world,
+                        level::getGameTime, new DiskLedger(server));
+        RelocationExecutionLedger completed = RelocationExecutionStorage.load(server, journal);
+        if (resumed.outcome() != SandboxTransactionEngine.Outcome.ROLLED_BACK
+                || resumed.confirmedWrites() != EXPECTED_WRITES - 10
+                || !"ROLLED_BACK".equals(completed.phase)
+                || completed.restoredWrites != EXPECTED_WRITES
+                || RecoveryPlanner.inspect(journal, world).status()
+                        != RecoveryPlanner.Status.UNCHANGED) {
+            return "OPERATOR_CI_FAILED: interrupted rollback resume "
+                    + resumed.outcome() + " " + resumed.reason()
+                    + " restoredWrites=" + completed.restoredWrites;
+        }
+        return "OPERATOR_CI_PHASE10_OK: reconciled missing RESTORE ACK; remaining=42"
+                + " | total acknowledged restores=" + completed.restoredWrites;
+    }
+
+    private static String verifyInterruptedRollbackAfterRestart(MinecraftServer server,
+                                                                 ServerLevel level)
+            throws IOException {
+        TransactionJournal journal = TransactionJournalStorage.load(
+                server, OWNER, ROLLBACK_JOURNAL_ID);
+        RelocationExecutionLedger ledger = RelocationExecutionStorage.load(server, journal);
+        RecoveryPlanner.Plan state =
+                RecoveryPlanner.inspect(journal, new MinecraftSafeBlockWorld(level));
+        if (!"ROLLED_BACK".equals(ledger.phase)
+                || ledger.restoredWrites != EXPECTED_WRITES
+                || state.status() != RecoveryPlanner.Status.UNCHANGED
+                || state.alreadyOriginal() != SIZE * SIZE * SIZE * 2) {
+            return "OPERATOR_CI_FAILED: final rollback persistence mismatch";
+        }
+        return "OPERATOR_CI_PHASE11_OK: rollback survived restart; restoredWrites="
+                + ledger.restoredWrites + " originalCells=" + state.alreadyOriginal();
+    }
+
     private static TransactionJournal journal(ServerLevel level) {
+        return journal(level, JOURNAL_ID, SNAPSHOT_ID);
+    }
+
+    private static TransactionJournal journal(ServerLevel level,
+                                               String journalId, String snapshotId) {
         TransactionJournal journal = new TransactionJournal();
-        journal.journalId = JOURNAL_ID;
+        journal.journalId = journalId;
         journal.ownerUuid = OWNER;
-        journal.sourceSnapshotId = SNAPSHOT_ID;
+        journal.sourceSnapshotId = snapshotId;
         journal.sourceSnapshotSha256 = "CI_NON_PLAYER_SOURCE";
         journal.dimension = level.dimension().toString();
         journal.capturedAtTick = level.getGameTime();
