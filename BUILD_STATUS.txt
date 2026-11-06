@@ -1,41 +1,43 @@
-Operator Reality 0.19.0
+Operator Reality 0.20.0
 
-Verification: PASSED on exact code commit cc996cb1e5786217b67bb7b82477a946eb6a3150.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42229863008
+Verification: PENDING GitHub Actions on exact operator-dev source commit.
+Last verified baseline 0.19.0:
+https://github.com/craftkot/ytr/actions/runs/42229863008
 
-PASS:
-- gradle clean test build, Java 25 / Minecraft Java 26.3.
-- Dedicated Fabric server startup, RCON /operator status, world memory schemaVersion 8.
-- Existing real Minecraft graceful apply/rollback across three JVM processes.
-- Existing unclean-JVM WAL crash test.
-- NEW cross-region partial-persistence crash test:
-  * source chunk 0, region r.0.0.mca.
-  * destination chunk 32, region r.1.0.mca.
-  * after 26 target placements + 7 source clears, MinecraftServer.saveEverything(true,true,true)
-    successfully flushed dirty chunk data before the deliberate JVM halt.
-  * halt after setBlock #33, before WAL ACK #33.
-  * durable WAL on disk: APPLYING, 32 ACKs, pending APPLY intent #33, 52 total writes.
-  * after cold restart, actual world contained exactly 33 applied cells.
-  * recovery executed exactly 33 guarded restore writes.
-  * second cold restart: all 54 cells original and WAL ROLLED_BACK.
-  * marker: OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS.
-- Uploaded release artifacts:
-  operator-reality-0.19.0 (340172-byte artifact ZIP)
-  operator-reality-0.19.0-source (165359-byte artifact ZIP)
+Required checks:
+- Gradle clean test build; Java 25 / Minecraft Java 26.3.
+- Dedicated Fabric server startup, RCON /operator status, memory schemaVersion 8.
+- Existing graceful three-boot move/rollback integration.
+- Existing apply partial-persistence crash test (33 changes flushed across two region files).
+- New WAL durability barriers:
+  * apply must flush world before COMMITTED.
+  * rollback must flush restored world before ROLLED_BACK.
+  * failed flush leaves recoverable nonterminal WAL.
+- New JUnit tests for both interrupted RESTORE outcomes:
+  * world write happened before missing ACK: reconcile it from BEFORE image.
+  * world write did not happen: retain it in plan and retry.
+- New real-server rollback crash integration:
+  phase8: second transaction applies and flushes complete move before COMMITTED.
+  phase9: after 10 real RESTORE writes, flush both region files, then Runtime.halt
+          before RESTORE ACK #10. Expected WAL: ROLLING_BACK, 9 ACKs,
+          pendingOperation RESTORE, appliedWrites=52, totalWrites=52.
+  phase10: after cold restart, expect 42 applied cells / 12 original cells,
+           reconcile pending restore, write remaining 42, flush, commit ROLLED_BACK,
+           restoredWrites=52.
+  phase11: after second cold restart, all 54 cells original and WAL terminal.
+- Previous phases4-7 cross-region apply crash test remains required.
+- Publish 0.20.0 JAR and source artifacts.
 
-Interpretation:
-The test proves the production relocation engine can recover a deliberately
-partially persisted state spread across two Anvil region files when the WAL's
-last APPLY intent is durable but its ACK is missing. It is stronger than the
-0.18 test, where no changed block survived restart.
+Important trade-off:
+- Production flush barrier calls MinecraftServer.saveEverything(true,true,true),
+  which synchronously flushes loaded world chunks. It may pause a large server.
+- This avoids WAL terminal state getting ahead of chunk persistence but does not
+  create a single atomic transaction across custom WAL and Minecraft region files.
 
 Not proven:
-- Physical power loss, OS/kernel crash, filesystem corruption, storage-controller
-  volatile cache loss, or arbitrary ordering of disk writes.
-- Cross-file atomic commit between Minecraft region files and the custom WAL.
-- BlockEntity NBT/inventories, entities, fluids, redstone, modded blocks, or
-  arbitrary block states.
-- Automatic AI world rewrites remain disabled; sandbox is manual/operator-only.
+- Hardware power loss, OS/kernel crash, storage controller volatile cache loss,
+  filesystem corruption or arbitrary write reordering.
+- BlockEntity NBT/inventories, entities, liquids, redstone, modded blocks,
+  physics or autonomous AI world mutation.
 
-Previous baseline 0.18.0:
-https://github.com/craftkot/ytr/actions/runs/42196399649
+Autonomous world changes remain disabled. Sandbox stays manual and operator-only.
