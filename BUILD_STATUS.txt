@@ -1,6 +1,26 @@
 Operator Reality 0.22.0
 
-Verification: PENDING GitHub Actions for latest operator-dev code commit.
+Verification: PASSED on code commit 24e647bb3e49b0144f807bbdda4f60063619a93c.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42247609303
+
+Confirmed successful:
+- gradle clean test build (includes 8 new WAL watchdog JUnit tests).
+- Dedicated Fabric server startup, RCON /operator status, memory schema 8.
+- Three-server graceful block transfer and rollback, persisted 54 cell preimages.
+- Cross-region partial-apply crash and cold-restart restore:
+  WAL MONITOR phase 6: 1 unfinished APPLYING, 32/52 durable acknowledgments;
+  new sandbox writes BLOCKED, 33 real stored cells restored.
+  WAL MONITOR phase 7: 0 unfinished, 1 ROLLED_BACK.
+- Cross-region partial-rollback crash and cold-restart restore:
+  WAL MONITOR phase 10: 1 unfinished ROLLING_BACK,
+  9 durable RESTORE acknowledgments and 1 pending RESTORE intent;
+  new sandbox writes BLOCKED, remaining 42 states restored, 52 ACKs reconciled.
+  WAL MONITOR phase 11: 0 unfinished, 2 ROLLED_BACK.
+- OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS marker.
+- GitHub artifacts:
+  operator-reality-0.22.0 (359283-byte artifact ZIP)
+  operator-reality-0.22.0-source (179229-byte artifact ZIP)
+
 Previously verified 0.21.0: https://github.com/craftkot/ytr/actions/runs/42234181800
 
 New features:
