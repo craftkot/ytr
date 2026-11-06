@@ -134,6 +134,47 @@ def run_forced_crash() -> None:
         raise
 
 
+def run_forced_rollback_crash() -> None:
+    proc, path = start(9)
+    try:
+        ready(proc)
+        try:
+            response = base.rcon("operator ci-smoke 9")
+            raise RuntimeError("Expected RCON socket loss during rollback crash, got " + response)
+        except (ConnectionError, BrokenPipeError, OSError, TimeoutError):
+            pass
+
+        proc.wait(timeout=120)
+        if proc.returncode == 0:
+            raise RuntimeError("Expected Gradle failure after deliberate rollback JVM halt")
+        log_text = path.read_text(errors="replace")
+        if "OPERATOR_CI_UNCLEAN_HALT_DURING_RESTORE_AFTER_WRITE_10" not in log_text:
+            raise RuntimeError("Missing rollback hard-crash marker in server process log")
+        if "OPERATOR_CI_ROLLBACK_PARTIAL_CHUNKS_FLUSHED_10" not in log_text:
+            raise RuntimeError("Partially restored Minecraft chunks were not flushed before crash")
+        rollback_wal = (
+            CRASH_WORLD / "operator_reality" / "executions" / OWNER
+            / "d3f9c06b-18d5-4b7c-98e1-9d91d06a4f73.json"
+        )
+        if not rollback_wal.is_file():
+            raise RuntimeError("Rollback WAL missing after forced JVM halt")
+        ledger = json.loads(rollback_wal.read_text())
+        if (ledger.get("phase") != "ROLLING_BACK"
+                or ledger.get("pendingOperation") != "RESTORE"
+                or ledger.get("restoredWrites") != 9
+                or ledger.get("appliedWrites") != 52
+                or ledger.get("totalWrites") != 52):
+            raise RuntimeError("Unexpected rollback WAL after crash: "
+                               + repr({k: ledger.get(k) for k in
+                                       ("phase", "pendingOperation", "restoredWrites",
+                                        "appliedWrites", "totalWrites")}))
+        print("OPERATOR_CI_ROLLBACK_CRASH_CONFIRMED: 10 restored block writes flushed "
+              "before RESTORE ACK #10; WAL contains 9 durable restore ACKs", flush=True)
+    except BaseException:
+        cleanup(proc, path)
+        raise
+
+
 def main() -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Refusing hard-crash integration test outside GitHub Actions")
@@ -153,6 +194,10 @@ def main() -> None:
         run_forced_crash()
         run_normal(6)
         run_normal(7)
+        run_normal(8)
+        run_forced_rollback_crash()
+        run_normal(10)
+        run_normal(11)
     finally:
         MARKER.unlink(missing_ok=True)
         properties.write_text(before)
