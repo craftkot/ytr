@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.0 — Real Minecraft Relocation Integration
+
+- Added `ServerRelocationSmoke`, a strictly CI-gated command harness running the production `SandboxTransactionEngine` against actual `MinecraftSafeBlockWorld` BlockState writes on a dedicated Fabric server.
+- Added `tools/integration_relocation_smoke.py`, which boots three independent server processes using the same disposable CI world and checks real persisted chunks/WAL on both restarts.
+- Phase 1 creates a 26-block hollow stone shell, writes the source/target journal, performs 52 actual guarded Minecraft block changes, and checks a durable COMMITTED execution ledger.
+- Phase 2 reloads Minecraft world data and the WAL after restart, verifies the applied layout and executes the same guarded manual rollback engine.
+- Phase 3 reloads both saved chunks and the WAL after another restart and checks the original layout and ROLLED_BACK state.
+- CI harness requires explicit JVM flag, operator privileges, no connected players, and an additional marker in the isolated world directory; never runs during normal Operator gameplay.
+- Corrected GitHub Actions artifact names to the matching release version.
+- Existing JUnit fault-injection tests remain in the pipeline; the integration test adds real server persistence, not simulation of a power loss.
+
+Known limits:
+- The live integration test uses only default-state stone/air, not inventories, complex blocks, fluids or modded systems.
+- It uses clean, graceful server restarts; abrupt power loss and partially persisted chunks still require separate verification.
+- AI-driven world manipulation remains disabled; sandbox application and rollback are explicitly manual and operator-restricted.
+
 ## 0.16.0 — Shared Sandbox Transaction Engine and Fault-Injection Verification
 
 - Refactored manual Minecraft `sandbox apply` and `sandbox rollback` to use the **same** pure-Java `SandboxTransactionEngine` tested with deterministic simulated worlds.
