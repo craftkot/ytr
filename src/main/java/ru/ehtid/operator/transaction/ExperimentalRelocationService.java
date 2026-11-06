@@ -56,6 +56,11 @@ public final class ExperimentalRelocationService {
                                        RelocationExecutionLedger state) throws IOException {
                         RelocationExecutionStorage.update(server, transaction, state);
                     }
+
+                    @Override
+                    public void flushWorld() throws IOException {
+                        flushWorldOrThrow(server);
+                    }
                 });
 
         if (!transfer.committed()) {
@@ -113,6 +118,11 @@ public final class ExperimentalRelocationService {
                                        RelocationExecutionLedger state) throws IOException {
                         RelocationExecutionStorage.update(server, transaction, state);
                     }
+
+                    @Override
+                    public void flushWorld() throws IOException {
+                        flushWorldOrThrow(server);
+                    }
                 });
         if (recovery.outcome() == SandboxTransactionEngine.Outcome.ROLLED_BACK) {
             return "Sandbox rollback ROLLED_BACK | restored " + recovery.confirmedWrites()
@@ -122,6 +132,12 @@ public final class ExperimentalRelocationService {
         return "Sandbox rollback " + recovery.outcome() + ": " + recovery.reason()
                 + " | restored " + recovery.confirmedWrites()
                 + " | retry only after resolving conflicts, without deleting the journal";
+    }
+
+    private static void flushWorldOrThrow(MinecraftServer server) throws IOException {
+        if (!server.saveEverything(true, true, true)) {
+            throw new IOException("Minecraft world flush returned false");
+        }
     }
 
     public static String status(MinecraftServer server, ServerPlayer player) {
