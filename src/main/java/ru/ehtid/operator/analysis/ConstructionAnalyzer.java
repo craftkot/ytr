@@ -154,78 +154,6 @@ public final class ConstructionAnalyzer {
         return blockState != null && blockState.contains("half=upper");
     }
 
-    private static InteriorMetrics estimateEnclosedVoid(
-            List<PlayerMemory.ConstructionBlock> blocks,
-            int minX, int minY, int minZ,
-            int maxX, int maxY, int maxZ,
-            int spanX, int spanY, int spanZ,
-            long remainingBudget
-    ) {
-        long volume = (long) spanX * spanY * spanZ;
-        if (volume <= 0L || volume > MAX_INTERIOR_SCAN_CELLS
-                || volume > remainingBudget) {
-            return new InteriorMetrics(false, 0, 0);
-        }
-
-        Set<LocalCell> occupied = new HashSet<>();
-        for (PlayerMemory.ConstructionBlock block : blocks) {
-            occupied.add(new LocalCell(block.x, block.y, block.z));
-        }
-
-        Set<LocalCell> exterior = new HashSet<>();
-        ArrayDeque<LocalCell> frontier = new ArrayDeque<>();
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                seedExterior(new LocalCell(x, y, minZ), occupied, exterior, frontier);
-                if (maxZ != minZ) seedExterior(new LocalCell(x, y, maxZ), occupied, exterior, frontier);
-            }
-        }
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                seedExterior(new LocalCell(x, minY, z), occupied, exterior, frontier);
-                if (maxY != minY) seedExterior(new LocalCell(x, maxY, z), occupied, exterior, frontier);
-            }
-        }
-        for (int y = minY; y <= maxY; y++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                seedExterior(new LocalCell(minX, y, z), occupied, exterior, frontier);
-                if (maxX != minX) seedExterior(new LocalCell(maxX, y, z), occupied, exterior, frontier);
-            }
-        }
-
-        while (!frontier.isEmpty()) {
-            LocalCell current = frontier.removeFirst();
-            for (int[] direction : DIRECTIONS) {
-                int x = current.x() + direction[0];
-                int y = current.y() + direction[1];
-                int z = current.z() + direction[2];
-                if (x < minX || x > maxX || y < minY || y > maxY || z < minZ || z > maxZ) {
-                    continue;
-                }
-                LocalCell next = new LocalCell(x, y, z);
-                if (occupied.contains(next) || !exterior.add(next)) continue;
-                frontier.addLast(next);
-            }
-        }
-
-        long unoccupied = Math.max(0L, volume - occupied.size());
-        long enclosed = Math.max(0L, unoccupied - exterior.size());
-        return new InteriorMetrics(
-                true,
-                (int) Math.min(Integer.MAX_VALUE, unoccupied),
-                (int) Math.min(Integer.MAX_VALUE, enclosed)
-        );
-    }
-
-    private static void seedExterior(
-            LocalCell cell,
-            Set<LocalCell> occupied,
-            Set<LocalCell> exterior,
-            ArrayDeque<LocalCell> frontier
-    ) {
-        if (!occupied.contains(cell) && exterior.add(cell)) frontier.addLast(cell);
-    }
-
     public record Analysis(
             int trackedBlockCount,
             int structureCount,
@@ -266,8 +194,21 @@ public final class ConstructionAnalyzer {
             boolean interiorScanComplete,
             int unoccupiedCells,
             int enclosedVoidCells,
-            String semanticKind
+            String semanticKind,
+            List<RoomAnalyzer.Room> rooms,
+            List<RoomAnalyzer.DoorLink> doorLinks
     ) {
+        public Structure {
+            rooms = List.copyOf(rooms);
+            doorLinks = List.copyOf(doorLinks);
+        }
+
+        public int roomCount() { return rooms.size(); }
+        public int doorLinkCount() { return doorLinks.size(); }
+        public int furnishedRoomCount() {
+            return (int) rooms.stream().filter(room -> !"UNCLASSIFIED".equals(room.role())).count();
+        }
+
         public int spanX() { return maxX - minX + 1; }
         public int spanY() { return maxY - minY + 1; }
         public int spanZ() { return maxZ - minZ + 1; }
@@ -288,8 +229,6 @@ public final class ConstructionAnalyzer {
     }
 
     private record CellKey(String dimension, int x, int y, int z) { }
-    private record LocalCell(int x, int y, int z) { }
-    private record InteriorMetrics(boolean complete, int unoccupiedCells, int enclosedVoidCells) { }
 
     private static final class Component {
         private final String dimension;
@@ -379,9 +318,8 @@ public final class ConstructionAnalyzer {
             double wallCoverage = wallArea <= 0L ? 0.0D
                     : Math.min(1.0D, occupiedWallFaceCells / (double) wallArea);
 
-            InteriorMetrics interior = estimateEnclosedVoid(
-                    blocks, minX, minY, minZ, maxX, maxY, maxZ,
-                    spanX, spanY, spanZ, interiorBudget
+            RoomAnalyzer.Analysis interior = RoomAnalyzer.analyze(
+                    blocks, minX, minY, minZ, maxX, maxY, maxZ, interiorBudget
             );
             boolean enclosedBuilding = buildingCandidate
                     && interior.complete() && interior.enclosedVoidCells() > 0
@@ -420,7 +358,8 @@ public final class ConstructionAnalyzer {
                     floorLayers, doorCount, windowBlockCount,
                     stairBlockCount, slabBlockCount,
                     interior.complete(), interior.unoccupiedCells(),
-                    interior.enclosedVoidCells(), semanticKind
+                    interior.enclosedVoidCells(), semanticKind,
+                    interior.rooms(), interior.doorLinks()
             );
         }
     }
