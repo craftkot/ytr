@@ -1,6 +1,19 @@
 Operator Reality 0.11.0
 
-Verification: PENDING GitHub Actions on exact source commit.
+Verification: PASSED on source commit 81fe4b9d8e95605ab63ebab97228ebe8e01cad54.
+GitHub Actions run: https://github.com/craftkot/ytr/actions/runs/42144268155
+
+Successful checks:
+- gradle clean test build --no-daemon
+- Dedicated Fabric server boot and RCON /operator status smoke test
+- Persisted Operator memory schemaVersion 8
+- All JUnit tests (including snapshot planner and checksum integrity) passed
+- Uploaded operator-reality-0.11.0 JAR artifact and source ZIP
+
+GitHub artifacts:
+- operator-reality-0.11.0 (206630 bytes)
+- operator-reality-0.11.0-source (89217 bytes)
+
 Baseline: Operator 0.10.0 verified; https://github.com/craftkot/ytr/actions/runs/42138745446
 
 Required CI checks:
