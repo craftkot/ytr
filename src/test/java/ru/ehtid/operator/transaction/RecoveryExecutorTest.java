@@ -90,6 +90,53 @@ class RecoveryExecutorTest {
     }
 
     @Test
+    void writeAheadCheckpointFailureStopsAndRetrySkipsRestoredCells() {
+        TransactionJournal journal = journal();
+        FakeWorld world = new FakeWorld(journal);
+        world.data.put(new RecoveryPlanner.Position(0, 64, 0), AIR);
+        world.data.put(new RecoveryPlanner.Position(10, 64, 0), STONE);
+
+        java.util.List<String> events = new java.util.ArrayList<>();
+        RecoveryExecutor.CheckpointSink failing = new RecoveryExecutor.CheckpointSink() {
+            @Override
+            public void beforeWrite(int sequence, RecoveryPlanner.Change change) {
+                events.add("INTENT:" + change.position().x());
+                if (sequence == 1) throw new IllegalStateException("simulated checkpoint outage");
+            }
+
+            @Override
+            public void afterWrite(int sequence, RecoveryPlanner.Change change) {
+                events.add("ACK:" + change.position().x());
+            }
+        };
+
+        var first = RecoveryExecutor.restore(journal, world, failing);
+        assertEquals(RecoveryExecutor.Outcome.INTERRUPTED, first.outcome());
+        assertEquals(1, first.restored());
+        assertEquals(1, world.writes);
+        assertEquals(3, events.size());
+        assertTrue(events.get(0).startsWith("INTENT:"));
+        assertTrue(events.get(1).startsWith("ACK:"));
+
+        var retried = RecoveryExecutor.restore(journal, world,
+                RecoveryExecutor.CheckpointSink.NOOP);
+        assertEquals(RecoveryExecutor.Outcome.COMPLETED, retried.outcome());
+        assertEquals(1, retried.restored());
+        assertEquals(2, world.writes);
+        assertEquals(RecoveryPlanner.Status.UNCHANGED,
+                RecoveryPlanner.inspect(journal, world).status());
+    }
+
+    @Test
+    void noCheckpointSinkDisablesAbstractRecovery() {
+        TransactionJournal journal = journal();
+        FakeWorld world = new FakeWorld(journal);
+        var result = RecoveryExecutor.restore(journal, world, null);
+        assertEquals(RecoveryExecutor.Outcome.BLOCKED, result.outcome());
+        assertEquals(0, world.writes);
+    }
+
+    @Test
     void unknownThirdPartyBlockBlocksEntireRecovery() {
         TransactionJournal journal = journal();
         FakeWorld world = new FakeWorld(journal);
