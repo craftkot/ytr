@@ -1,48 +1,37 @@
-Operator Reality 0.20.0
+Operator Reality 0.21.0
 
-Verification: PASSED on exact code commit 2f47e5a6be6eddd688bc4ce2fd3f0659764a7cc8.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42232524535
+Verification: PENDING GitHub Actions for exact operator-dev source commit.
+Last verified baseline 0.20.0:
+https://github.com/craftkot/ytr/actions/runs/42232524535
 
-PASS:
-- Gradle clean test build; Java 25 / Minecraft Java 26.3.
-- 154 JUnit tests passed, including WAL/world-flush failures and both interrupted
-  RESTORE cases (world write happened before missing ACK; world write did not happen).
-- Dedicated Fabric server startup, RCON /operator status, memory schemaVersion 8.
-- Graceful real-server apply/rollback across three JVM boots.
-- Partial APPLY crash across two Anvil region files:
-  33 block changes flushed; JVM halted before ACK #33; 32 ACKs durable;
-  cold restart observed 33 applied cells; rollback restored 33; final restart
-  verified 54 original cells.
-- Partial RESTORE crash across two Anvil region files:
-  second move committed only after world flush;
-  10 restore writes flushed; JVM halted before RESTORE ACK #10;
-  cold restart saw 42 applied cells / 12 original cells and 9 durable restore ACKs;
-  recovery reconciled the missing ACK from the BEFORE image, restored 42 remaining
-  cells, flushed world, and committed ROLLED_BACK;
-  final restart verified 54 original cells and restoredWrites=52.
-- Final marker: OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS.
-- Release artifacts uploaded:
-  operator-reality-0.20.0 (346759-byte artifact ZIP)
-  operator-reality-0.20.0-source (169657-byte artifact ZIP)
+New 0.21 checks:
+- Compile and run JUnit tests.
+- TransactionJournalStorageTest:
+  * prepared journal is written to a same-directory temp file and published;
+  * exact owner/journal identity reloads with matching SHA-256;
+  * duplicate create is refused;
+  * modified before-image is rejected after reload;
+  * non-PREPARED journal is refused before publication.
+- Existing RelocationExecutionStorage fsync and WAL fault-injection tests remain required.
+- Dedicated Fabric server startup and RCON status.
+- Graceful apply/rollback across server restarts.
+- Partial APPLY crash across two Anvil region files.
+- Partial RESTORE crash across two Anvil region files.
+- WAL terminal phase ordering and world flush failure tests.
+- Publish 0.21.0 JAR and source artifacts.
 
-Production durability behavior:
-- APPLY terminal COMMITTED is written only after a successful Minecraft world flush.
-- ROLLBACK terminal ROLLED_BACK is written only after successful world flush and
-  full UNCHANGED preimage verification.
-- If the world flush fails, WAL stays in a recoverable nonterminal phase.
-- A pending RESTORE intent whose block already matches BEFORE after restart has
-  its missing ACK reconciled; if it still matches AFTER, it remains in the retry plan.
+Prepared journal persistence:
+- JSON temp file is forced with FileChannel.force(true) before rename.
+- Atomic move is used where supported; same-directory fallback otherwise.
+- Parent directory fsync is best effort because Windows/filesystem support varies.
+- Execution WAL already uses the same file force + atomic replacement + directory fsync strategy.
 
-Trade-off:
-- The current Minecraft adapter uses MinecraftServer.saveEverything(true,true,true).
-  This synchronously flushes loaded world chunks and may cause a noticeable pause
-  on large servers. It favors safety over save cost for the small manual sandbox.
-
-Not proven:
-- Physical power loss, OS/kernel crash, volatile storage-controller cache loss,
-  filesystem corruption, or arbitrary write reordering.
-- Atomic commit across custom WAL and multiple Anvil region files.
-- BlockEntity NBT/inventories, entities, liquids, redstone, modded blocks,
-  arbitrary block states or autonomous AI world mutation.
+Known limits:
+- Hardware power loss, kernel crash, storage controller volatile cache loss and
+  filesystem corruption are not established by normal CI.
+- Directory fsync can be unsupported.
+- WAL, PREPARED journal and Anvil region files are separate files, not one atomic transaction.
+- Block entities/inventories, entities, liquids, redstone, modded blocks, arbitrary
+  states and autonomous world mutation remain unsupported.
 
 Sandbox remains experimental, manual and operator-only.
