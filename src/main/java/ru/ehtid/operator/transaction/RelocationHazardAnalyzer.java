@@ -77,6 +77,8 @@ public final class RelocationHazardAnalyzer {
         String path = blockId.substring(colon + 1);
         if (blockState != null && blockState.contains("waterlogged=true"))
             return Category.FLUID;
+        if (SafeBlockPalette.accepts(blockId, blockState, null))
+            return Category.ORDINARY;
         if (path.equals("air") || path.equals("cave_air")
                 || path.equals("void_air") || path.equals("stone")
                 || path.equals("dirt") || path.equals("grass_block")
