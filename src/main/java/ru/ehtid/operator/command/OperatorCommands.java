@@ -38,6 +38,15 @@ public final class OperatorCommands {
                     );
                     return 1;
                 }))
+                .then(Commands.literal("rooms").executes(context -> {
+                    var source = context.getSource();
+                    var player = source.getPlayerOrException();
+                    source.sendSuccess(
+                            () -> Component.literal(observer.getRoomProfile(player)),
+                            false
+                    );
+                    return 1;
+                }))
                 .then(Commands.literal("profile").executes(context -> {
                     var source = context.getSource();
                     var player = source.getPlayerOrException();
