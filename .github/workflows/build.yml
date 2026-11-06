@@ -122,6 +122,9 @@ jobs:
             exit 1
           fi
           echo "Dedicated server started, Operator loaded, status command passed, and world memory persisted."
+      - name: Integration-test real block apply and rollback across restarts
+        shell: bash
+        run: python3 tools/integration_relocation_smoke.py
       - name: Upload mod JARs
         uses: actions/upload-artifact@v4
         with:
