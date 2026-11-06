@@ -56,6 +56,14 @@ public final class RecoveryExecutor {
                         "RESTORATION_INTERRUPTED");
             }
         }
+        // A successful sequence of CAS writes is not proof of a complete
+        // restore if other systems can modify world cells concurrently.
+        RecoveryPlanner.Plan verification = RecoveryPlanner.inspect(journal, world);
+        if (verification.status() != RecoveryPlanner.Status.UNCHANGED) {
+            return new Result(Outcome.CONCURRENT_CHANGE, restored,
+                    verification.appliedCells(),
+                    "POST_RESTORE_VERIFICATION_" + verification.status());
+        }
         return new Result(Outcome.COMPLETED, restored, 0, "PREIMAGES_RESTORED");
     }
 }
