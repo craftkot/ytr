@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class OperatorWorldData {
-    public int schemaVersion = 7;
+    public int schemaVersion = 8;
     public long observationStartedAt = -1L;
     public boolean observationComplete = false;
     public long lastSavedAt = 0L;
@@ -14,7 +14,7 @@ public final class OperatorWorldData {
         int previousSchemaVersion = schemaVersion;
         if (players == null) players = new LinkedHashMap<>();
         if (schemaVersion < 1) schemaVersion = 1;
-        // Schema 5 adds planner state, schema 6 construction memory, schema 7 block states and shell metrics.
+        // Schema 5 planner state, 6 construction memory, 7 block states/shell, 8 room graph summaries.
         players.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
         for (PlayerMemory memory : players.values()) {
             if (previousSchemaVersion < 5) {
@@ -42,9 +42,20 @@ public final class OperatorWorldData {
                 memory.largestRoofCoverage = 0.0D;
                 memory.largestWallCoverage = 0.0D;
             }
+            if (previousSchemaVersion < 8) {
+                // Room statistics did not exist in previous saves; recompute from existing placements.
+                memory.recognizedRoomCount = 0;
+                memory.recognizedRoomConnections = 0;
+                memory.recognizedFurnishedRoomCount = 0;
+                memory.largestRoomCellCount = 0;
+                if (memory.constructionBlocks != null && !memory.constructionBlocks.isEmpty()) {
+                    memory.constructionAnalysisDirty = true;
+                }
+                memory.lastConstructionAnalysisAt = -1L;
+            }
             memory.normalize();
         }
-        schemaVersion = 7;
+        schemaVersion = 8;
     }
 
     public long worldObservationElapsed(long currentGameTick) {
