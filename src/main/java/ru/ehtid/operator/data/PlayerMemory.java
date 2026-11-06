@@ -67,6 +67,11 @@ public final class PlayerMemory {
     public int largestStairBlockCount = 0;
     public int largestSlabBlockCount = 0;
     public int largestFloorLayerCount = 0;
+    /** Summary of bounded enclosed-room inference, not authoritative world geometry. */
+    public int recognizedRoomCount = 0;
+    public int recognizedRoomConnections = 0;
+    public int recognizedFurnishedRoomCount = 0;
+    public int largestRoomCellCount = 0;
     public double largestFloorCoverage = 0.0D;
     public double largestRoofCoverage = 0.0D;
     public double largestWallCoverage = 0.0D;
@@ -195,6 +200,10 @@ public final class PlayerMemory {
         largestStairBlockCount = Math.max(0, largestStairBlockCount);
         largestSlabBlockCount = Math.max(0, largestSlabBlockCount);
         largestFloorLayerCount = Math.max(0, largestFloorLayerCount);
+        recognizedRoomCount = Math.max(0, recognizedRoomCount);
+        recognizedRoomConnections = Math.max(0, recognizedRoomConnections);
+        recognizedFurnishedRoomCount = Math.max(0, recognizedFurnishedRoomCount);
+        largestRoomCellCount = Math.max(0, largestRoomCellCount);
         largestFloorCoverage = normalizeRatio(largestFloorCoverage);
         largestRoofCoverage = normalizeRatio(largestRoofCoverage);
         largestWallCoverage = normalizeRatio(largestWallCoverage);
@@ -437,6 +446,13 @@ public final class PlayerMemory {
         largestFloorCoverage = normalizeRatio(floorCoverage);
         largestRoofCoverage = normalizeRatio(roofCoverage);
         largestWallCoverage = normalizeRatio(wallCoverage);
+    }
+
+    public void updateRoomSummary(int roomCount, int links, int furnishedRooms, int largestVolume) {
+        recognizedRoomCount = Math.max(0, roomCount);
+        recognizedRoomConnections = Math.max(0, links);
+        recognizedFurnishedRoomCount = Math.max(0, furnishedRooms);
+        largestRoomCellCount = Math.max(0, largestVolume);
     }
 
     private static String normalizeBlockState(String blockState) {
