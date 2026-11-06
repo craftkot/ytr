@@ -17,7 +17,6 @@ public final class SafeBlockPalette {
             "minecraft:oak_planks",
             "minecraft:spruce_planks",
             "minecraft:birch_planks",
-            "minecraft:deepslate",
             "minecraft:polished_deepslate",
             "minecraft:bricks",
             "minecraft:glass"
