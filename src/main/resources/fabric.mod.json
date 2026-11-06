@@ -3,7 +3,7 @@
   "id": "operator_reality",
   "version": "${version}",
   "name": "Operator: Reality",
-  "description": "A Minecraft observer with hash-chained recovery audit checkpoints, bounded neighbor-risk analysis and non-mutating recovery diagnostics.",
+  "description": "Minecraft observer with opt-in guarded sandbox simple-block relocation, durable mutation intents, and manually controlled rollback.",
   "authors": ["EHTID project"],
   "license": "MIT",
   "environment": "*",
