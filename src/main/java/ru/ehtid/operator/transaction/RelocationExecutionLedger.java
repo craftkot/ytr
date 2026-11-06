@@ -102,11 +102,28 @@ public final class RelocationExecutionLedger {
         sign();
     }
 
-    /** A crash may leave an INTENT before its ACK. Only rollback can resolve it. */
+    /**
+     * Resolve an interrupted APPLY/RESTORE intent after the caller has compared
+     * the complete world against journal BEFORE/AFTER images.
+     *
+     * If a pending RESTORE is already reflected in the world, account for its
+     * missing ACK before clearing the intent. If the world still contains its
+     * AFTER image, the restore remains in the recovery plan and will be retried.
+     */
     public void beginRollbackAfterInterruptedWrite(long tick) {
+        beginRollbackAfterInterruptedWrite(tick, false);
+    }
+
+    public void beginRollbackAfterInterruptedWrite(long tick,
+                                                   boolean pendingRestoreAlreadyApplied) {
         if (!valid() || !("APPLYING".equals(phase) || "ROLLING_BACK".equals(phase)))
             throw new IllegalStateException("No interrupted operation to recover");
+        if (pendingRestoreAlreadyApplied && !"RESTORE".equals(pendingOperation))
+            throw new IllegalStateException("No interrupted RESTORE intent to reconcile");
+        if (pendingRestoreAlreadyApplied && restoredWrites >= totalWrites)
+            throw new IllegalStateException("Excessive recovered RESTORE acknowledgements");
         phase = "ROLLING_BACK";
+        if (pendingRestoreAlreadyApplied) restoredWrites++;
         pendingOperation = "";
         updatedTick = tick;
         sign();
