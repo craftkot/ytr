@@ -1,38 +1,26 @@
-Operator Reality 0.12.0
+Operator Reality 0.13.0
 
-Verification: PASSED on source commit e0f4b9df50fc927d50e20b0bce445f00b86d5570.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42149563071
+Verification: PENDING GitHub Actions on exact operator-dev source commit.
+Previous verified version: 0.12.0, https://github.com/craftkot/ytr/actions/runs/42149563071
 
-Successful CI checks:
+Required checks:
 - gradle clean test build --no-daemon
-- Dedicated Fabric server startup and RCON /operator status
-- World memory persisted with schemaVersion 8
-- Uploaded mod JAR artifact and source ZIP
+- Dedicated Fabric 26.3 server boot; RCON /operator status
+- Persisted memory schemaVersion 8
+- Upload 0.13.0 JAR and source ZIP
 
-Artifacts:
-- operator-reality-0.12.0 (231433-byte GitHub artifact archive)
-- operator-reality-0.12.0-source (99006-byte GitHub artifact archive)
+Implemented:
+- RecoveryPlanner: full journal BEFORE and expected translated AABB AFTER comparisons, strict all-cell preflight.
+- Explicit read-only /operator transaction audit; reports unchanged, partial after-state, conflict, unloaded, unsupported BlockEntity NBT.
+- RecoveryExecutor: abstract CAS-based replay and post-restore verification (NO LIVE Minecraft adapter).
+- Idempotent retry after simulated interruption and fail-closed concurrent edit handling.
+- BlockEntity SNBT relocation is deliberately unsupported, not silently treated as safe.
+- Newest journal integrity validation fails closed; no implicit fallback to an older historical journal.
+- Huge/malformed AABB bounds rejected without overflow.
+- Simulated fault-injection tests for crash, replay, conflict and unsupported source entity data.
 
-Baseline: Operator 0.11.0 verified via https://github.com/craftkot/ytr/actions/runs/42144268155
-
-Required CI:
-- gradle clean test build --no-daemon
-- Dedicated Fabric 26.3 server boot and RCON /operator status
-- Persisted world memory schemaVersion 8 (unchanged)
-- Upload 0.12.0 JAR and source ZIP artifacts
-
-Implemented in 0.12:
-- TransactionJournal full PREPARED source/target before-images, including natural blocks and air.
-- TransactionIntegrity deterministic SHA-256 over both before-image regions.
-- TransactionJournalStorage: non-overwriting atomic journal persistence, max four/player.
-- TransactionPreparationService: valid snapshot + preflight + bounded whole-AABB capture.
-- Target AABB must be entirely empty, not only its tracked block positions.
-- Explicit /operator transaction prepare x y z and /operator transaction status.
-- Pure reverse-preimage planning (no placement or rollback action).
-- Unit tests for journal completeness, overlap, duplicate cells, limits and tamper detection.
-
-Limits: 4096 cells per region, 8192 total, 8 MiB journal JSON,
-256 KiB NBT per block, 2 MiB total NBT.
-
-Not implemented: world mutation, automatic relocation, rollback execution, crash recovery,
-chunk coordination, neighbor/redstone/physics safety and entity relocation.
+Known limits:
+- NO actual in-game relocation, block placement or rollback command.
+- NO durable APPLYING/COMMITTED/ROLLING_BACK phase transitions.
+- NO block entity NBT relocation, entity transport, redstone/physics checks, chunk coordination.
+- An AFTER match cannot prove Operator executed an operation; automatic restore would be unsafe.
