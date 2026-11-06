@@ -39,6 +39,7 @@ import ru.ehtid.operator.storage.OperatorStorage;
 import ru.ehtid.operator.snapshot.StructureSnapshotService;
 import ru.ehtid.operator.transaction.TransactionPreparationService;
 import ru.ehtid.operator.transaction.RecoveryAuditService;
+import ru.ehtid.operator.transaction.ExperimentalRelocationService;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
@@ -740,7 +741,7 @@ public final class ObservationEngine {
                 .mapToInt(memory -> memory.recognizedRoomCount).sum();
         int roomLinks = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedRoomConnections).sum();
-        return "Operator 0.14 | " + phase
+        return "Operator 0.15 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -798,6 +799,24 @@ public final class ObservationEngine {
     public String getRecoveryCheckpointStatus(ServerPlayer player, MinecraftServer server) {
         if (!loaded) return "Operator memory is not loaded";
         return RecoveryAuditService.checkpointStatus(server, player);
+    }
+
+    /** Explicit privileged sandbox only; no autonomous world mutation. */
+    public String executeSandboxRelocation(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        return ExperimentalRelocationService.apply(server, player);
+    }
+
+    /** Manually restore exact simple-block preimages for this mod's executed operation. */
+    public String rollbackSandboxRelocation(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        return ExperimentalRelocationService.rollback(server, player);
+    }
+
+    /** Read only the durable write-ahead authorization and progress. */
+    public String getSandboxRelocationStatus(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        return ExperimentalRelocationService.status(server, player);
     }
 
     public String getBrainProfile(ServerPlayer player) {
