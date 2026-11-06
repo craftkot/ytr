@@ -1,6 +1,37 @@
 Operator Reality 0.18.0
 
-Verification: PENDING GitHub Actions for the exact operator-dev code commit.
+Verification: PASSED on exact code commit 66561c8fa6c5d4b7ee4ccdba093cd3a4eab10af1.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42196399649
+
+PASS:
+- gradle clean test build with all JUnit tests.
+- Dedicated Fabric server startup, RCON /operator status, persisted schema 8.
+- Graceful three-process real-Minecraft integration:
+  phase1: 26 source blocks, 52 guarded block writes, committed WAL
+  phase2: 52 live block changes rolled back after cold restart
+  phase3: original 54 cells persisted across second restart
+  marker: OPERATOR_LIVE_RELOCATION_INTEGRATION_SUCCESS
+- Actual unclean-JVM termination test:
+  phase4: original source shell and BEFORE journal persisted gracefully
+  phase5: intentional hard halt after setBlock #12 BEFORE ACK #12,
+          verified persistent WAL phase APPLYING / 11 durable ACKs / pending APPLY
+  phase6: after cold restart, Minecraft loaded 0 transferred blocks;
+          rollback correctly recognized unchanged preimages and performed 0 writes,
+          then marked the operation ROLLED_BACK.
+  phase7: original 54 cells and ROLLED_BACK WAL persisted across next restart.
+  marker: OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS
+- GitHub artifact ZIPs:
+  operator-reality-0.18.0 (339032 bytes)
+  operator-reality-0.18.0-source (163545 bytes)
+
+IMPORTANT LIMIT:
+The hard-crash test confirms handling of durable unacknowledged WAL intent when
+Minecraft's previously modified chunk cells were NOT persisted (0 observed after
+restart). It does NOT yet test recovery from PARTIALLY PERSISTED chunk changes
+after an unclean crash. JUnit synthetic-world tests cover partial-state recovery,
+but a future live-server scenario must force a subset of dirty chunk data to disk
+before abrupt termination and verify nonzero restore writes.
+
 Baseline: Operator 0.17.0 real-server integration PASSED:
 https://github.com/craftkot/ytr/actions/runs/42185046805
 
