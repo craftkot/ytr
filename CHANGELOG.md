@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.14.0 — Durable Recovery Checkpoints and Neighbor Safety
+
+- Added hash-chained, audit-only `RecoveryCheckpointLedger` bound to the exact journal checksum, world, player and transaction UUID.
+- Added `RecoveryCheckpointStorage` with atomic JSON writes, corruption rejection, 128-event history and 1 MiB file limits. Existing legacy PREPARED journals obtain a checkpoint on their first explicit audit.
+- `/operator transaction prepare` now creates checkpoint #0 only after the PREPARED before-image journal is durable; failure is reported without authorizing world changes.
+- `/operator transaction audit` persists its read-only results, and `/operator transaction checkpoint` verifies and displays saved results after server restart.
+- Extracted `MinecraftRecoveryWorldView`, a read-only live-world adapter that accesses only already-loaded chunks and captures real BlockState/BlockEntity metadata.
+- Added conservative `RelocationHazardAnalyzer` for fluids, redstone, gravity/attached blocks, modded and unknown blocks, plus BlockEntity contents.
+- Added a 1-block AABB halo inspection around source and destination: max 8192 sampled neighboring positions; no chunk loading, no claims of safety when skipped or incomplete.
+- The abstract, non-Minecraft `RecoveryExecutor` now accepts before/after write callbacks, with injected checkpoint failures and idempotent retry tests.
+- Added JUnit tests for recovery history hashing, journal identity binding, history bounds, serialized reload, atomic file replacement, corruption rejection and high-risk block classification.
+- **No live block modification, operator-driven relocation, execute/rollback command or write-authorized operation phase is included.**
+
+Known limitations:
+- Audit checkpoints are observations, NOT an APPLYING/COMMITTED execution log. They cannot prove that Operator actually moved a structure.
+- The only real-world adapter is read-only; the guarded mutation interface remains a test harness.
+- Multi-chunk atomicity, entity movement, scheduled ticks, complex block physics, inventory-safe BlockEntity relocation and full rollback are still absent.
+- SHA-256 detects corruption but does not authenticate data against an attacker who can rewrite the world's files.
+
 ## 0.13.0 — Recovery Audit and Fault-Injection Engine
 
 - Implemented a deterministic recovery planner comparing every journal preimage with the original and predicted translated whole-AABB state.
