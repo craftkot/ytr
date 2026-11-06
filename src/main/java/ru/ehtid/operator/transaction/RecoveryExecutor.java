@@ -1,9 +1,13 @@
 package ru.ehtid.operator.transaction;
 
 /**
- * Generic compare-and-restore engine for fault-injection tests and future
- * server-thread adapters. No Minecraft world adapter is exposed in this
- * version; there is deliberately no in-game execution command.
+ * Generic compare-and-restore engine shared by deterministic fault-injection
+ * tests and the guarded Minecraft server-thread world adapter.
+ *
+ * This class never issues an unconditional block write. The caller supplies
+ * a world adapter and durable intent/ack checkpoints; operator permissions,
+ * entity/boundary checks and world durability barriers are enforced by the
+ * production transaction service.
  */
 public final class RecoveryExecutor {
     private RecoveryExecutor() { }
@@ -20,10 +24,10 @@ public final class RecoveryExecutor {
     }
 
     /**
-     * Optional durable write-ahead checkpoint callbacks.
-     * A future Minecraft adapter must fsync an intent BEFORE applying a cell
-     * and record completion only AFTER a successful compare-and-write.
-     * They are exercised through simulated-world fault injection in 0.14.
+     * Durable write-ahead checkpoint callbacks.
+     * The production Minecraft adapter persists an intent BEFORE applying a
+     * cell and records completion only AFTER a successful compare-and-write.
+     * Tests inject failures at both boundaries to verify idempotent recovery.
      */
     public interface CheckpointSink {
         void beforeWrite(int sequence, RecoveryPlanner.Change change);
