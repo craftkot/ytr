@@ -1,10 +1,30 @@
 Operator Reality 0.23.0 — autonomous tunnel fold prototype
 
-Verification: PASSED on code commit 6451a7d2f895c9f5163b562ac92efbaf168d3937.
+Real autonomous world integration: PASSED on code commit
+0402c6c6efeab83d90e4b1c4dd63cf5eefab69da.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42357357568
+Three independent Fabric server process boots with an isolated generated
+Minecraft 26.3 world and a synthetic ServerPlayer actor:
+- PHASE1: opt-in and 24000-tick observation gates verified; hazardous redstone
+  blocked; production autonomous path committed 2 real BlockState changes.
+  Server-wide WAL monitor: 1 committed, 0 unfinished, 0 invalid.
+- PHASE2: actual changed chunk states and WAL persisted through cold restart;
+  repeat attempt refused; real two-cell rollback succeeded.
+  WAL monitor: 1 rolled back, 0 unfinished, 0 invalid.
+- PHASE3: second cold restart kept both original cells and ROLLED_BACK ledger;
+  no duplicate anomaly and no unresolved server WAL.
+Original generic hard-crash regression: PASSED in the same CI run.
+Log artifact: operator-tunnel-fold-live-world-logs
+JAR artifact: operator-reality-0.23.0
+Scope: server-world end-to-end with test-only accelerated memory and synthetic
+actor; not a rendered client screenshot, real online player, or full AI chaos.
+Production automatic anomalies remain opt-in off by default.
+
+Earlier version verification: PASSED on code commit 6451a7d2f895c9f5163b562ac92efbaf168d3937.
 GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42354597439
 Build: clean test build SUCCESS, dedicated Fabric RCON startup SUCCESS,
 real cross-restart relocation SUCCESS, unclean-JVM crash recovery SUCCESS.
-New fold path covered by JUnit (real autonomous live candidate still unverified).
+New fold path covered by JUnit AND actual dedicated-server world integration.
 Compiled artifact: operator-reality-0.23.0
 Source artifact: operator-reality-0.23.0-source
 Feature opt-in defaults off. One per player, after 24k world + 24k active ticks
