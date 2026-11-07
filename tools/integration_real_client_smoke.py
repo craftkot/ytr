@@ -61,7 +61,14 @@ def window_id() -> str:
         capture_output=True, text=True, check=False
     ).stdout.splitlines()
     if not found:
-        raise RuntimeError("No visible Minecraft graphical window on Xvfb display")
+        # Native Wayland client inside nested Weston appears as Weston's X11
+        # window on the outer Xvfb display, not as an X11 Minecraft window.
+        found = subprocess.run(
+            ["xdotool", "search", "--onlyvisible", "--name", "Weston"],
+            capture_output=True, text=True, check=False
+        ).stdout.splitlines()
+    if not found:
+        raise RuntimeError("No visible Minecraft/Weston graphics surface on Xvfb display")
     return found[-1]
 
 
@@ -124,6 +131,11 @@ def main() -> None:
     ).strip()
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     env["MESA_LOADER_DRIVER_OVERRIDE"] = "llvmpipe"
+    # Minecraft 26.3 SDL3/RenderPearl cannot create the requested GLX visual
+    # on Xvfb, despite GL 4.5 being available. Use a nested native-Wayland
+    # client, rendered into the Xvfb-visible Weston compositor window.
+    env["SDL_VIDEO_DRIVER"] = "wayland"
+    env["XDG_SESSION_TYPE"] = "wayland"
     # Gradle's Fabric Loom client run keeps this same run/ gameDirectory.
     command = [
         "gradle", "runClient", "--no-daemon",
