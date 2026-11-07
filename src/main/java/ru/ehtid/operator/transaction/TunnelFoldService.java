@@ -45,10 +45,15 @@ public final class TunnelFoldService {
             String dimension = level.dimension().toString();
             List<PlayerMemory.TunnelCell> cells = new ArrayList<>(memory.tunnelCells.values());
             int checked = 0;
-            for (int i = cells.size() - 1; i >= 0 && checked < MAX_CANDIDATES; i--, checked++) {
+            // An air scan can append hundreds of observed-air entries after a
+            // mined tunnel. Count MINED candidates, not arbitrary map entries:
+            // otherwise the autonomous planner silently starves itself.
+            for (int i = cells.size() - 1; i >= 0 && checked < MAX_CANDIDATES; i--) {
                 PlayerMemory.TunnelCell cell = cells.get(i);
-                if (cell == null || !dimension.equals(cell.dimension)
-                        || !PlayerMemory.TUNNEL_SOURCE_MINED.equals(cell.source)
+                if (cell == null || !PlayerMemory.TUNNEL_SOURCE_MINED.equals(cell.source))
+                    continue;
+                checked++;
+                if (!dimension.equals(cell.dimension)
                         || cell.y < level.getMinY() + 5 || cell.y >= level.getMaxY() - 5)
                     continue;
                 double dx = cell.x + 0.5D - player.getX();
