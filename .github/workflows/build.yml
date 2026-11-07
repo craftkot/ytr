@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev, 'feature/autonomous-tunnel-fold' ]
+    branches: [ operator-dev, 'feature/tunnel-fold-world-ci' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:

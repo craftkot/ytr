@@ -39,7 +39,7 @@ def phase(number: int) -> None:
                 if proc.poll() is not None:
                     raise RuntimeError(f"Server exited before RCON: {proc.returncode}")
                 try:
-                    if "PASSIVE OBSERVATION" in base.rcon("operator status"):
+                    if "Operator 0.23" in base.rcon("operator status"):
                         break
                     last_error = "Unexpected status payload"
                 except Exception as exc:
@@ -56,8 +56,9 @@ def phase(number: int) -> None:
             print(f"OPERATOR_TUNNEL_WAL phase={number}: {monitor}", flush=True)
             if "0 unfinished" not in monitor or "0 invalid" not in monitor:
                 raise RuntimeError("Bad or unfinished WAL after phase " + str(number))
-            if number > 1 and "1 committed" not in monitor:
-                raise RuntimeError("Expected persisted auto transaction after restart")
+            expected = "1 committed" if number == 1 else "1 rolled back"
+            if expected not in monitor:
+                raise RuntimeError("Unexpected transaction phase after restart: " + monitor)
             base.send_stop()
             proc.wait(timeout=120)
             if proc.returncode != 0:
