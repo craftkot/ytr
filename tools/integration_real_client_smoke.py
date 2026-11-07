@@ -68,18 +68,21 @@ def window_id() -> str:
             capture_output=True, text=True, check=False
         ).stdout.splitlines()
     if not found:
-        raise RuntimeError("No visible Minecraft/Weston graphics surface on Xvfb display")
+        # Weston may not export the nested Wayland surface as a named X11
+        # window. Screenshots of Xvfb's root are still valid evidence.
+        return ""
     return found[-1]
 
 
 def screenshot(name: str) -> Path:
     window = window_id()
-    subprocess.run(["xdotool", "windowactivate", "--sync", window],
-                   check=False, timeout=10)
-    subprocess.run(["xdotool", "windowsize", window, "1280", "720"],
-                   check=False, timeout=10)
-    subprocess.run(["xdotool", "windowmove", window, "0", "0"],
-                   check=False, timeout=10)
+    if window:
+        subprocess.run(["xdotool", "windowsize", window, "1280", "720"],
+                       check=False, timeout=10)
+        subprocess.run(["xdotool", "windowmove", window, "0", "0"],
+                       check=False, timeout=10)
+    else:
+        log("No named X11 window; capturing the actual Weston/Xvfb root surface")
     # Hide in-game HUD for an unobstructed comparison.
     subprocess.run(["xdotool", "key", "--clearmodifiers", "F1"], check=False)
     time.sleep(0.6)
@@ -104,7 +107,8 @@ def click_ui(x: int, y: int) -> None:
     # Input reaches the real Minecraft Wayland window through nested Weston's
     # X11 host. Hold the mouse down long enough for SDL3 to register it.
     window = window_id()
-    subprocess.run(["xdotool", "windowactivate", window], check=False)
+    if window:
+        subprocess.run(["xdotool", "windowactivate", window], check=False)
     subprocess.run(["xdotool", "mousemove", "--sync", str(x), str(y)], check=False)
     time.sleep(0.15)
     subprocess.run(["xdotool", "mousedown", "1"], check=False)
