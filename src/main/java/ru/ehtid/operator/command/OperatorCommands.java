@@ -117,6 +117,35 @@ public final class OperatorCommands {
                                                             return 1;
                                                         })))))
                 )
+                .then(Commands.literal("anomaly")
+                        .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                        .then(Commands.literal("enable").executes(context -> {
+                            var source = context.getSource();
+                            String result = observer.setAutonomousAnomalies(source.getServer(), true);
+                            source.sendSuccess(() -> Component.literal(result), false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("disable").executes(context -> {
+                            var source = context.getSource();
+                            String result = observer.setAutonomousAnomalies(source.getServer(), false);
+                            source.sendSuccess(() -> Component.literal(result), false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("status").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.getAutonomousAnomalyStatus(player, source.getServer())), false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("rollback").executes(context -> {
+                            var source = context.getSource();
+                            var player = source.getPlayerOrException();
+                            source.sendSuccess(() -> Component.literal(
+                                    observer.rollbackAutonomousAnomaly(player, source.getServer())), false);
+                            return 1;
+                        }))
+                )
                 .then(Commands.literal("sandbox")
                         .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
                         .then(Commands.literal("status").executes(context -> {

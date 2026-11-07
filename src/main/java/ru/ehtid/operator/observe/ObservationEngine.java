@@ -42,6 +42,7 @@ import ru.ehtid.operator.snapshot.StructureSnapshotService;
 import ru.ehtid.operator.transaction.TransactionPreparationService;
 import ru.ehtid.operator.transaction.RecoveryAuditService;
 import ru.ehtid.operator.transaction.ExperimentalRelocationService;
+import ru.ehtid.operator.transaction.TunnelFoldService;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
@@ -142,6 +143,24 @@ public final class ObservationEngine {
                         memory, data.observationComplete, now
                 );
                 if (OperatorBrain.apply(memory, decision, now)) dirty = true;
+            }
+            if (data.autonomousAnomaliesEnabled
+                    && now % OperatorBrain.EVALUATION_INTERVAL_TICKS == 0L
+                    && "READY".equals(memory.operatorPhase)
+                    && "TUNNEL_FOLD".equals(memory.plannedOperatorEvent)
+                    && memory.autonomousFoldJournalId.isEmpty()) {
+                var journal = TunnelFoldService.prepare(server, player, memory, now);
+                if (journal != null) {
+                    memory.autonomousFoldJournalId = journal.journalId;
+                    // Persist one-shot identity before touching any world block.
+                    dirty = true;
+                    save(server);
+                    if (!dirty) {
+                        String result = TunnelFoldService.apply(server, player, journal);
+                        OperatorMod.LOGGER.warn("Autonomous tunnel fold {} result: {}",
+                                player.getUUID(), result);
+                    }
+                }
             }
             dirty = true;
         }
@@ -743,7 +762,7 @@ public final class ObservationEngine {
                 .mapToInt(memory -> memory.recognizedRoomCount).sum();
         int roomLinks = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedRoomConnections).sum();
-        return "Operator 0.15 | " + phase
+        return "Operator 0.23 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()
@@ -761,7 +780,39 @@ public final class ObservationEngine {
                 + " | enclosed buildings: " + enclosedBuildings
                 + " | enclosed rooms: " + roomCount
                 + " | door connections: " + roomLinks
-                + " | world mutations: disabled (shadow planning only)";
+                + " | autonomous tunnel fold: " + (data.autonomousAnomaliesEnabled ? "ENABLED" : "DISABLED");
+    }
+
+    public String setAutonomousAnomalies(MinecraftServer server, boolean enabled) {
+        if (!loaded) return "Operator memory is not loaded";
+        boolean previous = data.autonomousAnomaliesEnabled;
+        data.autonomousAnomaliesEnabled = enabled;
+        dirty = true;
+        save(server);
+        if (dirty) {
+            data.autonomousAnomaliesEnabled = previous;
+            return "Anomaly setting could not be saved; state unchanged";
+        }
+        return enabled ? "Autonomous tunnel folds ENABLED for this world (experimental, one per player)"
+                : "Autonomous tunnel folds DISABLED for this world";
+    }
+
+    public String getAutonomousAnomalyStatus(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        String id = memory == null ? "" : memory.autonomousFoldJournalId;
+        return "Tunnel folds " + (data.autonomousAnomaliesEnabled ? "ENABLED" : "DISABLED")
+                + " | player journal " + (id.isEmpty() ? "none" : id)
+                + " | " + (id.isEmpty() ? "awaiting TUNNEL_FOLD and safe cave geometry"
+                        : TunnelFoldService.status(server, player, id));
+    }
+
+    public String rollbackAutonomousAnomaly(ServerPlayer player, MinecraftServer server) {
+        if (!loaded) return "Operator memory is not loaded";
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        if (memory == null || memory.autonomousFoldJournalId.isEmpty())
+            return "No autonomous tunnel fold recorded for this player";
+        return TunnelFoldService.rollback(server, player, memory.autonomousFoldJournalId);
     }
 
     /** Opt-in server-local preimage capture. No block is placed, removed or moved. */
