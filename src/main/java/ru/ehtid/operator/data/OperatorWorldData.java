@@ -4,7 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class OperatorWorldData {
-    public int schemaVersion = 8;
+    public int schemaVersion = 9;
+    /** Off by default even on worlds created in an earlier version. */
+    public boolean autonomousAnomaliesEnabled = false;
     public long observationStartedAt = -1L;
     public boolean observationComplete = false;
     public long lastSavedAt = 0L;
@@ -55,7 +57,7 @@ public final class OperatorWorldData {
             }
             memory.normalize();
         }
-        schemaVersion = 8;
+        schemaVersion = 9;
     }
 
     public long worldObservationElapsed(long currentGameTick) {

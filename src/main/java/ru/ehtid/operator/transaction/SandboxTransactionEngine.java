@@ -41,6 +41,36 @@ public final class SandboxTransactionEngine {
     public static Result apply(TransactionJournal journal,
                                RecoveryExecutor.MutableWorld world,
                                LongSupplier gameTick, LedgerStore store) {
+        return applyWithMinimum(journal, world, gameTick, store, MIN_TRACKED_BLOCKS);
+    }
+
+    /** Dedicated two-write cave anomaly, never bypasses the manual house size gate. */
+    public static Result applyTunnelFold(TransactionJournal journal,
+                                         RecoveryExecutor.MutableWorld world,
+                                         LongSupplier gameTick, LedgerStore store) {
+        if (!isTunnelFold(journal))
+            return new Result(Outcome.REFUSED, "INVALID_TUNNEL_FOLD", 0, 0);
+        return applyWithMinimum(journal, world, gameTick, store, 1);
+    }
+
+    public static boolean isTunnelFold(TransactionJournal journal) {
+        if (journal == null || !TunnelFoldService.MARKER.equals(journal.sourceSnapshotId)
+                || !TunnelFoldService.MARKER.equals(journal.sourceSnapshotSha256)
+                || !SafeBlockPalette.accepts(journal) || !validLayout(journal)
+                || journal.source.volume() != 1 || journal.target.volume() != 1
+                || journal.source.before.size() != 1 || journal.target.before.size() != 1
+                || Math.abs((long) journal.offsetX) + Math.abs((long) journal.offsetY)
+                        + Math.abs((long) journal.offsetZ) != 1L || journal.offsetY != 0)
+            return false;
+        TransactionJournal.Cell from = journal.source.before.get(0);
+        TransactionJournal.Cell to = journal.target.before.get(0);
+        return "minecraft:stone".equals(from.blockId())
+                && "minecraft:air".equals(to.blockId());
+    }
+
+    private static Result applyWithMinimum(TransactionJournal journal,
+                               RecoveryExecutor.MutableWorld world,
+                               LongSupplier gameTick, LedgerStore store, int minimum) {
         if (journal == null || world == null || gameTick == null || store == null
                 || !SafeBlockPalette.accepts(journal)
                 || !validLayout(journal)) {
@@ -49,7 +79,7 @@ public final class SandboxTransactionEngine {
 
         List<Mutation> changes = buildMoves(journal);
         int count = changes.size() / 2;
-        if (count < MIN_TRACKED_BLOCKS || changes.size() > 256) {
+        if (count < minimum || changes.size() > 256) {
             return new Result(Outcome.REFUSED, "UNSUPPORTED_SIZE", 0, 0);
         }
         RecoveryPlanner.Plan before = RecoveryPlanner.inspect(journal, world);

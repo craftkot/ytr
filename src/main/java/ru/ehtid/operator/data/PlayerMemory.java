@@ -46,6 +46,8 @@ public final class PlayerMemory {
     public long lastBrainEvaluationAt = -1L;
     public long lastOperatorDecisionAt = -1L;
     public long operatorDecisionCount = 0L;
+    /** Persisted one-shot journal reference, written before the first world mutation. */
+    public String autonomousFoldJournalId = "";
 
     /** Event-derived player-placed block history and its latest geometric analysis. */
     public Map<String, ConstructionBlock> constructionBlocks = new LinkedHashMap<>();
@@ -183,6 +185,7 @@ public final class PlayerMemory {
         lastBrainEvaluationAt = Math.max(-1L, lastBrainEvaluationAt);
         lastOperatorDecisionAt = Math.max(-1L, lastOperatorDecisionAt);
         operatorDecisionCount = Math.max(0L, operatorDecisionCount);
+        if (autonomousFoldJournalId == null) autonomousFoldJournalId = "";
         blocksPlaced = Math.max(0L, blocksPlaced);
         constructionBlocksRemoved = Math.max(0L, constructionBlocksRemoved);
         lastConstructionChangeAt = Math.max(-1L, lastConstructionChangeAt);
