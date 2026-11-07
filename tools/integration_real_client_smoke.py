@@ -122,10 +122,20 @@ def try_open_existing_world(proc: subprocess.Popen[bytes]) -> None:
     # resource-loading screen. Use actual graphical input as BLACK FREQUENCY's
     # client harness does, preserving screenshots for diagnosis.
     await_marker(proc, "Created window using SDL video driver: wayland", 115)
-    time.sleep(10)
+    # Quick Play should now enter the seeded world directly, once the
+    # documented onboardAccessibility:false option removes the modal.
+    # Give software-rendered Minecraft a bounded window to load chunks.
+    for _ in range(45):
+        text = CLIENT_LOG.read_text(errors="replace") if CLIENT_LOG.is_file() else ""
+        if "OPERATOR_CLIENT_TEST SCENE_READY" in text:
+            return
+        if "OPERATOR_CLIENT_TEST FAILED" in text:
+            raise RuntimeError("Minecraft scene controller failed before UI interaction")
+        if proc.poll() is not None:
+            raise RuntimeError("Minecraft client exited during initial world loading")
+        time.sleep(1)
     screenshot("00-client-menu.png")
-    if CLIENT_LOG.is_file() and "OPERATOR_CLIENT_TEST SCENE_READY" in CLIENT_LOG.read_text(errors="replace"):
-        return
+    # The remaining interactions are a last-resort menu fallback.
 
     # First-run accessibility introduction (Continue button at bottom).
     click_ui(640, 665)
