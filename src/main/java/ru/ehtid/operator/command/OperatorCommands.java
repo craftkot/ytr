@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Component;
 
 import ru.ehtid.operator.observe.ObservationEngine;
 import ru.ehtid.operator.transaction.ServerRelocationSmoke;
+import ru.ehtid.operator.transaction.ServerTunnelFoldSmoke;
 import ru.ehtid.operator.storage.RelocationWatchdogStorage;
 import java.io.IOException;
 
@@ -197,6 +198,18 @@ public final class OperatorCommands {
                                     var source = context.getSource();
                                     String output = ServerRelocationSmoke.phase(
                                             source.getServer(),
+                                            IntegerArgumentType.getInteger(context, "phase"));
+                                    source.sendSuccess(() -> Component.literal(output), false);
+                                    return output.contains("_OK:") ? 1 : 0;
+                                })))
+                .then(Commands.literal("ci-tunnel-fold")
+                        .requires(source -> Boolean.getBoolean("operator.reality.ciTunnelFold")
+                                && source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                        .then(Commands.argument("phase", IntegerArgumentType.integer(1, 3))
+                                .executes(context -> {
+                                    var source = context.getSource();
+                                    String output = ServerTunnelFoldSmoke.phase(
+                                            source.getServer(), observer,
                                             IntegerArgumentType.getInteger(context, "phase"));
                                     source.sendSuccess(() -> Component.literal(output), false);
                                     return output.contains("_OK:") ? 1 : 0;

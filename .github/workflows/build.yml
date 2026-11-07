@@ -127,6 +127,15 @@ jobs:
         run: python3 tools/integration_relocation_smoke.py
       - name: Test crash recovery
         run: python3 tools/integration_unclean_crash_smoke.py
+      - name: Real autonomous tunnel fold world integration
+        run: python3 tools/integration_autonomous_tunnel_smoke.py
+      - name: Upload autonomous world-test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-tunnel-fold-live-world-logs
+          if-no-files-found: ignore
+          path: integration-tunnel-phase-*.log
       - name: Upload mod JARs
         uses: actions/upload-artifact@v4
         with:

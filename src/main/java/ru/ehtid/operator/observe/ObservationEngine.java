@@ -144,22 +144,11 @@ public final class ObservationEngine {
                 );
                 if (OperatorBrain.apply(memory, decision, now)) dirty = true;
             }
-            if (data.autonomousAnomaliesEnabled
-                    && now % OperatorBrain.EVALUATION_INTERVAL_TICKS == 0L
-                    && "READY".equals(memory.operatorPhase)
-                    && "TUNNEL_FOLD".equals(memory.plannedOperatorEvent)
-                    && memory.autonomousFoldJournalId.isEmpty()) {
-                var journal = TunnelFoldService.prepare(server, player, memory, now);
-                if (journal != null) {
-                    memory.autonomousFoldJournalId = journal.journalId;
-                    // Persist one-shot identity before touching any world block.
-                    dirty = true;
-                    save(server);
-                    if (!dirty) {
-                        String result = TunnelFoldService.apply(server, player, journal);
-                        OperatorMod.LOGGER.warn("Autonomous tunnel fold {} result: {}",
-                                player.getUUID(), result);
-                    }
+            if (now % OperatorBrain.EVALUATION_INTERVAL_TICKS == 0L) {
+                String result = attemptAutonomousFold(server, player, memory, now);
+                if (result.startsWith("Tunnel fold")) {
+                    OperatorMod.LOGGER.warn("Autonomous tunnel fold {} result: {}",
+                            player.getUUID(), result);
                 }
             }
             dirty = true;
@@ -781,6 +770,73 @@ public final class ObservationEngine {
                 + " | enclosed rooms: " + roomCount
                 + " | door connections: " + roomLinks
                 + " | autonomous tunnel fold: " + (data.autonomousAnomaliesEnabled ? "ENABLED" : "DISABLED");
+    }
+
+    /**
+     * Shared production/test execution gate. The test invokes THIS path on the
+     * real server, not a mock world-write implementation. No relaxed gate in
+     * production: the test modifies only its own marked disposable world.
+     */
+    private String attemptAutonomousFold(MinecraftServer server, ServerPlayer player,
+                                         PlayerMemory memory, long now) {
+        if (!data.autonomousAnomaliesEnabled) return "DISABLED";
+        if (!data.observationComplete
+                || !memory.personalObservationComplete(OBSERVATION_TICKS))
+            return "OBSERVING";
+        if (!"READY".equals(memory.operatorPhase)
+                || !"TUNNEL_FOLD".equals(memory.plannedOperatorEvent))
+            return "NO_TUNNEL_FOLD_PLAN";
+        if (!memory.autonomousFoldJournalId.isEmpty()) return "ALREADY_ATTEMPTED";
+        var journal = TunnelFoldService.prepare(server, player, memory, now);
+        if (journal == null) return "NO_SAFE_CANDIDATE";
+        memory.autonomousFoldJournalId = journal.journalId;
+        // The one-shot identity must reach disk before even one block is changed.
+        dirty = true;
+        save(server);
+        if (dirty) return "MEMORY_PERSIST_FAILED";
+        return TunnelFoldService.apply(server, player, journal);
+    }
+
+    /**
+     * Test-only accelerated observation; requires an isolated world marker,
+     * explicit JVM flag, GitHub Actions and no connected players. A synthetic
+     * ServerPlayer supplies position/gaze, while every changed BlockState and
+     * all WAL files belong to the actual dedicated-server world.
+     */
+    public String ciAttemptAutonomousFold(MinecraftServer server, ServerPlayer actor,
+                                          boolean worldReady, boolean personalReady, long now) {
+        if (!Boolean.getBoolean("operator.reality.ciTunnelFold")
+                || !"true".equals(System.getenv("GITHUB_ACTIONS"))
+                || !server.getPlayerList().getPlayers().isEmpty()
+                || !java.nio.file.Files.isRegularFile(server.getWorldPath(
+                        net.minecraft.world.level.storage.LevelResource.ROOT)
+                        .resolve("operator_reality").resolve("ci-tunnel-fold.allow")))
+            return "OPERATOR_TUNNEL_CI_DENIED";
+        if (!loaded) return "CI_OBSERVER_NOT_READY";
+
+        PlayerMemory memory = data.players.computeIfAbsent(
+                actor.getUUID().toString(), ignored -> new PlayerMemory());
+        memory.uuid = actor.getUUID().toString();
+        memory.name = "EHTID_CI";
+        memory.observedTicks = personalReady ? OBSERVATION_TICKS : OBSERVATION_TICKS - 1;
+        memory.rockBlocksBroken = 160;
+        memory.miningSessions = 24;
+        if (memory.tunnelCells.isEmpty()) {
+            String dim = actor.level().dimension().toString();
+            for (int i = 0; i < 63; i++) {
+                int x = 1000 + i;
+                memory.tunnelCells.put(dim + "|" + x + ",200,0",
+                        new PlayerMemory.TunnelCell(x, 200, 0, dim, "minecraft:stone",
+                                now - i, PlayerMemory.TUNNEL_SOURCE_MINED));
+            }
+            memory.tunnelCells.put(dim + "|0,200,0",
+                    new PlayerMemory.TunnelCell(0, 200, 0, dim, "minecraft:stone",
+                            now, PlayerMemory.TUNNEL_SOURCE_MINED));
+        }
+        data.observationComplete = worldReady;
+        OperatorBrain.Decision decision = OperatorBrain.evaluate(memory, worldReady, now);
+        OperatorBrain.apply(memory, decision, now);
+        return attemptAutonomousFold(server, actor, memory, now);
     }
 
     public String setAutonomousAnomalies(MinecraftServer server, boolean enabled) {
