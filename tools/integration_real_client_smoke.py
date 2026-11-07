@@ -74,7 +74,7 @@ def window_id() -> str:
         # than sending mouse/keyboard events into an unfocused root.
         weston_log = ROOT / "weston.log"
         if weston_log.is_file():
-            match = re.search(r"x11 output .* window id (\\d+)",
+            match = re.search(r"x11 output .* window id (\d+)",
                               weston_log.read_text(errors="replace"))
             if match:
                 found = [match.group(1)]
