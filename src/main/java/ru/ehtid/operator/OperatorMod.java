@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import ru.ehtid.operator.command.OperatorCommands;
 import ru.ehtid.operator.observe.ObservationEngine;
 import ru.ehtid.operator.storage.RelocationWatchdogStorage;
+import ru.ehtid.operator.transaction.ClientTunnelSmoke;
 import java.io.IOException;
 
 public final class OperatorMod implements ModInitializer {
@@ -41,6 +42,14 @@ public final class OperatorMod implements ModInitializer {
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(OBSERVER::onServerStopping);
         ServerTickEvents.END_SERVER_TICK.register(OBSERVER::onServerTick);
+        // Actual client-world smoke only: a real ServerPlayer exists, renders
+        // through LWJGL under Xvfb and is required for the image assertions.
+        if (Boolean.getBoolean("operator.reality.ciClientSmoke")
+                && "true".equals(System.getenv("GITHUB_ACTIONS"))) {
+            ClientTunnelSmoke clientSmoke = new ClientTunnelSmoke();
+            ServerTickEvents.END_SERVER_TICK.register(
+                    server -> clientSmoke.tick(server, OBSERVER));
+        }
         PlayerBlockBreakEvents.AFTER.register(OBSERVER::onBlockBroken);
         UseBlockCallback.EVENT.register(OBSERVER::onBlockUse);
         CommandRegistrationCallback.EVENT.register(
