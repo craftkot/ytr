@@ -1,52 +1,22 @@
-Operator Reality 0.22.0
+Operator Reality 0.23.0 — autonomous tunnel fold prototype
 
-Verification: PASSED on code commit 24e647bb3e49b0144f807bbdda4f60063619a93c.
-GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42247609303
+Verification: CI pending on this branch at commit time; not yet validated.
+Feature opt-in defaults off. One per player, after 24k world + 24k active ticks
+and a READY TUNNEL_FOLD plan. Requires a valid mined cave corridor away from
+players and other entities. Moves only one plain STONE to a neighboring AIR
+above the walkway, using two existing WAL-guarded block changes.
 
-Confirmed successful:
-- gradle clean test build (includes 8 new WAL watchdog JUnit tests).
-- Dedicated Fabric server startup, RCON /operator status, memory schema 8.
-- Three-server graceful block transfer and rollback, persisted 54 cell preimages.
-- Cross-region partial-apply crash and cold-restart restore:
-  WAL MONITOR phase 6: 1 unfinished APPLYING, 32/52 durable acknowledgments;
-  new sandbox writes BLOCKED, 33 real stored cells restored.
-  WAL MONITOR phase 7: 0 unfinished, 1 ROLLED_BACK.
-- Cross-region partial-rollback crash and cold-restart restore:
-  WAL MONITOR phase 10: 1 unfinished ROLLING_BACK,
-  9 durable RESTORE acknowledgments and 1 pending RESTORE intent;
-  new sandbox writes BLOCKED, remaining 42 states restored, 52 ACKs reconciled.
-  WAL MONITOR phase 11: 0 unfinished, 2 ROLLED_BACK.
-- OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS marker.
-- GitHub artifacts:
-  operator-reality-0.22.0 (359283-byte artifact ZIP)
-  operator-reality-0.22.0-source (179229-byte artifact ZIP)
+Admin commands:
+- /operator anomaly enable
+- /operator anomaly disable
+- /operator anomaly status
+- /operator anomaly rollback
+- /operator sandbox monitor
 
-Previously verified 0.21.0: https://github.com/craftkot/ytr/actions/runs/42234181800
+Unit coverage includes minimal fold apply and rollback, original house minimum,
+invalid journal refusal, and mid-apply interrupted WAL recovery.
+Existing dedicated Fabric and hard-crash relocation integration remain in CI.
 
-New features:
-- Read-only, bounded server-wide execution WAL scan across offline players.
-- Every WAL is validated against the exact per-owner PREPARED journal and SHA-256.
-- /operator sandbox monitor: gamemaster-only, works from RCON/console.
-- Warn at startup when a cross-player transfer is unfinished or a journal is damaged.
-- Refuse ALL new sandbox apply writes if any owner's execution WAL is unresolved,
-  malformed, missing its PREPARED journal or inaccessible.
-- Limit scan to 128 owners / 512 execution files; reject symlink/malformed paths.
-- No automatic rollback or forced chunk loads.
-- 8 additional JUnit tests for WAL corruption, offline owners, ownership and scan caps.
-- Extended real Fabric unclean-crash integration with monitor assertions after
-  cold restarts during APPLYING and ROLLING_BACK, and after ROLLED_BACK.
-
-Required CI:
-- gradle clean test build --no-daemon, Java 25 / Minecraft Java 26.3.
-- Dedicated Fabric boot with RCON /operator status, persisted schemaVersion 8.
-- Existing real-world graceful apply/rollback across server restarts.
-- Cross-region partial APPLY/RESTORE crashes, flush-before-terminal-phase tests.
-- New monitor check of abandoned WALs from the dedicated-server RCON console.
-- Upload 0.22.0 compiled JAR and source ZIP.
-
-Limits:
-- Offline owner's rollback is not yet available through an administrator command.
-- New transfers remain globally blocked until an existing interrupted operation
-  is resolved; monitor never deletes, repairs or overwrites its file.
-- WAL/Anvil multi-file atomicity, hardware power loss, mods and inventories
-  remain unsupported. Use only disposable worlds for manual sandbox testing.
+Limits: This is not fully seamless, visually invisible, or autonomous house/biome
+rewriting. No automatic rollback, no inventories, no modded blocks. Use only
+disposable worlds and back them up. Hardware power loss is untested.

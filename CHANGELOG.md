@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.23.0 — Opt-In Autonomous Tunnel Fold Prototype
+
+- Added a disabled-by-default administrator toggle and `/operator anomaly enable|disable|status|rollback` commands.
+- One event per player after both 24,000-tick observation gates and a READY TUNNEL_FOLD decision, with a candidate taken from an actual mined tunnel record behind the player's facing direction.
+- Only one default STONE cell moves horizontally to one AIR cell in the upper wall, above a three-block-high underground passage.
+- Requires loaded cells, complete before-images, safe surroundings, no nearby entities, read-only global WAL gate, strict journal layout, and durable WAL-controlled write/flush/commit.
+- The saved one-shot journal identity is written before apply; a previous prepared auto journal prevents repeating after an unclean restart even if the memory marker was lost.
+- Added deterministic JUnit tests for the miniature WAL transaction, rollback, invalid layouts, crash after first write, and preservation of the existing 24-block minimum.
+- Manual recovery only; no guarantee of crash-safe Anvil storage across hard power loss, no block entities or other mods, no autonomous multimove plans. Run only on disposable world backups.
+
+
+
 ## 0.22.0 — Server-Wide WAL Watchdog and Offline Recovery Visibility
 
 - Added `RelocationWatchdogStorage`, a bounded, read-only scan of every server-side execution ledger, independent of which players are currently online.
