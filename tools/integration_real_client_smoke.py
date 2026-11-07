@@ -170,6 +170,13 @@ def main() -> None:
     MARKER_DIR.mkdir(parents=True, exist_ok=True)
     (MARKER_DIR / "ci-client.allow").write_text("isolated graphical CI world\n")
     SCREENSHOTS.mkdir(exist_ok=True)
+    # Screenshot audit of the previous CI run proved that SDL3/Wayland mouse
+    # events did not dismiss the first-launch Welcome to Minecraft overlay.
+    # The documented vanilla option bypasses the overlay entirely. This is
+    # confined to the isolated CI client game directory, never a user's game.
+    (RUN / "options.txt").write_text(
+        "version:5023\\nonboardAccessibility:false\\nnarrator:0\\n"
+    )
     if CLIENT_LOG.exists():
         CLIENT_LOG.unlink()
 
