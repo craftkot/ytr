@@ -839,6 +839,56 @@ public final class ObservationEngine {
         return attemptAutonomousFold(server, actor, memory, now);
     }
 
+    /**
+     * CI-only acceleration for an ACTUAL client-connected ServerPlayer.
+     * The normal onServerTick/OperatorBrain/TunnelFoldService later performs
+     * the write; this method only seeds observation and enables the opt-in.
+     */
+    public String ciPrimeRealClientPlayer(MinecraftServer server, ServerPlayer player,
+                                          int x, int y, int z) {
+        if (!loaded || !Boolean.getBoolean("operator.reality.ciClientSmoke")
+                || !"true".equals(System.getenv("GITHUB_ACTIONS"))
+                || server.isDedicatedServer()
+                || !server.getPlayerList().getPlayers().contains(player)
+                || server.getPlayerList().getPlayers().size() != 1
+                || !java.nio.file.Files.isRegularFile(server.getWorldPath(
+                        net.minecraft.world.level.storage.LevelResource.ROOT)
+                        .resolve("operator_reality").resolve("ci-client.allow")))
+            return "DENIED";
+        long now = server.overworld().getGameTime();
+        PlayerMemory memory = getOrCreate(player, now);
+        memory.observedTicks = Math.max(memory.observedTicks, OBSERVATION_TICKS);
+        memory.rockBlocksBroken = Math.max(memory.rockBlocksBroken, 160L);
+        memory.miningSessions = Math.max(memory.miningSessions, 24L);
+        memory.tunnelCells.clear();
+        String dim = player.level().dimension().toString();
+        for (int i = 0; i < 63; i++) {
+            int cellX = 1000 + i;
+            memory.tunnelCells.put(dim + "|" + cellX + "," + y + ",0",
+                    new PlayerMemory.TunnelCell(cellX, y, 0, dim, "minecraft:stone",
+                            now - i, PlayerMemory.TUNNEL_SOURCE_MINED));
+        }
+        memory.tunnelCells.put(dim + "|" + x + "," + y + "," + z,
+                new PlayerMemory.TunnelCell(x, y, z, dim, "minecraft:stone",
+                        now, PlayerMemory.TUNNEL_SOURCE_MINED));
+        data.observationComplete = true;
+        data.autonomousAnomaliesEnabled = true;
+        OperatorBrain.Decision decision = OperatorBrain.evaluate(memory, true, now);
+        OperatorBrain.apply(memory, decision, now);
+        if (!"READY".equals(decision.phase())
+                || !"TUNNEL_FOLD".equals(decision.event()))
+            return "NO_PLAN_" + decision.phase() + "_" + decision.event();
+        dirty = true;
+        save(server);
+        return dirty ? "SAVE_FAILED" : "CI_PRIMED";
+    }
+
+    public String ciFoldJournalId(ServerPlayer player) {
+        PlayerMemory memory = data.players.get(player.getUUID().toString());
+        return memory == null || memory.autonomousFoldJournalId == null
+                ? "" : memory.autonomousFoldJournalId;
+    }
+
     public String setAutonomousAnomalies(MinecraftServer server, boolean enabled) {
         if (!loaded) return "Operator memory is not loaded";
         boolean previous = data.autonomousAnomaliesEnabled;
