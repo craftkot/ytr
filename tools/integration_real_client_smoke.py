@@ -100,6 +100,51 @@ def screenshot(name: str) -> Path:
     return path
 
 
+def click_ui(x: int, y: int) -> None:
+    # Input reaches the real Minecraft Wayland window through nested Weston's
+    # X11 host. Hold the mouse down long enough for SDL3 to register it.
+    window = window_id()
+    subprocess.run(["xdotool", "windowactivate", window], check=False)
+    subprocess.run(["xdotool", "mousemove", "--sync", str(x), str(y)], check=False)
+    time.sleep(0.15)
+    subprocess.run(["xdotool", "mousedown", "1"], check=False)
+    time.sleep(0.20)
+    subprocess.run(["xdotool", "mouseup", "1"], check=False)
+    log(f"CLICKED_GUI x={x} y={y}")
+
+
+def try_open_existing_world(proc: subprocess.Popen[bytes]) -> None:
+    # The 26.3 quick-play arg may stop at its first-launch accessibility or
+    # resource-loading screen. Use actual graphical input as BLACK FREQUENCY's
+    # client harness does, preserving screenshots for diagnosis.
+    await_marker(proc, "Created window using SDL video driver: wayland", 115)
+    time.sleep(10)
+    screenshot("00-client-menu.png")
+    if CLIENT_LOG.is_file() and "OPERATOR_CLIENT_TEST SCENE_READY" in CLIENT_LOG.read_text(errors="replace"):
+        return
+
+    # First-run accessibility introduction (Continue button at bottom).
+    click_ui(640, 665)
+    time.sleep(4)
+    screenshot("00-after-first-run-continue.png")
+    if CLIENT_LOG.is_file() and "OPERATOR_CLIENT_TEST SCENE_READY" in CLIENT_LOG.read_text(errors="replace"):
+        return
+
+    # Singleplayer button in vanilla Minecraft's central title menu.
+    click_ui(640, 353)
+    time.sleep(7)
+    screenshot("00-after-singleplayer.png")
+    if CLIENT_LOG.is_file() and "OPERATOR_CLIENT_TEST SCENE_READY" in CLIENT_LOG.read_text(errors="replace"):
+        return
+
+    # One seeded CI world exists. Select its row and choose Play Selected.
+    click_ui(640, 174)
+    time.sleep(1)
+    click_ui(640, 663)
+    time.sleep(9)
+    screenshot("00-after-world-join-attempt.png")
+
+
 def acknowledge(name: str) -> None:
     path = MARKER_DIR / name
     if path.exists():
@@ -148,11 +193,10 @@ def main() -> None:
             start_new_session=True,
         )
         try:
-            logs = await_marker(proc, "OPERATOR_CLIENT_TEST SCENE_READY", 210)
-            if "Starting integrated minecraft server" not in logs.lower().replace(
-                    "starting integrated minecraft server", "Starting integrated minecraft server"):
-                # The marker already proves a real integrated server with a player.
-                log("Integrated server confirmed by scene-ready player callback")
+            try_open_existing_world(proc)
+            logs = await_marker(proc, "OPERATOR_CLIENT_TEST SCENE_READY", 95)
+            if "starting integrated minecraft server" not in logs.lower():
+                log("World spawn confirmed by actual ServerPlayer callback")
             time.sleep(3)
             before = screenshot("01-before-fold.png")
             acknowledge("ci-before-captured.allow")
