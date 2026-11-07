@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import signal
+import re
 import subprocess
 import sys
 import time
@@ -68,9 +69,17 @@ def window_id() -> str:
             capture_output=True, text=True, check=False
         ).stdout.splitlines()
     if not found:
-        # Weston may not export the nested Wayland surface as a named X11
-        # window. Screenshots of Xvfb's root are still valid evidence.
-        return ""
+        # Kiosk-shell Weston often has NO X11 window title, but logs the
+        # actual X11 output window id. Target the real X11 output rather
+        # than sending mouse/keyboard events into an unfocused root.
+        weston_log = ROOT / "weston.log"
+        if weston_log.is_file():
+            match = re.search(r"x11 output .* window id (\\d+)",
+                              weston_log.read_text(errors="replace"))
+            if match:
+                found = [match.group(1)]
+    if not found:
+        raise RuntimeError("Weston compositor X11 output window unavailable")
     return found[-1]
 
 
@@ -107,14 +116,19 @@ def click_ui(x: int, y: int) -> None:
     # Input reaches the real Minecraft Wayland window through nested Weston's
     # X11 host. Hold the mouse down long enough for SDL3 to register it.
     window = window_id()
-    if window:
-        subprocess.run(["xdotool", "windowactivate", window], check=False)
+    # No X11 window manager is running on Xvfb; windowactivate can fail.
+    # Explicitly give Weston the X keyboard focus before real input.
+    subprocess.run(["xdotool", "windowfocus", window], check=False, timeout=6)
     subprocess.run(["xdotool", "mousemove", "--sync", str(x), str(y)], check=False)
-    time.sleep(0.15)
+    time.sleep(0.35)
     subprocess.run(["xdotool", "mousedown", "1"], check=False)
-    time.sleep(0.20)
+    time.sleep(0.4)
     subprocess.run(["xdotool", "mouseup", "1"], check=False)
-    log(f"CLICKED_GUI x={x} y={y}")
+    time.sleep(0.2)
+    # Enter triggers the highlighted default menu action on first run
+    # when SDL's nested Wayland pointer does not pass through XTest clicks.
+    subprocess.run(["xdotool", "key", "--clearmodifiers", "Return"], check=False)
+    log(f"CLICKED_GUI focusedWestonWindow={window} x={x} y={y}")
 
 
 def try_open_existing_world(proc: subprocess.Popen[bytes]) -> None:
