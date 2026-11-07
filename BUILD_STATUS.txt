@@ -1,6 +1,12 @@
 Operator Reality 0.23.0 — autonomous tunnel fold prototype
 
-Verification: CI pending on this branch at commit time; not yet validated.
+Verification: PASSED on code commit 6451a7d2f895c9f5163b562ac92efbaf168d3937.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42354597439
+Build: clean test build SUCCESS, dedicated Fabric RCON startup SUCCESS,
+real cross-restart relocation SUCCESS, unclean-JVM crash recovery SUCCESS.
+New fold path covered by JUnit (real autonomous live candidate still unverified).
+Compiled artifact: operator-reality-0.23.0
+Source artifact: operator-reality-0.23.0-source
 Feature opt-in defaults off. One per player, after 24k world + 24k active ticks
 and a READY TUNNEL_FOLD plan. Requires a valid mined cave corridor away from
 players and other entities. Moves only one plain STONE to a neighboring AIR
