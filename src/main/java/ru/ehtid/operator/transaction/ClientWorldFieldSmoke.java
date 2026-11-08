@@ -57,6 +57,13 @@ public final class ClientWorldFieldSmoke {
                         for (int z = 124; z <= 132; z++)
                             level.setBlock(new BlockPos(x, Y - 1, z),
                                     Blocks.STONE.defaultBlockState(), 2);
+                    // Production's line-of-sight veto must see this real
+                    // opaque barrier between remote player and the cave.
+                    // It is behind the camera when revisiting the tunnel.
+                    for (int x = -3; x <= 3; x++)
+                        for (int y = Y; y <= Y + 5; y++)
+                            level.setBlock(new BlockPos(x, y, 40),
+                                    Blocks.STONE.defaultBlockState(), 2);
                     place(player, 128.5D, 0.0F);
                     String primed = observer.ciPrimeWorldField(server, player);
                     if (!"CI_FIELD_PRIMED".equals(primed)) { fail("PRIME_" + primed); return; }

@@ -17,6 +17,10 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.ClipContext;
 import ru.ehtid.operator.OperatorMod;
 import ru.ehtid.operator.data.OperatorWorldData;
 import ru.ehtid.operator.storage.RelocationWatchdogStorage;
@@ -133,7 +137,9 @@ public final class WorldFieldService {
                     || !empty(level, target2)
                     || !nobodyNear(server, level, source)
                     || !nobodyNear(server, level, target2)
-                    || !vacant(level, source, source2, target, target2)) continue;
+                    || !vacant(level, source, source2, target, target2)
+                    || !hiddenBySolidTerrain(server, level,
+                            source, source2, target, target2)) continue;
 
             TransactionJournal journal = TunnelFoldService.twoCellJournal(
                     actor.getUUID(), dimension, source, target, level.getGameTime());
@@ -165,14 +171,61 @@ public final class WorldFieldService {
 
     public static boolean nobodyNearJournal(MinecraftServer server, ServerLevel level,
                                             TransactionJournal journal) {
-        return nobodyNear(server, level, new BlockPos(
-                    journal.source.minX, journal.source.minY, journal.source.minZ))
-                && nobodyNear(server, level, new BlockPos(
-                    journal.source.maxX, journal.source.maxY, journal.source.maxZ))
-                && nobodyNear(server, level, new BlockPos(
-                    journal.target.minX, journal.target.minY, journal.target.minZ))
-                && nobodyNear(server, level, new BlockPos(
-                    journal.target.maxX, journal.target.maxY, journal.target.maxZ));
+        BlockPos source = new BlockPos(
+                journal.source.minX, journal.source.minY, journal.source.minZ);
+        BlockPos source2 = new BlockPos(
+                journal.source.maxX, journal.source.maxY, journal.source.maxZ);
+        BlockPos target = new BlockPos(
+                journal.target.minX, journal.target.minY, journal.target.minZ);
+        BlockPos target2 = new BlockPos(
+                journal.target.maxX, journal.target.maxY, journal.target.maxZ);
+        return nobodyNear(server, level, source)
+                && nobodyNear(server, level, source2)
+                && nobodyNear(server, level, target)
+                && nobodyNear(server, level, target2)
+                && hiddenBySolidTerrain(server, level, source, source2, target, target2);
+    }
+
+    /**
+     * At the exact transaction boundary, require actual opaque terrain
+     * between EVERY player and EVERY changed block. A distance-only gate is
+     * insufficient when a cave corridor is visible from far away.
+     * First preflight all ray chunks to avoid causing chunk loads ourselves.
+     * This still cannot detect remote cameras, maps or external spectator mods.
+     */
+    private static boolean hiddenBySolidTerrain(MinecraftServer server,
+                                                 ServerLevel level,
+                                                 BlockPos... changedBlocks) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.level() != level) continue;
+            Vec3 eye = player.getEyePosition();
+            for (BlockPos block : changedBlocks) {
+                Vec3 point = new Vec3(
+                        block.getX() + 0.5D, block.getY() + 0.5D, block.getZ() + 0.5D);
+                double length = eye.distanceTo(point);
+                if (length <= 2D || length > 512D) return false;
+                int samples = Math.max(1, (int) Math.ceil(length / 4D));
+                for (int i = 0; i <= samples; i++) {
+                    double t = (double) i / samples;
+                    BlockPos sample = new BlockPos(
+                            (int) Math.floor(eye.x + (point.x - eye.x) * t),
+                            (int) Math.floor(eye.y + (point.y - eye.y) * t),
+                            (int) Math.floor(eye.z + (point.z - eye.z) * t));
+                    if (!level.hasChunkAt(sample)) return false;
+                }
+                BlockHitResult hit = level.clip(new ClipContext(
+                        eye, point, ClipContext.Block.COLLIDER,
+                        ClipContext.Fluid.NONE, player));
+                // The changed source block itself is NOT an occluder.
+                // Require a separate obstruction at least two blocks closer
+                // to the player than the target, avoiding edge ambiguity.
+                if (hit.getType() != HitResult.Type.BLOCK
+                        || hit.getBlockPos().equals(block)
+                        || Math.sqrt(eye.distanceToSqr(hit.getLocation())) > length - 2D)
+                    return false;
+            }
+        }
+        return true;
     }
 
     private static boolean vacant(ServerLevel level, BlockPos... positions) {
