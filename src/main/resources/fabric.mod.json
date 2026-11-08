@@ -4,12 +4,17 @@
   "version": "${version}",
   "name": "Operator: Reality",
   "description": "Minecraft observer with opt-in guarded sandbox block relocation, durable WAL rollback and multi-restart server integration testing.",
-  "authors": ["EHTID project"],
+  "authors": [
+    "EHTID project"
+  ],
   "license": "MIT",
   "environment": "*",
   "entrypoints": {
     "main": [
       "ru.ehtid.operator.OperatorMod"
+    ],
+    "client": [
+      "ru.ehtid.operator.OperatorClientMod"
     ]
   },
   "depends": {
