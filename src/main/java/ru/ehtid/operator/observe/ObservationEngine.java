@@ -43,6 +43,8 @@ import ru.ehtid.operator.transaction.TransactionPreparationService;
 import ru.ehtid.operator.transaction.RecoveryAuditService;
 import ru.ehtid.operator.transaction.ExperimentalRelocationService;
 import ru.ehtid.operator.transaction.TunnelFoldService;
+import ru.ehtid.operator.transaction.WorldFieldService;
+import ru.ehtid.operator.transaction.WorldFieldPolicy;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
@@ -149,6 +151,14 @@ public final class ObservationEngine {
                 if (result.startsWith("Tunnel fold")) {
                     OperatorMod.LOGGER.warn("Autonomous tunnel fold {} result: {}",
                             player.getUUID(), result);
+                }
+            }
+            // Independent, world-scale offscreen scheduler. No forced chunk
+            // loading, at most one event per world per 1200 ticks.
+            if (now % WorldFieldPolicy.COOLDOWN_TICKS == 0L) {
+                String drift = attemptWorldField(server, player, memory, now);
+                if (drift.startsWith("Tunnel fold")) {
+                    OperatorMod.LOGGER.info("World field event {}: {}", player.getUUID(), drift);
                 }
             }
             dirty = true;
@@ -795,6 +805,78 @@ public final class ObservationEngine {
         save(server);
         if (dirty) return "MEMORY_PERSIST_FAILED";
         return TunnelFoldService.apply(server, player, journal);
+    }
+
+    private String attemptWorldField(MinecraftServer server, ServerPlayer player,
+                                     PlayerMemory memory, long now) {
+        if (!data.worldFieldEnabled || !data.autonomousAnomaliesEnabled)
+            return "WORLD_FIELD_DISABLED";
+        if (!data.observationComplete
+                || !memory.personalObservationComplete(OBSERVATION_TICKS))
+            return "WORLD_FIELD_OBSERVING";
+        var candidate = WorldFieldService.prepare(server, player, data, now);
+        if (candidate == null) return "WORLD_FIELD_NO_SAFE_SECTOR";
+        try {
+            // PREPARED before world-index persistence; a crash in this gap is
+            // detected by historyMatchesDisk, never silently duplicated.
+            TransactionJournalStorage.save(server, candidate.journal());
+            data.worldFieldHistory.put(candidate.sector(),
+                    player.getUUID() + "/" + candidate.journal().journalId);
+            data.lastWorldFieldTick = now;
+            dirty = true;
+            save(server);
+            if (dirty) return "WORLD_FIELD_MEMORY_PERSIST_FAILED";
+            // Actual production WAL apply; this rechecks every player's
+            // proximity immediately before touching live chunks.
+            return TunnelFoldService.apply(server, player, candidate.journal());
+        } catch (IOException | RuntimeException error) {
+            OperatorMod.LOGGER.warn("World field event refused: {}", error.toString());
+            return "WORLD_FIELD_REFUSED";
+        }
+    }
+
+    public String setWorldField(MinecraftServer server, boolean enabled) {
+        if (!loaded) return "Operator memory not loaded";
+        boolean previous = data.worldFieldEnabled;
+        data.worldFieldEnabled = enabled;
+        dirty = true;
+        save(server);
+        if (dirty) {
+            data.worldFieldEnabled = previous;
+            return "World field setting FAILED to persist";
+        }
+        return "World field " + (enabled ? "ENABLED" : "DISABLED")
+                + " | requires separate /operator anomaly enable | max "
+                + WorldFieldPolicy.MAX_SECTORS + " distant sectors";
+    }
+
+    public String getWorldFieldStatus(MinecraftServer server) {
+        if (!loaded) return "Operator memory not loaded";
+        String safety;
+        try {
+            safety = WorldFieldService.historyMatchesDisk(server, data.worldFieldHistory)
+                    ? "history verified" : "HISTORY MISMATCH: WRITES BLOCKED";
+        } catch (IOException | RuntimeException error) {
+            safety = "HISTORY AUDIT FAILED: WRITES BLOCKED";
+        }
+        return "World field " + (data.worldFieldEnabled ? "ENABLED" : "DISABLED")
+                + " | anomaly master " + (data.autonomousAnomaliesEnabled ? "ENABLED" : "DISABLED")
+                + " | sectors " + data.worldFieldHistory.size()
+                + "/" + WorldFieldPolicy.MAX_SECTORS + " | " + safety;
+    }
+
+    public String rollbackWorldField(ServerPlayer player, MinecraftServer server) {
+        if (!loaded || data.worldFieldHistory == null) return "World field not loaded";
+        String prefix = player.getUUID().toString() + "/";
+        List<String> values = new ArrayList<>(data.worldFieldHistory.values());
+        for (int i = values.size() - 1; i >= 0; i--) {
+            String ref = values.get(i);
+            if (ref == null || !ref.startsWith(prefix)) continue;
+            // The full underlying engine verifies WAL, world-state preimages,
+            // ownership, and for global fields the same absence of viewers.
+            return TunnelFoldService.rollback(server, player, ref.substring(prefix.length()));
+        }
+        return "No recorded world-field transaction owned by this player";
     }
 
     /**

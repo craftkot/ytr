@@ -4,7 +4,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class OperatorWorldData {
-    public int schemaVersion = 9;
+    public int schemaVersion = 10;
+    /** Independently opt-in; never activated just by enabling cave anomalies. */
+    public boolean worldFieldEnabled = false;
+    /** Sector -> owner UUID / journal UUID, persisted before all field writes. */
+    public Map<String, String> worldFieldHistory = new LinkedHashMap<>();
+    public long lastWorldFieldTick = 0L;
     /** Off by default even on worlds created in an earlier version. */
     public boolean autonomousAnomaliesEnabled = false;
     public long observationStartedAt = -1L;
@@ -15,6 +20,10 @@ public final class OperatorWorldData {
     public void normalize() {
         int previousSchemaVersion = schemaVersion;
         if (players == null) players = new LinkedHashMap<>();
+        if (worldFieldHistory == null) worldFieldHistory = new LinkedHashMap<>();
+        if (lastWorldFieldTick < 0L) lastWorldFieldTick = 0L;
+        // Do not truncate suspicious history: the field scanner fails closed
+        // when data exceeds its sector budget.
         if (schemaVersion < 1) schemaVersion = 1;
         // Schema 5 planner state, 6 construction memory, 7 block states/shell, 8 room graph summaries.
         players.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
@@ -57,7 +66,7 @@ public final class OperatorWorldData {
             }
             memory.normalize();
         }
-        schemaVersion = 9;
+        schemaVersion = 10;
     }
 
     public long worldObservationElapsed(long currentGameTick) {

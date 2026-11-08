@@ -58,8 +58,10 @@ public final class SandboxTransactionEngine {
             return false;
         boolean old = TunnelFoldService.MARKER.equals(journal.sourceSnapshotId)
                 && TunnelFoldService.MARKER.equals(journal.sourceSnapshotSha256);
-        boolean newPair = TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotId)
-                && TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotSha256);
+        boolean newPair = (TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotId)
+                && TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotSha256))
+                || (WorldFieldService.MARKER.equals(journal.sourceSnapshotId)
+                && WorldFieldService.MARKER.equals(journal.sourceSnapshotSha256));
         if ((!old && !newPair) || !SafeBlockPalette.accepts(journal)
                 || !validLayout(journal)
                 || Math.abs((long) journal.offsetX) + Math.abs((long) journal.offsetY)
