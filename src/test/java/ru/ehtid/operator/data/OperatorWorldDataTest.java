@@ -21,7 +21,7 @@ class OperatorWorldDataTest {
         data.schemaVersion = 2;
         data.players = null;
         data.normalize();
-        assertEquals(9, data.schemaVersion);
+        assertEquals(10, data.schemaVersion);
         assertNotNull(data.players);
     }
 
@@ -39,7 +39,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(9, data.schemaVersion);
+        assertEquals(10, data.schemaVersion);
         assertEquals(1, memory.getTunnelCellCount());
         assertEquals(1, memory.getMinedTunnelCellCount());
         assertEquals(0, memory.getObservedAirCellCount());
@@ -76,7 +76,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(9, data.schemaVersion);
+        assertEquals(10, data.schemaVersion);
         assertEquals(24_000L, memory.observedTicks);
         assertEquals(1234.5D, memory.distanceTravelled);
         assertEquals("NONE", memory.plannedOperatorEvent);
@@ -104,7 +104,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(9, data.schemaVersion);
+        assertEquals(10, data.schemaVersion);
         assertEquals(25_000L, memory.observedTicks);
         assertEquals(3L, memory.operatorDecisionCount);
         assertEquals(1, memory.getConstructionBlockCount());
@@ -131,7 +131,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(9, data.schemaVersion);
+        assertEquals(10, data.schemaVersion);
         assertEquals(30L, memory.blocksPlaced);
         assertEquals(1, memory.getConstructionBlockCount());
         PlayerMemory.ConstructionBlock migrated =
@@ -161,7 +161,7 @@ class OperatorWorldDataTest {
 
         data.normalize();
 
-        assertEquals(9, data.schemaVersion);
+        assertEquals(10, data.schemaVersion);
         assertEquals(25_000L, memory.observedTicks);
         assertEquals(1, memory.getConstructionBlockCount());
         assertTrue(memory.constructionBlocks.values().iterator().next().blockState
@@ -175,14 +175,21 @@ class OperatorWorldDataTest {
     @Test
     void autonomousAnomaliesAreDisabledOnNewWorldsAndLegacyMigrations() {
         OperatorWorldData fresh = new OperatorWorldData();
-        assertEquals(9, fresh.schemaVersion);
+        assertEquals(10, fresh.schemaVersion);
         assertFalse(fresh.autonomousAnomaliesEnabled);
         OperatorWorldData legacy = new OperatorWorldData();
         legacy.schemaVersion = 8;
         legacy.autonomousAnomaliesEnabled = false;
         legacy.normalize();
-        assertEquals(9, legacy.schemaVersion);
+        assertEquals(10, legacy.schemaVersion);
         assertFalse(legacy.autonomousAnomaliesEnabled);
+        assertFalse(fresh.worldFieldEnabled);
+        assertNotNull(fresh.worldFieldHistory);
+        assertTrue(fresh.worldFieldHistory.isEmpty());
+        legacy.worldFieldHistory = null;
+        legacy.normalize();
+        assertNotNull(legacy.worldFieldHistory);
+        assertFalse(legacy.worldFieldEnabled);
     }
 
 }
