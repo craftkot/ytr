@@ -326,7 +326,13 @@ public final class TunnelFoldService {
         if (Files.isSymbolicLink(folder) || !Files.isDirectory(folder))
             throw new IOException("Unsafe journal directory");
         try (Stream<Path> entries = Files.list(folder)) {
-            for (Path file : entries.limit(16).toList()) {
+            // A truncated scan could miss a prior V1/V2 fold after a crash.
+            // Refuse a new operation if the entire bounded owner directory
+            // cannot be inspected. Never infer safety from only 16 files.
+            List<Path> files = entries.limit(129).toList();
+            if (files.size() > 128) throw new IOException(
+                    "Too many owner journals to prove one-shot safety");
+            for (Path file : files) {
                 if (!file.getFileName().toString().endsWith(".json")) continue;
                 String name = file.getFileName().toString();
                 String id = name.substring(0, name.length() - 5);

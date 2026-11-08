@@ -751,7 +751,7 @@ public final class ObservationEngine {
                 .mapToInt(memory -> memory.recognizedRoomCount).sum();
         int roomLinks = data.players.values().stream()
                 .mapToInt(memory -> memory.recognizedRoomConnections).sum();
-        return "Operator 0.23 | " + phase
+        return "Operator 0.24 | " + phase
                 + " | world learning: " + Math.min(elapsed, OBSERVATION_TICKS) + "/" + OBSERVATION_TICKS + " ticks"
                 + " | remaining: " + remaining + " ticks"
                 + " | player profiles: " + data.players.size()

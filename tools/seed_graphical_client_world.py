@@ -41,7 +41,7 @@ def main() -> None:
                 if proc.poll() is not None:
                     raise RuntimeError(f"Server exited before ready: {proc.returncode}")
                 try:
-                    if "Operator 0.23" in base.rcon("operator status"):
+                    if "Operator 0.24" in base.rcon("operator status"):
                         break
                 except Exception:
                     pass
