@@ -1,3 +1,22 @@
+Real graphical Minecraft 26.3 client: PASSED on commit
+0fe06020096e857b1d3de49362adf868cabf27e8.
+GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42430714867
+Real Fabric runClient entered a disposable singleplayer world under
+nested Weston/Wayland+Xvfb with OpenGL 4.5 Mesa llvmpipe. An actual connected
+ServerPlayer was observed by the ordinary server tick hook.
+Captured in-game screenshots: 01-before-fold.png (stone on right),
+02-after-fold.png (stone moved to middle), 03-restored.png (back on right),
+plus amplified difference.png and client/server logs.
+Visual validation PASS: 32668 materially changed pixels in the fixed
+target-region comparing AFTER and RESTORED; cameras aligned at yaw=180.
+Client-side probe CONFIRMED independently: STONE/AIR -> AIR/STONE ->
+STONE/AIR and yaw=180 pitch=-5 with camera=(0,200,4).
+Server-side COMMITTED WAL, then ROLLED_BACK with no loose writes.
+Screenshot artifact: operator-real-minecraft-client-screenshots
+Caveat: CI-only accelerated observation and predetermined safe corridor;
+natural player mining, extended gameplay, truly seamless geometry and the
+full chaos-event roadmap are still not verified.
+
 Operator Reality 0.23.0 — autonomous tunnel fold prototype
 
 Real autonomous world integration: PASSED on code commit

@@ -275,10 +275,25 @@ def main() -> None:
             with Image.open(restored) as image:
                 if image.size != (1280, 720):
                     raise RuntimeError("Bad restoration screenshot resolution")
+            client_log = CLIENT_LOG.read_text(errors="replace")
             if not any("logged in with entity id" in line.lower()
                        or "joined the game" in line.lower()
-                       for line in (CLIENT_LOG.read_text(errors="replace").splitlines())):
+                       for line in client_log.splitlines()):
                 raise RuntimeError("No actual player-join event recorded")
+            # Independently assert the CLIENT'S own chunk states and rotation.
+            # The integrated-server's authoritative logs alone cannot prove
+            # that the rendered client received the changed blocks.
+            before_marker = "OPERATOR_CLIENT_RENDER_STATE source=STONE target=AIR camera=(0,200,4) yaw=180.0"
+            moved_marker = "OPERATOR_CLIENT_RENDER_STATE source=AIR target=STONE camera=(0,200,4) yaw=180.0"
+            first = client_log.find(before_marker)
+            moved = client_log.find(moved_marker, first + 1)
+            restored_at = client_log.find(before_marker, moved + 1)
+            if first < 0 or moved < 0 or restored_at < 0:
+                raise RuntimeError(
+                    "Real client did not confirm STONE/AIR -> AIR/STONE -> "
+                    "STONE/AIR with correct viewing angle"
+                )
+            log("Actual Minecraft client BlockState and yaw=180 synchronization verified")
             log("OPERATOR_REAL_CLIENT_WORLD_SCREENSHOTS_SUCCESS")
         except BaseException:
             print("--- last 100 console lines ---", file=sys.stderr)

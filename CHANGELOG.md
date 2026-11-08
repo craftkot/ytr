@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.0 — Verified In-Game Client Smoke
+
+- Added real Fabric Minecraft 26.3 client CI with actual integrated player, nested Weston software OpenGL, screenshot triplet, server WAL verification and separate client-side BlockState probes.
+- Fixed game camera yaw/pitch not reaching the client by using the rotation-aware ServerPlayer teleport method. Before fix, server blocks changed but the player's screenshots faced away from the event.
+- Fixed autonomous mined-tunnel candidate starvation by observed-air scans.
+- Validated real in-game mutation and rollback with 32,668 material changed pixels in the target region, plus independent client state and camera logs.
+- CI-only gates remain explicit. Main gameplay defaults to anomaly disabled.
+
 ## 0.23.0 — Opt-In Autonomous Tunnel Fold Prototype
 
 - Added a disabled-by-default administrator toggle and `/operator anomaly enable|disable|status|rollback` commands.
