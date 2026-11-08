@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
@@ -157,10 +158,13 @@ public final class ClientTunnelSmoke {
     }
 
     private static void placeCamera(ServerPlayer player, double z, float yaw) {
-        // Changes go through the live ServerPlayer connection, not an offline fake.
-        player.teleportTo(0.5D, Y, z);
-        player.setYRot(yaw);
-        player.setXRot(-5.0F);
+        // ServerPlayer#setYRot only changes server state; the Minecraft camera
+        // continues looking at yaw=0 (south) unless yaw/pitch are sent as part
+        // of the actual teleport packet to the connected client.
+        // This is an absolute full teleport, not relative movement.
+        boolean moved = player.teleportTo((ServerLevel) player.level(),
+                0.5D, Y, z, Set.of(), yaw, -5.0F, true);
+        if (!moved) throw new IllegalStateException("rotation-aware teleport rejected");
     }
 
     private static void buildCameraScene(ServerLevel level) {
