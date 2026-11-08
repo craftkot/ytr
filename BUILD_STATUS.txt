@@ -1,3 +1,20 @@
+Operator Reality 0.24.0 — two-block autonomous tunnel fold
+
+V2 implementation tests on the earlier binary-relevant commit:
+- Real graphical Minecraft 26.3 / actual connected player CI:
+  https://github.com/craftkot/ytr/actions/runs/42434191000 SUCCESS
+  3 PNG screenshots before/after/rollback; 49,581 material pixels changed
+  in a stable camera ROI, independently verified ClientLevel changes.
+- Real three-JVM dedicated-server / 2 cold restarts CI:
+  https://github.com/craftkot/ytr/actions/runs/42434190967 SUCCESS
+  phase1 committed 4 WAL writes for two moved stones;
+  phase2 rollback returned all original blocks; phase3 retained the rollback.
+  WAL monitor: 0 unfinished, 0 invalid; repeat anomaly blocked.
+- Unit tests: legacy V1 journal, new V2 geometry/4-cell apply and rollback,
+  wrong V1 marker on V2 geometry, invalid block palette, interrupted first WAL.
+- Final version 0.24.0 packaging is built by new CI on release branch.
+- Production default OFF; safe fallback one-block; not full-world chaos.
+
 Real graphical Minecraft 26.3 client: PASSED on commit
 0fe06020096e857b1d3de49362adf868cabf27e8.
 GitHub Actions: https://github.com/craftkot/ytr/actions/runs/42430714867

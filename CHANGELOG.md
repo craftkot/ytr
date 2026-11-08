@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.0 — Two-Cell Tunnel Fold V2
+
+- Bounded two-STONE horizontal strip moved into neighboring AIR (4 durable WAL writes); safe one-block V1 fallback and old journal compatibility.
+- Strict 2-cell flat strip validation rejects malformed geometry, labels, wrong palette, offsets, and overlapping source/target.
+- Full server-integrated three-JVM phase CI verifies 4 changes, persistent WAL, rollback, and one-shot guard.
+- Real graphical Minecraft 26.3 client confirms 49,581 visually changed pixels and actual client BlockState transitions.
+- Owner prior-journal audit now scans up to 128 entries; refuses new events instead of silently truncating at 16.
+- CI-only accelerated observations are not production gameplay. Anomalies remain disabled by default.
+
 ## 0.23.0 — Verified In-Game Client Smoke
 
 - Added real Fabric Minecraft 26.3 client CI with actual integrated player, nested Weston software OpenGL, screenshot triplet, server WAL verification and separate client-side BlockState probes.
