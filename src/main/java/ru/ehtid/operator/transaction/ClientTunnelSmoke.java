@@ -51,7 +51,7 @@ public final class ClientTunnelSmoke {
                 case 0 -> {
                     if (!level.dimension().equals(server.overworld().dimension())) return;
                     buildCameraScene(level);
-                    placeCamera(player, 8.5D, 180.0F);
+                    placeCamera(player, 4.5D, 180.0F);
                     ownerId = player.getUUID().toString();
                     phase = 1;
                     phaseStart = tick;
@@ -60,7 +60,8 @@ public final class ClientTunnelSmoke {
                 }
                 case 1 -> {
                     // Wait for an actual frame captured from the Minecraft window.
-                    if (!Files.isRegularFile(directory.resolve("ci-before-captured.allow"))) return;
+                    if (tick - phaseStart < 100
+                            || !Files.isRegularFile(directory.resolve("ci-before-captured.allow"))) return;
                     // Real connected actor is moved behind the mapped tunnel and
                     // made to face away to satisfy the same TUNNEL_FOLD planner.
                     placeCamera(player, 22.5D, 0.0F);
@@ -86,7 +87,7 @@ public final class ClientTunnelSmoke {
                         failure("POSTCHECK_" + result);
                         return;
                     }
-                    placeCamera(player, 8.5D, 180.0F);
+                    placeCamera(player, 4.5D, 180.0F);
                     phase = 3;
                     phaseStart = tick;
                     OperatorMod.LOGGER.info("OPERATOR_CLIENT_TEST AUTONOMOUS_BLOCK_MOVED actualPlayer={} "
@@ -107,7 +108,7 @@ public final class ClientTunnelSmoke {
                         failure("ROLLBACK_" + result);
                         return;
                     }
-                    placeCamera(player, 8.5D, 180.0F);
+                    placeCamera(player, 4.5D, 180.0F);
                     phase = 4;
                     phaseStart = tick;
                     OperatorMod.LOGGER.info("OPERATOR_CLIENT_TEST ROLLBACK_COMPLETE realBlocksRestored=true");

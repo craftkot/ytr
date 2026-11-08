@@ -232,7 +232,7 @@ def main() -> None:
             logs = await_marker(proc, "OPERATOR_CLIENT_TEST SCENE_READY", 95)
             if "starting integrated minecraft server" not in logs.lower():
                 log("World spawn confirmed by actual ServerPlayer callback")
-            time.sleep(3)
+            time.sleep(8)
             before = screenshot("01-before-fold.png")
             acknowledge("ci-before-captured.allow")
 
@@ -247,12 +247,31 @@ def main() -> None:
             acknowledge("ci-restored-captured.allow")
 
             await_marker(proc, "OPERATOR_CLIENT_TEST SUCCESS", 35)
+            # A simple non-identical frame check is meaningless: the camera
+            # can rotate while the block stays visually unchanged. Verify a
+            # material change specifically between the stable AFTER and
+            # ROLLED-BACK frames, where the camera target is the same.
+            with Image.open(after) as after_img, Image.open(restored) as restored_img:
+                aa = after_img.convert("RGB")
+                bb = restored_img.convert("RGB")
+                delta = ImageChops.difference(aa, bb)
+                vis = delta.crop((350, 100, 930, 560)).convert("L")
+                material_pixels = sum(
+                    1 for px in vis.getdata() if px >= 35
+                )
+                amplified = delta.point(lambda x: min(255, x * 5))
+                amplified.save(SCREENSHOTS / "04-after-vs-restored-difference.png")
+                log(f"Stable-camera change in mutation ROI: {material_pixels} pixels")
+                if material_pixels < 1500:
+                    raise RuntimeError(
+                        f"Block relocation confirmed server-side, but only "
+                        f"{material_pixels} visually changed pixels in expected ROI "
+                        f"between AFTER and RESTORED. The result is not visible."
+                    )
             with Image.open(before) as a, Image.open(after) as b:
-                diff = ImageChops.difference(a.convert("RGB"), b.convert("RGB"))
-                changed = diff.getbbox() is not None
-                if not changed:
-                    raise RuntimeError("Real before and after Minecraft frames are identical")
-                log("In-game before/after frame difference detected")
+                if ImageChops.difference(a.convert("RGB"), b.convert("RGB")).getbbox() is None:
+                    raise RuntimeError("Before and after frames are exactly identical")
+            log("In-game AFTER vs RESTORED material block difference verified")
             with Image.open(restored) as image:
                 if image.size != (1280, 720):
                     raise RuntimeError("Bad restoration screenshot resolution")
