@@ -965,6 +965,25 @@ public final class ObservationEngine {
         return dirty ? "SAVE_FAILED" : "CI_PRIMED";
     }
 
+    public String ciPrimeWorldField(MinecraftServer server, ServerPlayer player) {
+        if (!loaded || !Boolean.getBoolean("operator.reality.ciClientSmoke")
+                || !"true".equals(System.getenv("GITHUB_ACTIONS"))
+                || server.isDedicatedServer()
+                || server.getPlayerList().getPlayers().size() != 1
+                || !server.getPlayerList().getPlayers().contains(player)
+                || !java.nio.file.Files.isRegularFile(server.getWorldPath(
+                        net.minecraft.world.level.storage.LevelResource.ROOT)
+                        .resolve("operator_reality").resolve("ci-world-field-start.allow")))
+            return "DENIED";
+        data.worldFieldEnabled = true;
+        data.autonomousAnomaliesEnabled = true;
+        data.observationComplete = true;
+        data.lastWorldFieldTick = 0L;
+        dirty = true;
+        save(server);
+        return dirty ? "FIELD_SAVE_FAILED" : "CI_FIELD_PRIMED";
+    }
+
     public String ciFoldJournalId(ServerPlayer player) {
         PlayerMemory memory = data.players.get(player.getUUID().toString());
         return memory == null || memory.autonomousFoldJournalId == null

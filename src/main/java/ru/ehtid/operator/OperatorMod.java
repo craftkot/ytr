@@ -14,6 +14,7 @@ import ru.ehtid.operator.command.OperatorCommands;
 import ru.ehtid.operator.observe.ObservationEngine;
 import ru.ehtid.operator.storage.RelocationWatchdogStorage;
 import ru.ehtid.operator.transaction.ClientTunnelSmoke;
+import ru.ehtid.operator.transaction.ClientWorldFieldSmoke;
 import java.io.IOException;
 
 public final class OperatorMod implements ModInitializer {
@@ -49,6 +50,9 @@ public final class OperatorMod implements ModInitializer {
             ClientTunnelSmoke clientSmoke = new ClientTunnelSmoke();
             ServerTickEvents.END_SERVER_TICK.register(
                     server -> clientSmoke.tick(server, OBSERVER));
+            ClientWorldFieldSmoke worldFieldSmoke = new ClientWorldFieldSmoke();
+            ServerTickEvents.END_SERVER_TICK.register(
+                    server -> worldFieldSmoke.tick(server, OBSERVER));
         }
         PlayerBlockBreakEvents.AFTER.register(OBSERVER::onBlockBroken);
         UseBlockCallback.EVENT.register(OBSERVER::onBlockUse);

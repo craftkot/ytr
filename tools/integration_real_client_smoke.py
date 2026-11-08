@@ -44,8 +44,10 @@ def await_marker(proc: subprocess.Popen[bytes], marker: str,
         if proc.poll() is not None:
             raise RuntimeError(f"Client exited {proc.returncode} before {marker}")
         data = CLIENT_LOG.read_text(encoding="utf-8", errors="replace") if CLIENT_LOG.is_file() else ""
-        if "OPERATOR_CLIENT_TEST FAILED" in data:
-            bad = [x for x in data.splitlines() if "OPERATOR_CLIENT_TEST FAILED" in x]
+        if "OPERATOR_CLIENT_TEST FAILED" in data or "OPERATOR_WORLD_FIELD_TEST FAILED" in data:
+            bad = [x for x in data.splitlines()
+                   if "OPERATOR_CLIENT_TEST FAILED" in x
+                   or "OPERATOR_WORLD_FIELD_TEST FAILED" in x]
             raise RuntimeError("Test controller reported failure: " + " | ".join(bad[-3:]))
         if marker in data:
             log("Verified integrated-world marker " + marker)
@@ -309,6 +311,31 @@ def main() -> None:
                 )
             log("Actual Minecraft client BlockState and yaw=180 synchronization verified")
             log("OPERATOR_REAL_CLIENT_WORLD_SCREENSHOTS_SUCCESS")
+
+            # Second independent test: mutate the already restored cave while
+            # a REAL player is >112 blocks away, then return to inspect it.
+            acknowledge("ci-world-field-start.allow")
+            await_marker(proc, "OPERATOR_WORLD_FIELD_TEST REMOTE_READY", 25)
+            await_marker(proc, "OPERATOR_WORLD_FIELD_TEST COMMITTED", 145)
+            time.sleep(3)
+            field_after = screenshot("05-world-field-after-return.png")
+            acknowledge("ci-world-field-after-captured.allow")
+            await_marker(proc, "OPERATOR_WORLD_FIELD_TEST ROLLBACK_COMPLETE", 45)
+            time.sleep(3)
+            field_restored = screenshot("06-world-field-restored.png")
+            acknowledge("ci-world-field-restored-captured.allow")
+            await_marker(proc, "OPERATOR_WORLD_FIELD_TEST SUCCESS", 25)
+            with Image.open(field_after) as aa, Image.open(field_restored) as bb:
+                diff = ImageChops.difference(aa.convert("RGB"), bb.convert("RGB"))
+                vis = diff.crop((350, 100, 930, 560)).convert("L")
+                material_pixels = sum(1 for px in vis.getdata() if px >= 35)
+                diff.point(lambda px: min(255, 5 * px)).save(
+                    SCREENSHOTS / "07-world-field-render-difference.png"
+                )
+                log(f"Offscreen field AFTER vs RESTORED ROI material pixels: {material_pixels}")
+                if material_pixels < 1500:
+                    raise RuntimeError("World field did not visibly change Minecraft blocks")
+            log("OPERATOR_REAL_CLIENT_WORLD_FIELD_SUCCESS")
         except BaseException:
             print("--- last 100 console lines ---", file=sys.stderr)
             print("\n".join(CONSOLE.read_text(errors="replace").splitlines()[-100:]),
