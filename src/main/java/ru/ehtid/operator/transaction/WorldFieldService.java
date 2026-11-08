@@ -23,6 +23,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.level.ClipContext;
 import ru.ehtid.operator.OperatorMod;
 import ru.ehtid.operator.data.OperatorWorldData;
+import ru.ehtid.operator.data.PlayerMemory;
 import ru.ehtid.operator.storage.RelocationWatchdogStorage;
 import ru.ehtid.operator.storage.TransactionJournalStorage;
 
@@ -92,7 +93,9 @@ public final class WorldFieldService {
                     for (int y = surface - 8; y >= bottom && testedHeights++ < 64; y--) {
                         Candidate candidate = prepareAt(server, actor,
                                 new BlockPos(x, y, z), data.worldFieldHistory);
-                        if (candidate != null) return candidate;
+                        if (candidate != null
+                                && !nearTrackedConstruction(data, candidate.journal()))
+                            return candidate;
                     }
                 }
             }
@@ -231,6 +234,37 @@ public final class WorldFieldService {
             }
         }
         return true;
+    }
+
+    /**
+     * This field modifies NATURAL terrain only. Keep at least eight blocks
+     * away from known player-placed structures, even if their blocks happen
+     * to be ordinary stone. Unsupported/unbounded memory fails closed.
+     * House rearrangement needs a separate structure-aware transaction type.
+     */
+    static boolean nearTrackedConstruction(OperatorWorldData data,
+                                           TransactionJournal journal) {
+        if (data == null || data.players == null || journal == null
+                || journal.source == null || journal.target == null) return true;
+        int minX = Math.min(journal.source.minX, journal.target.minX) - 8;
+        int minY = Math.min(journal.source.minY, journal.target.minY) - 8;
+        int minZ = Math.min(journal.source.minZ, journal.target.minZ) - 8;
+        int maxX = Math.max(journal.source.maxX, journal.target.maxX) + 8;
+        int maxY = Math.max(journal.source.maxY, journal.target.maxY) + 8;
+        int maxZ = Math.max(journal.source.maxZ, journal.target.maxZ) + 8;
+        int inspected = 0;
+        for (PlayerMemory profile : data.players.values()) {
+            if (profile == null || profile.constructionBlocks == null) return true;
+            for (PlayerMemory.ConstructionBlock block : profile.constructionBlocks.values()) {
+                if (++inspected > 131072 || block == null || block.dimension == null)
+                    return true;
+                if (journal.dimension.equals(block.dimension)
+                        && block.x >= minX && block.x <= maxX
+                        && block.y >= minY && block.y <= maxY
+                        && block.z >= minZ && block.z <= maxZ) return true;
+            }
+        }
+        return false;
     }
 
     private static boolean vacant(ServerLevel level, BlockPos... positions) {
