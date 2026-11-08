@@ -117,7 +117,7 @@ jobs:
             find run -maxdepth 4 -type f -name '*.log' -print
             exit 1
           fi
-          if ! grep -q "schemaVersion.*9" run/world/operator_reality/operator-memory.json; then
+          if ! grep -q "schemaVersion.*10" run/world/operator_reality/operator-memory.json; then
             echo "Operator world memory was not persisted."
             exit 1
           fi
