@@ -283,15 +283,29 @@ def main() -> None:
             # Independently assert the CLIENT'S own chunk states and rotation.
             # The integrated-server's authoritative logs alone cannot prove
             # that the rendered client received the changed blocks.
-            before_marker = "OPERATOR_CLIENT_RENDER_STATE source=STONE target=AIR camera=(0,200,4) yaw=180.0"
-            moved_marker = "OPERATOR_CLIENT_RENDER_STATE source=AIR target=STONE camera=(0,200,4) yaw=180.0"
-            first = client_log.find(before_marker)
-            moved = client_log.find(moved_marker, first + 1)
-            restored_at = client_log.find(before_marker, moved + 1)
-            if first < 0 or moved < 0 or restored_at < 0:
+            # Minecraft normalizes yaw=180 and yaw=-180 interchangeably;
+            # both face north. Test equivalence, not textual formatting.
+            samples = [
+                (match.group(1), match.group(2))
+                for match in re.finditer(
+                    r"OPERATOR_CLIENT_RENDER_STATE source=(STONE|AIR) "
+                    r"target=(STONE|AIR) camera=\\(0,200,4\\) yaw=(-?180\\.0)",
+                    client_log,
+                )
+            ]
+            expected_states = [("STONE", "AIR"), ("AIR", "STONE"),
+                               ("STONE", "AIR")]
+            progress = 0
+            for state in samples:
+                if state == expected_states[progress]:
+                    progress += 1
+                    if progress == len(expected_states):
+                        break
+            if progress != len(expected_states):
                 raise RuntimeError(
                     "Real client did not confirm STONE/AIR -> AIR/STONE -> "
-                    "STONE/AIR with correct viewing angle"
+                    "STONE/AIR with camera facing north (+/-180 degrees); "
+                    f"got {samples!r}"
                 )
             log("Actual Minecraft client BlockState and yaw=180 synchronization verified")
             log("OPERATOR_REAL_CLIENT_WORLD_SCREENSHOTS_SUCCESS")
