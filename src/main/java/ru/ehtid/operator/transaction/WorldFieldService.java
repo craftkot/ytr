@@ -82,7 +82,10 @@ public final class WorldFieldService {
                     int surface = level.getHeight(
                             Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
                     int bottom = Math.max(level.getMinY() + 5, surface - 80);
-                    for (int y = surface - 16; y >= bottom; y -= 8) {
+                    // Deliberate bounded vertical scan: skipping 8 Y-levels
+                    // made narrow real caves almost impossible to select.
+                    int testedHeights = 0;
+                    for (int y = surface - 8; y >= bottom && testedHeights++ < 64; y--) {
                         Candidate candidate = prepareAt(server, actor,
                                 new BlockPos(x, y, z), data.worldFieldHistory);
                         if (candidate != null) return candidate;
