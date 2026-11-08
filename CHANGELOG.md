@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.0 — Global World Field (experimental)
+
+- Added a sector-indexed world field that independently selects distant, already-loaded cave chunks (16 sectors maximum, 1200 ticks between attempts); all real mutations use V3 four-write WAL journals.
+- Require all connected players to be at least 112 blocks away; perform solid opaque-block raycasts from each connected viewer before both apply and rollback. Glass and unverified chunk rays fail closed.
+- Exclude sites near known player constructions and refuse operations if cross-restart sector history does not match on-disk journal evidence.
+- Separate admin commands: /operator global enable|disable|status|rollback; regular anomaly master enable is also required.
+- Verified in an actual graphical Minecraft 26.3 client: a remote world mutation, return to altered cave, visual delta 49,814 pixels and successful real-world rollback (CI run 42480166564).
+- Does not yet implement full biome remapping, house relocation or guaranteed invisibility to third-party remote cameras.
+
 ## 0.24.0 — Two-Cell Tunnel Fold V2
 
 - Bounded two-STONE horizontal strip moved into neighboring AIR (4 durable WAL writes); safe one-block V1 fallback and old journal compatibility.
