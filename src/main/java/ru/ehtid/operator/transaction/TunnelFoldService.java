@@ -30,6 +30,7 @@ import ru.ehtid.operator.storage.TransactionJournalStorage;
  */
 public final class TunnelFoldService {
     public static final String MARKER = "AUTO_TUNNEL_FOLD_V1";
+    public static final String MARKER_V2 = "AUTO_TUNNEL_FOLD_V2";
     private static final int MAX_CANDIDATES = 192;
 
     private TunnelFoldService() { }
@@ -80,12 +81,27 @@ public final class TunnelFoldService {
                     BlockPos source = target.offset(axis[0], 0, axis[1]);
                     if (!loaded(level, source) || !isStone(level, source)
                             || !areaUnoccupied(server, level, source, target)) continue;
+                    // Prefer a two-cell strip running perpendicular to the
+                    // one-block displacement, with 4 durable WAL writes.
+                    BlockPos along = axis[0] != 0
+                            ? new BlockPos(0, 0, 1) : new BlockPos(1, 0, 0);
+                    BlockPos source2 = source.offset(along);
+                    BlockPos target2 = target.offset(along);
+                    if (loaded(level, source2, target2)
+                            && isStone(level, source2) && isAir(level, target2)
+                            && areaUnoccupied(server, level,
+                                    source, source2, target, target2)) {
+                        TransactionJournal wide = twoCellJournal(player.getUUID(), dimension,
+                                source, target, tick);
+                        if (safeCandidate(level, wide)) {
+                            TransactionJournalStorage.save(server, wide);
+                            return wide;
+                        }
+                    }
+                    // Keep V1 fallback where a second block is not safe.
                     TransactionJournal journal = oneCellJournal(player.getUUID(), dimension,
                             source, target, tick);
-                    if (!"NO_LISTED_HAZARDS".equals(
-                            RecoveryBoundaryInspector.inspect(level, journal).status())
-                            || RecoveryPlanner.inspect(journal, new MinecraftSafeBlockWorld(level))
-                                    .status() != RecoveryPlanner.Status.UNCHANGED) continue;
+                    if (!safeCandidate(level, journal)) continue;
                     TransactionJournalStorage.save(server, journal);
                     return journal;
                 }
@@ -94,6 +110,51 @@ public final class TunnelFoldService {
             OperatorMod.LOGGER.warn("Autonomous tunnel fold preparation stopped: {}", error.toString());
         }
         return null;
+    }
+
+    private static boolean safeCandidate(ServerLevel level, TransactionJournal journal) {
+        return "NO_LISTED_HAZARDS".equals(
+                RecoveryBoundaryInspector.inspect(level, journal).status())
+                && RecoveryPlanner.inspect(journal, new MinecraftSafeBlockWorld(level))
+                        .status() == RecoveryPlanner.Status.UNCHANGED;
+    }
+
+    /** Two contiguous upper-wall blocks, shifted one cell into empty air. */
+    static TransactionJournal twoCellJournal(UUID owner, String dimension,
+                                             BlockPos source, BlockPos target, long tick) {
+        boolean alongX = source.getX() != target.getX();
+        BlockPos stride = alongX ? new BlockPos(0, 0, 1) : new BlockPos(1, 0, 0);
+        TransactionJournal journal = new TransactionJournal();
+        journal.journalId = UUID.randomUUID().toString();
+        journal.ownerUuid = owner.toString();
+        journal.sourceSnapshotId = MARKER_V2;
+        journal.sourceSnapshotSha256 = MARKER_V2;
+        journal.dimension = dimension;
+        journal.capturedAtTick = tick;
+        journal.offsetX = target.getX() - source.getX();
+        journal.offsetY = target.getY() - source.getY();
+        journal.offsetZ = target.getZ() - source.getZ();
+        journal.source = pair(source, source.offset(stride), "minecraft:stone");
+        journal.target = pair(target, target.offset(stride), "minecraft:air");
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        return journal;
+    }
+
+    private static TransactionJournal.Region pair(BlockPos a, BlockPos b, String blockId) {
+        TransactionJournal.Region region = new TransactionJournal.Region();
+        region.minX = Math.min(a.getX(), b.getX());
+        region.minY = Math.min(a.getY(), b.getY());
+        region.minZ = Math.min(a.getZ(), b.getZ());
+        region.maxX = Math.max(a.getX(), b.getX());
+        region.maxY = Math.max(a.getY(), b.getY());
+        region.maxZ = Math.max(a.getZ(), b.getZ());
+        region.before = new ArrayList<>(List.of(
+                new TransactionJournal.Cell(a.getX(), a.getY(), a.getZ(), blockId,
+                        "Block{" + blockId + "}", null),
+                new TransactionJournal.Cell(b.getX(), b.getY(), b.getZ(), blockId,
+                        "Block{" + blockId + "}", null)
+        ));
+        return region;
     }
 
     static TransactionJournal oneCellJournal(UUID owner, String dimension,
@@ -136,8 +197,12 @@ public final class TunnelFoldService {
             ServerLevel level = (ServerLevel) player.level();
             BlockPos source = new BlockPos(journal.source.minX, journal.source.minY, journal.source.minZ);
             BlockPos target = new BlockPos(journal.target.minX, journal.target.minY, journal.target.minZ);
-            if (!loaded(level, source, target)
-                    || !areaUnoccupied(server, level, source, target)
+            if (!loaded(level, source, target,
+                        new BlockPos(journal.source.maxX, journal.source.maxY, journal.source.maxZ),
+                        new BlockPos(journal.target.maxX, journal.target.maxY, journal.target.maxZ))
+                    || !areaUnoccupied(server, level, source, target,
+                        new BlockPos(journal.source.maxX, journal.source.maxY, journal.source.maxZ),
+                        new BlockPos(journal.target.maxX, journal.target.maxY, journal.target.maxZ))
                     || !"NO_LISTED_HAZARDS".equals(
                             RecoveryBoundaryInspector.inspect(level, journal).status()))
                 return "Tunnel fold REFUSED: unsafe or occupied region";
@@ -178,8 +243,12 @@ public final class TunnelFoldService {
             ServerLevel level = (ServerLevel) player.level();
             BlockPos source = new BlockPos(journal.source.minX, journal.source.minY, journal.source.minZ);
             BlockPos target = new BlockPos(journal.target.minX, journal.target.minY, journal.target.minZ);
-            if (!loaded(level, source, target)
-                    || !areaUnoccupied(server, level, source, target)
+            if (!loaded(level, source, target,
+                        new BlockPos(journal.source.maxX, journal.source.maxY, journal.source.maxZ),
+                        new BlockPos(journal.target.maxX, journal.target.maxY, journal.target.maxZ))
+                    || !areaUnoccupied(server, level, source, target,
+                        new BlockPos(journal.source.maxX, journal.source.maxY, journal.source.maxZ),
+                        new BlockPos(journal.target.maxX, journal.target.maxY, journal.target.maxZ))
                     || !"NO_LISTED_HAZARDS".equals(
                             RecoveryBoundaryInspector.inspect(level, journal).status()))
                 return "Tunnel fold rollback REFUSED: region unsafe or occupied";
@@ -228,13 +297,20 @@ public final class TunnelFoldService {
     }
 
     private static boolean areaUnoccupied(MinecraftServer server, ServerLevel level,
-                                          BlockPos source, BlockPos target) {
-        AABB region = new AABB(Math.min(source.getX(), target.getX()),
-                Math.min(source.getY(), target.getY()),
-                Math.min(source.getZ(), target.getZ()),
-                Math.max(source.getX(), target.getX()) + 1.0D,
-                Math.max(source.getY(), target.getY()) + 1.0D,
-                Math.max(source.getZ(), target.getZ()) + 1.0D).inflate(3.0D);
+                                          BlockPos... positions) {
+        if (positions.length < 2) return false;
+        int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+        for (BlockPos pos : positions) {
+            minX = Math.min(minX, pos.getX());
+            minY = Math.min(minY, pos.getY());
+            minZ = Math.min(minZ, pos.getZ());
+            maxX = Math.max(maxX, pos.getX());
+            maxY = Math.max(maxY, pos.getY());
+            maxZ = Math.max(maxZ, pos.getZ());
+        }
+        AABB region = new AABB(minX, minY, minZ,
+                maxX + 1.0D, maxY + 1.0D, maxZ + 1.0D).inflate(3.0D);
         if (!level.getEntities(null, region).isEmpty()) return false;
         for (ServerPlayer other : server.getPlayerList().getPlayers()) {
             if (other.level() == level && region.contains(other.position())) return false;
@@ -256,7 +332,8 @@ public final class TunnelFoldService {
                 String id = name.substring(0, name.length() - 5);
                 TransactionJournal journal = TransactionJournalStorage.load(
                         server, owner.toString(), id);
-                if (MARKER.equals(journal.sourceSnapshotId)) return true;
+                if (MARKER.equals(journal.sourceSnapshotId)
+                        || MARKER_V2.equals(journal.sourceSnapshotId)) return true;
             }
         }
         return false;

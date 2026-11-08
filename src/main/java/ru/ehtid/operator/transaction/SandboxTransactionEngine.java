@@ -44,7 +44,7 @@ public final class SandboxTransactionEngine {
         return applyWithMinimum(journal, world, gameTick, store, MIN_TRACKED_BLOCKS);
     }
 
-    /** Dedicated two-write cave anomaly, never bypasses the manual house size gate. */
+    /** Dedicated 2- or 4-write cave anomaly, never bypasses the manual house size gate. */
     public static Result applyTunnelFold(TransactionJournal journal,
                                          RecoveryExecutor.MutableWorld world,
                                          LongSupplier gameTick, LedgerStore store) {
@@ -54,18 +54,37 @@ public final class SandboxTransactionEngine {
     }
 
     public static boolean isTunnelFold(TransactionJournal journal) {
-        if (journal == null || !TunnelFoldService.MARKER.equals(journal.sourceSnapshotId)
-                || !TunnelFoldService.MARKER.equals(journal.sourceSnapshotSha256)
-                || !SafeBlockPalette.accepts(journal) || !validLayout(journal)
-                || journal.source.volume() != 1 || journal.target.volume() != 1
-                || journal.source.before.size() != 1 || journal.target.before.size() != 1
+        if (journal == null || journal.source == null || journal.target == null)
+            return false;
+        boolean old = TunnelFoldService.MARKER.equals(journal.sourceSnapshotId)
+                && TunnelFoldService.MARKER.equals(journal.sourceSnapshotSha256);
+        boolean newPair = TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotId)
+                && TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotSha256);
+        if ((!old && !newPair) || !SafeBlockPalette.accepts(journal)
+                || !validLayout(journal)
                 || Math.abs((long) journal.offsetX) + Math.abs((long) journal.offsetY)
                         + Math.abs((long) journal.offsetZ) != 1L || journal.offsetY != 0)
             return false;
-        TransactionJournal.Cell from = journal.source.before.get(0);
-        TransactionJournal.Cell to = journal.target.before.get(0);
-        return "minecraft:stone".equals(from.blockId())
-                && "minecraft:air".equals(to.blockId());
+        long expected = old ? 1 : 2;
+        if (journal.source.volume() != expected
+                || journal.target.volume() != expected
+                || journal.source.before.size() != expected
+                || journal.target.before.size() != expected)
+            return false;
+        // V2: a flat two-cell strip perpendicular to the one-cell shift.
+        // Reject arbitrary volumes, vertical stacks and overlapping regions.
+        if (newPair && (journal.source.minY != journal.source.maxY
+                || (journal.offsetX != 0
+                    ? !(journal.source.minX == journal.source.maxX
+                            && (long) journal.source.maxZ - journal.source.minZ == 1L)
+                    : !(journal.source.minZ == journal.source.maxZ
+                            && (long) journal.source.maxX - journal.source.minX == 1L))))
+            return false;
+        for (TransactionJournal.Cell from : journal.source.before)
+            if (!"minecraft:stone".equals(from.blockId())) return false;
+        for (TransactionJournal.Cell to : journal.target.before)
+            if (!"minecraft:air".equals(to.blockId())) return false;
+        return true;
     }
 
     private static Result applyWithMinimum(TransactionJournal journal,
