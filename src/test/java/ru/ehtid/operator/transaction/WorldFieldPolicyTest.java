@@ -43,7 +43,7 @@ class WorldFieldPolicyTest {
         assertTrue(WorldFieldService.nearTrackedConstruction(data, journal),
                 "Recorded player stone walls cannot be treated as natural terrain");
         memory.removePlacedBlock(8,45,0,"minecraft:overworld",11L);
-        memory.recordPlacedBlock(9, 45, 0, "minecraft:overworld",
+        memory.recordPlacedBlock(10, 45, 0, "minecraft:overworld",
                 "minecraft:stone", 12L);
         assertFalse(WorldFieldService.nearTrackedConstruction(data, journal),
                 "A known building beyond the conservative halo is not the target");
