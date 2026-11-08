@@ -30,6 +30,8 @@ public final class ClientTunnelSmoke {
     private static final int Y = 200;
     private static final BlockPos SOURCE = new BlockPos(1, Y + 2, 0);
     private static final BlockPos TARGET = new BlockPos(0, Y + 2, 0);
+    private static final BlockPos SOURCE2 = SOURCE.offset(0, 0, 1);
+    private static final BlockPos TARGET2 = TARGET.offset(0, 0, 1);
     private static final String ROOT = "operator_reality";
     private int phase;
     private long phaseStart;
@@ -142,19 +144,24 @@ public final class ClientTunnelSmoke {
                 server, root, memory.autonomousFoldJournalId);
         var wal = RelocationExecutionStorage.load(server, journal);
         if (!SandboxTransactionEngine.isTunnelFold(journal)
-                || !"COMMITTED".equals(wal.phase) || wal.appliedWrites != 2)
+                || !TunnelFoldService.MARKER_V2.equals(journal.sourceSnapshotId)
+                || !"COMMITTED".equals(wal.phase) || wal.appliedWrites != 4)
             return "JOURNAL_OR_WAL_INVALID";
         return "COMMITTED";
     }
 
     private static boolean isOriginal(ServerLevel level) {
         return level.getBlockState(SOURCE).is(Blocks.STONE)
-                && level.getBlockState(TARGET).isAir();
+                && level.getBlockState(SOURCE2).is(Blocks.STONE)
+                && level.getBlockState(TARGET).isAir()
+                && level.getBlockState(TARGET2).isAir();
     }
 
     private static boolean isFolded(ServerLevel level) {
         return level.getBlockState(SOURCE).isAir()
-                && level.getBlockState(TARGET).is(Blocks.STONE);
+                && level.getBlockState(SOURCE2).isAir()
+                && level.getBlockState(TARGET).is(Blocks.STONE)
+                && level.getBlockState(TARGET2).is(Blocks.STONE);
     }
 
     private static void placeCamera(ServerPlayer player, double z, float yaw) {
@@ -193,7 +200,9 @@ public final class ClientTunnelSmoke {
                 level.setBlock(new BlockPos(x, Y + 4, z),
                         Blocks.SEA_LANTERN.defaultBlockState(), 2);
         level.setBlock(SOURCE, Blocks.STONE.defaultBlockState(), 2);
+        level.setBlock(SOURCE2, Blocks.STONE.defaultBlockState(), 2);
         level.setBlock(TARGET, Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(TARGET2, Blocks.AIR.defaultBlockState(), 2);
         if (!isOriginal(level)) throw new IllegalStateException("scene did not initialize");
     }
 

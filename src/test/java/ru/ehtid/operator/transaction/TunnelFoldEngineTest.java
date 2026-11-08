@@ -70,6 +70,92 @@ class TunnelFoldEngineTest {
         assertEquals(AIR, world.read(1, 45, 0));
     }
 
+
+    @Test void v2TwoStoneStripCommitsFourWritesAndRestoresBothCells() {
+        var journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(0, 45, 0),
+                new BlockPos(1, 45, 0), 3L);
+        assertTrue(SandboxTransactionEngine.isTunnelFold(journal));
+        assertEquals(TunnelFoldService.MARKER_V2, journal.sourceSnapshotId);
+        var world = new MemoryWorld(journal);
+        var store = new Store();
+        var applied = SandboxTransactionEngine.applyTunnelFold(
+                journal, world, () -> 101L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED, applied.outcome());
+        assertEquals(2, applied.transferredBlocks());
+        assertEquals(4, applied.confirmedWrites());
+        assertEquals(4, store.reload().appliedWrites);
+        for (int z = 0; z <= 1; z++) {
+            assertEquals(AIR, world.read(0, 45, z));
+            assertEquals(STONE, world.read(1, 45, z));
+        }
+        // Test a copied WAL record (simulates freshly read execution metadata).
+        var restored = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, restored.outcome());
+        assertEquals(4, restored.confirmedWrites());
+        assertEquals(4, store.reload().restoredWrites);
+        for (int z = 0; z <= 1; z++) {
+            assertEquals(STONE, world.read(0, 45, z));
+            assertEquals(AIR, world.read(1, 45, z));
+        }
+        assertEquals(2, store.flushes);
+    }
+
+    @Test void v2RejectsV1MislabelledOrNonStonePairsBeforeAnyWal() {
+        var journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(0, 45, 0),
+                new BlockPos(1, 45, 0), 4L);
+        journal.sourceSnapshotId = TunnelFoldService.MARKER;
+        journal.sourceSnapshotSha256 = TunnelFoldService.MARKER;
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        assertFalse(SandboxTransactionEngine.isTunnelFold(journal),
+                "V1 one-block entries must never authorize two-cell writes");
+        var store = new Store();
+        var attempted = SandboxTransactionEngine.applyTunnelFold(
+                journal, new MemoryWorld(journal), () -> 1L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.REFUSED, attempted.outcome());
+        assertNull(store.state);
+
+        journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(0, 45, 0),
+                new BlockPos(1, 45, 0), 5L);
+        journal.source.before.set(1, new TransactionJournal.Cell(
+                0,45,1,"minecraft:cobblestone","Block{minecraft:cobblestone}",null));
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        assertFalse(SandboxTransactionEngine.isTunnelFold(journal));
+        var other = new Store();
+        assertEquals(SandboxTransactionEngine.Outcome.REFUSED,
+                SandboxTransactionEngine.applyTunnelFold(
+                        journal, new MemoryWorld(journal), () -> 1L, other).outcome());
+        assertNull(other.state);
+    }
+
+    @Test void v2InterruptedWalCanSafelyRollbackPartiallyWrittenStrip() {
+        var journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(0, 45, 0),
+                new BlockPos(1, 45, 0), 6L);
+        var world = new MemoryWorld(journal);
+        var store = new Store();
+        store.failUpdate = 2; // Crash after writing first target, before ACK.
+        var interrupted = SandboxTransactionEngine.applyTunnelFold(
+                journal, world, () -> 101L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("APPLY", store.reload().pendingOperation);
+        store.failUpdate = -1;
+        var rolledBack = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 102L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, rolledBack.outcome());
+        for (int z = 0; z <= 1; z++) {
+            assertEquals(STONE, world.read(0, 45, z));
+            assertEquals(AIR, world.read(1, 45, z));
+        }
+    }
+
     private static TransactionJournal fixture() {
         return TunnelFoldService.oneCellJournal(
                 UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
