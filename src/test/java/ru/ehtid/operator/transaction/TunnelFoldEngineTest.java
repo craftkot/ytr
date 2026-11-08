@@ -156,6 +156,45 @@ class TunnelFoldEngineTest {
         }
     }
 
+    @Test void worldFieldV1UsesRealV2FourWriteWalAndIsReversible() {
+        var journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(0,45,0),
+                new BlockPos(1,45,0), 24000L);
+        journal.sourceSnapshotId = WorldFieldService.MARKER;
+        journal.sourceSnapshotSha256 = WorldFieldService.MARKER;
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        assertTrue(SandboxTransactionEngine.isTunnelFold(journal));
+        var world = new MemoryWorld(journal);
+        var store = new Store();
+        var apply = SandboxTransactionEngine.applyTunnelFold(
+                journal, world, ()->24001L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.COMMITTED, apply.outcome());
+        assertEquals(4, store.reload().totalWrites);
+        assertEquals(4, store.reload().appliedWrites);
+        var rollback = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, ()->24002L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, rollback.outcome());
+        assertEquals(STONE, world.read(0,45,0));
+        assertEquals(STONE, world.read(0,45,1));
+        assertEquals(AIR, world.read(1,45,0));
+        assertEquals(AIR, world.read(1,45,1));
+    }
+
+    @Test void worldFieldRejectsForgedMarkerWithoutDurableLedger() {
+        var journal = fixture();
+        journal.sourceSnapshotId = WorldFieldService.MARKER;
+        journal.sourceSnapshotSha256 = WorldFieldService.MARKER;
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        assertFalse(SandboxTransactionEngine.isTunnelFold(journal),
+                "A global field always requires a full two-block strip");
+        var store = new Store();
+        assertEquals(SandboxTransactionEngine.Outcome.REFUSED,
+                SandboxTransactionEngine.applyTunnelFold(
+                        journal, new MemoryWorld(journal), ()->1L, store).outcome());
+        assertNull(store.state);
+    }
+
     private static TransactionJournal fixture() {
         return TunnelFoldService.oneCellJournal(
                 UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),

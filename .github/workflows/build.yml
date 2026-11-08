@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev, 'feature/tunnel-fold-two-cell' ]
+    branches: [ operator-dev, 'feature/seamless-world-field' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:

@@ -2,7 +2,7 @@ name: Operator Reality - Real Minecraft Client
 
 on:
   push:
-    branches: [ operator-dev, feature/tunnel-fold-two-cell ]
+    branches: [ operator-dev, feature/seamless-world-field ]
     paths:
       - 'src/**'
       - 'tools/seed_graphical_client_world.py'
