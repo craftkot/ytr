@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev ]
+    branches: [ operator-dev, 'feature/tunnel-fold-two-cell' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
