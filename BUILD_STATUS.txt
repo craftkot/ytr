@@ -1,3 +1,18 @@
+Operator: Reality 0.25.0 — distributed offscreen World Field
+
+As of feature/seamless-world-field:
+- Source code, policy, real-client smoke and JUnit added.
+- The first integrated-client success: https://github.com/craftkot/ytr/actions/runs/42479467544
+- Real-client opaque-ray occlusion success: https://github.com/craftkot/ytr/actions/runs/42480166564
+  Offscreen change with player 128 blocks distant and a real opaque barrier;
+  two client screenshot states after returning; visual delta 49,814 pixels;
+  actual connected player, integrated-world WAL COMMITTED then ROLLED_BACK.
+- Explicit independent opt-in, finite loaded-chunk-only search, 16 sectors,
+  1200-tick cooldown, 112-block all-player exclusion, solid-terrain LOS,
+  construction buffer, durable per-sector record and crash-gap audit.
+- Version 0.25.0 release CI is not considered passed until its runs complete.
+- NOT full biome/world replacement or truly seamless to all observer mods.
+
 Operator Reality 0.24.0 — two-block autonomous tunnel fold
 
 V2 implementation tests on the earlier binary-relevant commit:

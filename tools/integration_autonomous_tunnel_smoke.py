@@ -39,7 +39,7 @@ def phase(number: int) -> None:
                 if proc.poll() is not None:
                     raise RuntimeError(f"Server exited before RCON: {proc.returncode}")
                 try:
-                    if "Operator 0.24" in base.rcon("operator status"):
+                    if "Operator 0.25" in base.rcon("operator status"):
                         break
                     last_error = "Unexpected status payload"
                 except Exception as exc:
