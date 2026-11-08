@@ -203,7 +203,11 @@ public final class WorldFieldService {
                 Vec3 point = new Vec3(
                         block.getX() + 0.5D, block.getY() + 0.5D, block.getZ() + 0.5D);
                 double length = eye.distanceTo(point);
-                if (length <= 2D || length > 512D) return false;
+                if (length <= 2D) return false;
+                // More than 32 chunks away, outside the supported sight
+                // budget. Do not reject every event merely because another
+                // player is on the opposite side of a multiplayer world.
+                if (length > 512D) continue;
                 int samples = Math.max(1, (int) Math.ceil(length / 4D));
                 for (int i = 0; i <= samples; i++) {
                     double t = (double) i / samples;
@@ -221,6 +225,7 @@ public final class WorldFieldService {
                 // to the player than the target, avoiding edge ambiguity.
                 if (hit.getType() != HitResult.Type.BLOCK
                         || hit.getBlockPos().equals(block)
+                        || !level.getBlockState(hit.getBlockPos()).canOcclude()
                         || Math.sqrt(eye.distanceToSqr(hit.getLocation())) > length - 2D)
                     return false;
             }
