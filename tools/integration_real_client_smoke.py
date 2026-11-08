@@ -289,7 +289,7 @@ def main() -> None:
                 (match.group(1), match.group(2))
                 for match in re.finditer(
                     r"OPERATOR_CLIENT_RENDER_STATE source=(STONE|AIR) "
-                    r"target=(STONE|AIR) camera=\\(0,200,4\\) yaw=(-?180\\.0)",
+                    r"target=(STONE|AIR) camera=\(0,200,4\) yaw=(-?180\.0)",
                     client_log,
                 )
             ]
