@@ -44,10 +44,13 @@ def await_marker(proc: subprocess.Popen[bytes], marker: str,
         if proc.poll() is not None:
             raise RuntimeError(f"Client exited {proc.returncode} before {marker}")
         data = CLIENT_LOG.read_text(encoding="utf-8", errors="replace") if CLIENT_LOG.is_file() else ""
-        if "OPERATOR_CLIENT_TEST FAILED" in data or "OPERATOR_WORLD_FIELD_TEST FAILED" in data:
+        if ("OPERATOR_CLIENT_TEST FAILED" in data
+                or "OPERATOR_WORLD_FIELD_TEST FAILED" in data
+                or "OPERATOR_DEFERRED_TEST FAILED" in data):
             bad = [x for x in data.splitlines()
                    if "OPERATOR_CLIENT_TEST FAILED" in x
-                   or "OPERATOR_WORLD_FIELD_TEST FAILED" in x]
+                   or "OPERATOR_WORLD_FIELD_TEST FAILED" in x
+                   or "OPERATOR_DEFERRED_TEST FAILED" in x]
             raise RuntimeError("Test controller reported failure: " + " | ".join(bad[-3:]))
         if marker in data:
             log("Verified integrated-world marker " + marker)
@@ -336,6 +339,36 @@ def main() -> None:
                 if material_pixels < 1500:
                     raise RuntimeError("World field did not visibly change Minecraft blocks")
             log("OPERATOR_REAL_CLIENT_WORLD_FIELD_SUCCESS")
+
+            # Distinct end-to-end cross-chunk test: durable intent is staged
+            # BEFORE either target chunk exists; only then does isolated CI
+            # force-load fixture chunks. Production code never forces loads.
+            acknowledge("ci-deferred-start.allow")
+            await_marker(proc, "OPERATOR_DEFERRED_TEST PERSISTED_UNLOADED", 35)
+            acknowledge("ci-deferred-load.allow")
+            await_marker(proc, "OPERATOR_DEFERRED_TEST TWO_CHUNKS_LOADED_AFTER_PLAN", 85)
+            await_marker(proc, "OPERATOR_DEFERRED_TEST COMMITTED", 135)
+            time.sleep(3)
+            deferred_after = screenshot("08-deferred-border-after-return.png")
+            acknowledge("ci-deferred-after-captured.allow")
+            await_marker(proc, "OPERATOR_DEFERRED_TEST ROLLBACK_COMPLETE", 45)
+            time.sleep(3)
+            deferred_restored = screenshot("09-deferred-border-restored.png")
+            acknowledge("ci-deferred-restored-captured.allow")
+            await_marker(proc, "OPERATOR_DEFERRED_TEST SUCCESS", 30)
+            with Image.open(deferred_after) as aa, Image.open(deferred_restored) as bb:
+                delta = ImageChops.difference(aa.convert("RGB"), bb.convert("RGB"))
+                region = delta.crop((350, 100, 930, 560)).convert("L")
+                pixels = sum(1 for value in region.getdata() if value >= 35)
+                delta.point(lambda v: min(255, 5*v)).save(
+                    SCREENSHOTS / "10-deferred-border-difference.png"
+                )
+                log(f"Deferred two-chunk mutation vs rollback ROI pixels: {pixels}")
+                if pixels < 1500:
+                    raise RuntimeError(
+                        "Deferred multi-chunk geometry did not visibly change in Minecraft"
+                    )
+            log("OPERATOR_REAL_CLIENT_DEFERRED_TWO_CHUNK_SUCCESS")
         except BaseException:
             print("--- last 100 console lines ---", file=sys.stderr)
             print("\n".join(CONSOLE.read_text(errors="replace").splitlines()[-100:]),
