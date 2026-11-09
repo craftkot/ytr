@@ -2,9 +2,13 @@ package ru.ehtid.operator.data;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import ru.ehtid.operator.transaction.DeferredChunkPlan;
 
 public final class OperatorWorldData {
-    public int schemaVersion = 10;
+    public int schemaVersion = 11;
+    /** Persisted intent only: no world blocks modified until all checks repeat. */
+    public Map<String, DeferredChunkPlan> worldFieldPending = new LinkedHashMap<>();
+    public long lastDeferredPlanTick = 0L;
     /** Independently opt-in; never activated just by enabling cave anomalies. */
     public boolean worldFieldEnabled = false;
     /** Sector -> owner UUID / journal UUID, persisted before all field writes. */
@@ -21,6 +25,8 @@ public final class OperatorWorldData {
         int previousSchemaVersion = schemaVersion;
         if (players == null) players = new LinkedHashMap<>();
         if (worldFieldHistory == null) worldFieldHistory = new LinkedHashMap<>();
+        if (worldFieldPending == null) worldFieldPending = new LinkedHashMap<>();
+        if (lastDeferredPlanTick < 0L) lastDeferredPlanTick = 0L;
         if (lastWorldFieldTick < 0L) lastWorldFieldTick = 0L;
         // Do not truncate suspicious history: the field scanner fails closed
         // when data exceeds its sector budget.
@@ -66,7 +72,7 @@ public final class OperatorWorldData {
             }
             memory.normalize();
         }
-        schemaVersion = 10;
+        schemaVersion = 11;
     }
 
     public long worldObservationElapsed(long currentGameTick) {

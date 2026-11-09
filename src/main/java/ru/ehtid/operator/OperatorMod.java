@@ -7,6 +7,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 
@@ -43,6 +44,10 @@ public final class OperatorMod implements ModInitializer {
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(OBSERVER::onServerStopping);
         ServerTickEvents.END_SERVER_TICK.register(OBSERVER::onServerTick);
+        // Chunk-load events are only signals. All mutations are deferred
+        // to the next server tick with full WAL and visibility rechecks.
+        ServerChunkEvents.CHUNK_LOAD.register((level, chunk) ->
+                OBSERVER.onChunkLoaded(level, chunk.getPos().x, chunk.getPos().z));
         // Actual client-world smoke only: a real ServerPlayer exists, renders
         // through LWJGL under Xvfb and is required for the image assertions.
         if (Boolean.getBoolean("operator.reality.ciClientSmoke")

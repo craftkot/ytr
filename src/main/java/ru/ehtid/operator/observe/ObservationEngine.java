@@ -45,6 +45,8 @@ import ru.ehtid.operator.transaction.ExperimentalRelocationService;
 import ru.ehtid.operator.transaction.TunnelFoldService;
 import ru.ehtid.operator.transaction.WorldFieldService;
 import ru.ehtid.operator.transaction.WorldFieldPolicy;
+import ru.ehtid.operator.transaction.DeferredChunkPlan;
+import ru.ehtid.operator.transaction.DeferredWorldFieldService;
 
 public final class ObservationEngine {
     public static final long OBSERVATION_TICKS = 24_000L;
@@ -155,10 +157,19 @@ public final class ObservationEngine {
             }
             // Independent, world-scale offscreen scheduler. No forced chunk
             // loading, at most one event per world per 1200 ticks.
+            if (now % OperatorBrain.EVALUATION_INTERVAL_TICKS == 0L
+                    && data.worldFieldEnabled) {
+                String deferred = attemptDeferredWorldField(server, player, memory, now);
+                if (deferred.startsWith("Tunnel fold"))
+                    OperatorMod.LOGGER.info("Deferred cross-chunk field {}: {}",
+                            player.getUUID(), deferred);
+            }
             if (now % WorldFieldPolicy.COOLDOWN_TICKS == 0L) {
                 String drift = attemptWorldField(server, player, memory, now);
                 if (drift.startsWith("Tunnel fold")) {
                     OperatorMod.LOGGER.info("World field event {}: {}", player.getUUID(), drift);
+                } else if (data.worldFieldEnabled) {
+                    scheduleDeferredWorldField(server, player, memory, now);
                 }
             }
             dirty = true;
@@ -807,6 +818,110 @@ public final class ObservationEngine {
         return TunnelFoldService.apply(server, player, journal);
     }
 
+    private void scheduleDeferredWorldField(MinecraftServer server,
+                                             ServerPlayer player,
+                                             PlayerMemory memory, long now) {
+        if (!data.worldFieldEnabled || !data.autonomousAnomaliesEnabled
+                || !data.observationComplete
+                || !memory.personalObservationComplete(OBSERVATION_TICKS)) return;
+        if (!deferredMetadataValid(now)) return;
+        DeferredChunkPlan plan = DeferredWorldFieldService.stage(server, player, data, now);
+        if (plan == null) return;
+        data.worldFieldPending.put(plan.sector, plan);
+        data.lastDeferredPlanTick = now;
+        dirty = true;
+        save(server);
+        if (dirty) {
+            // Failed persistence never authorizes a later write this session.
+            data.worldFieldEnabled = false;
+            OperatorMod.LOGGER.error("Could not persist deferred chunk plan. Field disabled.");
+        } else {
+            OperatorMod.LOGGER.info(
+                    "Deferred chunk plan {} staged for sector {} at ({},{}) without loading terrain",
+                    plan.planId, plan.sector, plan.targetX, plan.targetZ);
+        }
+    }
+
+    private boolean deferredMetadataValid(long tick) {
+        if (data.worldFieldPending == null
+                || data.worldFieldHistory == null
+                || data.worldFieldPending.size() > DeferredChunkPlan.MAX_PENDING)
+            return false;
+        for (var entry : data.worldFieldPending.entrySet()) {
+            DeferredChunkPlan plan = entry.getValue();
+            if (plan == null || !plan.valid() || !entry.getKey().equals(plan.sector)
+                    || data.worldFieldHistory.containsKey(plan.sector)
+                    || tick < plan.queuedAt)
+                return false;
+        }
+        return true;
+    }
+
+    private String attemptDeferredWorldField(MinecraftServer server, ServerPlayer player,
+                                              PlayerMemory memory, long now) {
+        if (!data.worldFieldEnabled || !data.autonomousAnomaliesEnabled
+                || !data.observationComplete
+                || !memory.personalObservationComplete(OBSERVATION_TICKS))
+            return "DEFERRED_DISABLED_OR_OBSERVING";
+        if (!deferredMetadataValid(now)) return "DEFERRED_INVALID_METADATA";
+        for (var entry : new ArrayList<>(data.worldFieldPending.entrySet())) {
+            DeferredChunkPlan plan = entry.getValue();
+            if (!plan.ownerUuid.equals(player.getUUID().toString())) continue;
+            if (plan.expired(now)) {
+                data.worldFieldPending.remove(plan.sector);
+                dirty = true;
+                save(server);
+                return dirty ? "DEFERRED_EXPIRATION_SAVE_FAILED" : "DEFERRED_EXPIRED";
+            }
+            try {
+                var candidate = DeferredWorldFieldService.whenReady(
+                        server, player, data, plan, now);
+                if (candidate == null) return "DEFERRED_NOT_READY";
+                TransactionJournalStorage.save(server, candidate.journal());
+                // Each change has a fully materialized BEFORE image in its own
+                // durable journal. A crash after this save but before memory
+                // flush is caught by the existing orphan-journal audit.
+                data.worldFieldHistory.put(candidate.sector(),
+                        player.getUUID() + "/" + candidate.journal().journalId);
+                data.worldFieldPending.remove(plan.sector);
+                data.lastWorldFieldTick = now;
+                dirty = true;
+                save(server);
+                if (dirty) {
+                    data.worldFieldEnabled = false;
+                    return "DEFERRED_MEMORY_PERSIST_FAILED";
+                }
+                return TunnelFoldService.apply(server, player, candidate.journal());
+            } catch (IOException | RuntimeException error) {
+                OperatorMod.LOGGER.warn("Deferred cross-chunk attempt refused: {}",
+                        error.toString());
+                return "DEFERRED_REFUSED";
+            }
+        }
+        return "DEFERRED_NO_OWNER_PLAN";
+    }
+
+    /**
+     * A readiness hint only. Fabric CHUNK_LOAD does not guarantee the chunk
+     * has not already been sent to clients, so NEVER mutate here.
+     */
+    public void onChunkLoaded(ServerLevel level, int chunkX, int chunkZ) {
+        if (!loaded || data.worldFieldPending == null || data.worldFieldPending.isEmpty())
+            return;
+        String dimension = level.dimension().toString();
+        for (DeferredChunkPlan plan : data.worldFieldPending.values()) {
+            if (plan == null || !plan.valid() || !dimension.equals(plan.dimension))
+                continue;
+            if (plan.chunkZ() == chunkZ
+                    && (plan.targetChunkX() == chunkX || plan.sourceChunkX() == chunkX)) {
+                OperatorMod.LOGGER.debug(
+                        "Deferred sector {} saw chunk ({},{}); recheck during later server tick",
+                        plan.sector, chunkX, chunkZ);
+                break;
+            }
+        }
+    }
+
     private String attemptWorldField(MinecraftServer server, ServerPlayer player,
                                      PlayerMemory memory, long now) {
         if (!data.worldFieldEnabled || !data.autonomousAnomaliesEnabled)
@@ -862,7 +977,9 @@ public final class ObservationEngine {
         return "World field " + (data.worldFieldEnabled ? "ENABLED" : "DISABLED")
                 + " | anomaly master " + (data.autonomousAnomaliesEnabled ? "ENABLED" : "DISABLED")
                 + " | sectors " + data.worldFieldHistory.size()
-                + "/" + WorldFieldPolicy.MAX_SECTORS + " | " + safety;
+                + "/" + WorldFieldPolicy.MAX_SECTORS
+                + " | deferred " + data.worldFieldPending.size()
+                + "/" + DeferredChunkPlan.MAX_PENDING + " | " + safety;
     }
 
     public String rollbackWorldField(ServerPlayer player, MinecraftServer server) {
