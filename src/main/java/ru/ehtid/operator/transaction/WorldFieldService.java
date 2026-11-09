@@ -81,7 +81,9 @@ public final class WorldFieldService {
                     int z = z0 + axis[1] * radius;
                     String sector = WorldFieldPolicy.sector(level.dimension().toString(), x, z);
                     if (!WorldFieldPolicy.maySchedule(
-                            data.worldFieldHistory, sector, tick, data.lastWorldFieldTick))
+                            data.worldFieldHistory, sector, tick, data.lastWorldFieldTick)
+                            || (data.worldFieldPending != null
+                                && data.worldFieldPending.containsKey(sector)))
                         continue;
                     BlockPos top = new BlockPos(x, actor.blockPosition().getY(), z);
                     if (!level.hasChunkAt(top)
