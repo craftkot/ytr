@@ -48,7 +48,7 @@ public final class OperatorMod implements ModInitializer {
         // Chunk-load events are only signals. All mutations are deferred
         // to the next server tick with full WAL and visibility rechecks.
         ServerChunkEvents.CHUNK_LOAD.register((level, chunk, generated) ->
-                OBSERVER.onChunkLoaded(level, chunk.getPos().x, chunk.getPos().z));
+                OBSERVER.onChunkLoaded(level, chunk.getPos().x(), chunk.getPos().z()));
         // Actual client-world smoke only: a real ServerPlayer exists, renders
         // through LWJGL under Xvfb and is required for the image assertions.
         if (Boolean.getBoolean("operator.reality.ciClientSmoke")
