@@ -110,7 +110,22 @@ public final class DeferredWorldFieldService {
                     || !plan.ownerUuid.equals(candidate.journal().ownerUuid)
                     || WorldFieldService.nearTrackedConstruction(data,candidate.journal()))
                 continue;
-            return candidate;
+            // Normal field V1 candidates only reserve their target sector.
+            // Replace that label and re-fingerprint before reserving ALL
+            // touched sectors for this deferred cross-chunk transaction.
+            TransactionJournal journal = candidate.journal();
+            journal.sourceSnapshotId = WorldFieldService.MARKER_V2;
+            journal.sourceSnapshotSha256 = WorldFieldService.MARKER_V2;
+            journal.sha256 = TransactionIntegrity.fingerprint(journal);
+            var footprint = WorldFieldSectorFootprint.sectors(journal);
+            if (footprint.isEmpty()
+                    || data.worldFieldHistory.size() + footprint.size()
+                         > WorldFieldPolicy.MAX_SECTORS
+                    || footprint.stream().anyMatch(data.worldFieldHistory::containsKey)
+                    || footprint.stream().anyMatch(s -> !s.equals(plan.sector)
+                            && data.worldFieldPending.containsKey(s)))
+                continue;
+            return new WorldFieldService.Candidate(journal, candidate.sector());
         }
         return null;
     }

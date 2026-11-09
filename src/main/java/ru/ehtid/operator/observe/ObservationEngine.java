@@ -881,8 +881,17 @@ public final class ObservationEngine {
                 // Each change has a fully materialized BEFORE image in its own
                 // durable journal. A crash after this save but before memory
                 // flush is caught by the existing orphan-journal audit.
-                data.worldFieldHistory.put(candidate.sector(),
-                        player.getUUID() + "/" + candidate.journal().journalId);
+                // The source may be in another 64x64 sector. Reserve all
+                // touched sectors under the SAME durable V2 journal before
+                // applying any block write. The on-disk audit reconstructs
+                // these reservations independently after a restart.
+                var footprint = ru.ehtid.operator.transaction.WorldFieldSectorFootprint
+                        .sectors(candidate.journal());
+                if (footprint.isEmpty())
+                    return "DEFERRED_INVALID_FOOTPRINT";
+                String reference = player.getUUID() + "/" + candidate.journal().journalId;
+                for (String sector : footprint)
+                    data.worldFieldHistory.put(sector, reference);
                 data.worldFieldPending.remove(plan.sector);
                 data.lastWorldFieldTick = now;
                 dirty = true;

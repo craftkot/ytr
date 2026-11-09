@@ -197,7 +197,8 @@ public final class TunnelFoldService {
             ServerLevel level = (ServerLevel) player.level();
             BlockPos source = new BlockPos(journal.source.minX, journal.source.minY, journal.source.minZ);
             BlockPos target = new BlockPos(journal.target.minX, journal.target.minY, journal.target.minZ);
-            if ((WorldFieldService.MARKER.equals(journal.sourceSnapshotId)
+            if (((WorldFieldService.MARKER.equals(journal.sourceSnapshotId)
+                        || WorldFieldService.MARKER_V2.equals(journal.sourceSnapshotId))
                     && !WorldFieldService.nobodyNearJournal(server, level, journal))
                     || !loaded(level, source, target,
                         new BlockPos(journal.source.maxX, journal.source.maxY, journal.source.maxZ),
@@ -245,7 +246,8 @@ public final class TunnelFoldService {
             ServerLevel level = (ServerLevel) player.level();
             BlockPos source = new BlockPos(journal.source.minX, journal.source.minY, journal.source.minZ);
             BlockPos target = new BlockPos(journal.target.minX, journal.target.minY, journal.target.minZ);
-            if ((WorldFieldService.MARKER.equals(journal.sourceSnapshotId)
+            if (((WorldFieldService.MARKER.equals(journal.sourceSnapshotId)
+                        || WorldFieldService.MARKER_V2.equals(journal.sourceSnapshotId))
                     && !WorldFieldService.nobodyNearJournal(server, level, journal))
                     || !loaded(level, source, target,
                         new BlockPos(journal.source.maxX, journal.source.maxY, journal.source.maxZ),

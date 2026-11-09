@@ -40,6 +40,8 @@ import ru.ehtid.operator.storage.TransactionJournalStorage;
  */
 public final class WorldFieldService {
     public static final String MARKER = "AUTO_WORLD_FIELD_V1";
+    /** Reserves every touched sector, not just the target sector. */
+    public static final String MARKER_V2 = "AUTO_WORLD_FIELD_V2";
     private static final int MAX_OWNERS_AUDIT = 128;
     private static final int MAX_OWNER_ENTRIES_AUDIT = 128;
     private static final int MAX_CANDIDATE_COLUMNS = 32;
@@ -335,14 +337,24 @@ public final class WorldFieldService {
                             throw new IOException("unsafe journal file in field audit");
                         String id = name.substring(0, name.length() - 5);
                         TransactionJournal journal = TransactionJournalStorage.load(server, owner, id);
-                        if (!MARKER.equals(journal.sourceSnapshotId)) continue;
+                        boolean old = MARKER.equals(journal.sourceSnapshotId);
+                        boolean newMulti = MARKER_V2.equals(journal.sourceSnapshotId);
+                        if (!old && !newMulti) continue;
                         if (!SandboxTransactionEngine.isTunnelFold(journal))
                             throw new IOException("invalid field journal");
-                        String sector = WorldFieldPolicy.sector(
-                                journal.dimension, journal.target.minX, journal.target.minZ);
                         String value = owner + "/" + id;
-                        if (discovered.putIfAbsent(sector, value) != null)
-                            throw new IOException("duplicated field sector on disk");
+                        // Legacy V1 journals only own the target sector;
+                        // V2 journals reserve EVERY sector touched by their
+                        // original before-image, including cross-chunk sources.
+                        java.util.Set<String> sectors = newMulti
+                                ? WorldFieldSectorFootprint.sectors(journal)
+                                : java.util.Set.of(WorldFieldPolicy.sector(
+                                        journal.dimension, journal.target.minX, journal.target.minZ));
+                        if (sectors.isEmpty())
+                            throw new IOException("invalid multi-sector footprint");
+                        for (String sector : sectors)
+                            if (discovered.putIfAbsent(sector, value) != null)
+                                throw new IOException("duplicated field sector on disk");
                     }
                 }
             }
