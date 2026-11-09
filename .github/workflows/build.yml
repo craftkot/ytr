@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev, 'feature/seamless-world-field' ]
+    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
