@@ -195,6 +195,38 @@ class TunnelFoldEngineTest {
         assertNull(store.state);
     }
 
+    @Test void deferredFieldV2ReservesBoth64BlockSectorsAndRollsBackAfterCrash() {
+        var journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(256,202,0),
+                new BlockPos(255,202,0), 24_000L);
+        journal.sourceSnapshotId = WorldFieldService.MARKER_V2;
+        journal.sourceSnapshotSha256 = WorldFieldService.MARKER_V2;
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        assertTrue(SandboxTransactionEngine.isTunnelFold(journal));
+        assertTrue(ChunkBoundaryPolicy.spansExactlyTwoChunks(journal));
+        var sectors = WorldFieldSectorFootprint.sectors(journal);
+        assertEquals(java.util.Set.of("minecraft:overworld|3,0",
+                "minecraft:overworld|4,0"), sectors);
+        var world = new MemoryWorld(journal);
+        var store = new Store();
+        store.failUpdate = 2;
+        var interrupted = SandboxTransactionEngine.applyTunnelFold(
+                journal, world, () -> 24001L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("APPLY", store.reload().pendingOperation);
+        store.failUpdate = -1;
+        var restored = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 24002L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, restored.outcome());
+        for (int z = 0; z < 2; z++) {
+            assertEquals(STONE, world.read(256,202,z));
+            assertEquals(AIR, world.read(255,202,z));
+        }
+        assertEquals(4, store.reload().restoredWrites);
+        assertEquals("ROLLED_BACK", store.reload().phase);
+    }
+
     private static TransactionJournal fixture() {
         return TunnelFoldService.oneCellJournal(
                 UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
