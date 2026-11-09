@@ -1101,6 +1101,49 @@ public final class ObservationEngine {
         return dirty ? "FIELD_SAVE_FAILED" : "CI_FIELD_PRIMED";
     }
 
+    /**
+     * CI-only proof that a future two-chunk plan can be persisted while BOTH
+     * target chunks are still absent. Test then explicitly loads them, and
+     * normal server ticks (not this method) perform the full field WAL.
+     */
+    public String ciStageDeferredBoundary(MinecraftServer server, ServerPlayer player,
+                                          int x, int y, int z) {
+        if (!loaded || !Boolean.getBoolean("operator.reality.ciClientSmoke")
+                || !"true".equals(System.getenv("GITHUB_ACTIONS"))
+                || server.isDedicatedServer()
+                || server.getPlayerList().getPlayers().size() != 1
+                || !server.getPlayerList().getPlayers().contains(player)
+                || !java.nio.file.Files.isRegularFile(server.getWorldPath(
+                        net.minecraft.world.level.storage.LevelResource.ROOT)
+                        .resolve("operator_reality").resolve("ci-deferred-start.allow")))
+            return "DENIED";
+        if (Math.floorMod(x,16) != 15) return "NOT_A_CHUNK_EDGE";
+        ServerLevel level = (ServerLevel) player.level();
+        if (level.hasChunkAt(new BlockPos(x,y,z))
+                || level.hasChunkAt(new BlockPos(x+1,y,z)))
+            return "BORDER_ALREADY_LOADED";
+        long now = server.overworld().getGameTime();
+        PlayerMemory memory = getOrCreate(player, now);
+        memory.observedTicks = Math.max(memory.observedTicks, OBSERVATION_TICKS);
+        data.observationComplete = true;
+        data.autonomousAnomaliesEnabled = true;
+        data.worldFieldEnabled = true;
+        // CI-only accelerated cooldown while maintaining production validation
+        // and independent real renderer/WAL assertions.
+        data.lastWorldFieldTick = Math.max(0L,
+                now - WorldFieldPolicy.COOLDOWN_TICKS);
+        data.worldFieldPending.clear();
+        DeferredChunkPlan plan = DeferredChunkPlan.create(player.getUUID(),
+                level.dimension().toString(), x,y,z,now);
+        if (data.worldFieldHistory.containsKey(plan.sector))
+            return "SECTOR_ALREADY_USED";
+        data.worldFieldPending.put(plan.sector, plan);
+        data.lastDeferredPlanTick = now;
+        dirty = true;
+        save(server);
+        return dirty ? "SAVE_FAILED" : "CI_DEFERRED_STAGED";
+    }
+
     public String ciFoldJournalId(ServerPlayer player) {
         PlayerMemory memory = data.players.get(player.getUUID().toString());
         return memory == null || memory.autonomousFoldJournalId == null
