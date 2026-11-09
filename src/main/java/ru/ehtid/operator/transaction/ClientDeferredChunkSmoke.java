@@ -102,7 +102,12 @@ public final class ClientDeferredChunkSmoke {
                     var journal = TransactionJournalStorage.load(
                             server, player.getUUID().toString(), ref.substring(prefix.length()));
                     var wal = RelocationExecutionStorage.load(server, journal);
-                    if (!WorldFieldService.MARKER.equals(journal.sourceSnapshotId)
+                    var sectors = WorldFieldSectorFootprint.sectors(journal);
+                    String sourceSector = WorldFieldPolicy.sector(
+                            level.dimension().toString(), SOURCE.getX(), SOURCE.getZ());
+                    if (!WorldFieldService.MARKER_V2.equals(journal.sourceSnapshotId)
+                            || sectors.size() != 2
+                            || !ref.equals(saved.worldFieldHistory.get(sourceSector))
                             || !ChunkBoundaryPolicy.spansExactlyTwoChunks(journal)
                             || !SandboxTransactionEngine.isTunnelFold(journal)
                             || !"COMMITTED".equals(wal.phase) || wal.appliedWrites != 4
