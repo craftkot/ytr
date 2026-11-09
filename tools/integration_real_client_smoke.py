@@ -368,6 +368,20 @@ def main() -> None:
                     raise RuntimeError(
                         "Deferred multi-chunk geometry did not visibly change in Minecraft"
                     )
+            client_states = CLIENT_LOG.read_text(errors="replace")
+            after_state = client_states.find(
+                "OPERATOR_CLIENT_DEFERRED_RENDER_STATE source=AIR target=STONE"
+            )
+            restored_state = client_states.find(
+                "OPERATOR_CLIENT_DEFERRED_RENDER_STATE source=STONE target=AIR",
+                after_state + 1,
+            )
+            if after_state < 0 or restored_state < 0:
+                raise RuntimeError(
+                    "ClientLevel in-game states at x=255/256 did not transition "
+                    "AIR/STONE -> STONE/AIR across WAL rollback"
+                )
+            log("Two distinct client chunks confirm moved and restored block states")
             log("OPERATOR_REAL_CLIENT_DEFERRED_TWO_CHUNK_SUCCESS")
         except BaseException:
             print("--- last 100 console lines ---", file=sys.stderr)
