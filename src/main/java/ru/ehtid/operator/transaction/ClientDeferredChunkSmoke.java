@@ -80,7 +80,9 @@ public final class ClientDeferredChunkSmoke {
                             level.getChunk(cx,cz);
                     buildScene(level);
                     if (!original(level)) { fail("INITIAL_GEOMETRY_INVALID"); return; }
-                    teleport(player, 255.5D, 128.5D, 0.0F);
+                    // Stay outside the 112-block observer exclusion but
+                    // within the usual loaded-chunk radius (7 chunks).
+                    teleport(player, 255.5D, 116.5D, 0.0F);
                     phase = 2;
                     startTick = now;
                     OperatorMod.LOGGER.info("OPERATOR_DEFERRED_TEST TWO_CHUNKS_LOADED_AFTER_PLAN");
@@ -121,7 +123,9 @@ public final class ClientDeferredChunkSmoke {
                 }
                 case 3 -> {
                     if (!Files.isRegularFile(root.resolve("ci-deferred-after-captured.allow"))) return;
-                    teleport(player, 255.5D, 128.5D, 0.0F);
+                    // Stay outside the 112-block observer exclusion but
+                    // within the usual loaded-chunk radius (7 chunks).
+                    teleport(player, 255.5D, 116.5D, 0.0F);
                     String result = observer.rollbackWorldField(player, server);
                     if (!result.startsWith("Tunnel fold rollback ROLLED_BACK")
                             || !original(level)) {

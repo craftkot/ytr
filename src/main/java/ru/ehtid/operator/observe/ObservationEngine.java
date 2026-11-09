@@ -876,7 +876,24 @@ public final class ObservationEngine {
             try {
                 var candidate = DeferredWorldFieldService.whenReady(
                         server, player, data, plan, now);
-                if (candidate == null) return "DEFERRED_NOT_READY";
+                if (candidate == null) {
+                    if (Boolean.getBoolean("operator.reality.ciClientSmoke")
+                            && "true".equals(System.getenv("GITHUB_ACTIONS"))) {
+                        var debugPos = new BlockPos(plan.targetX,plan.preferredY,plan.targetZ);
+                        var debugLevel = (ServerLevel) player.level();
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_DEFERRED_DIAG now={} cooldownRemaining={} "
+                                + "targetLoaded={} sourceLoaded={} playerZ={} planSector={} "
+                                + "fieldHistory={} fieldPending={}",
+                                now, Math.max(0L, WorldFieldPolicy.COOLDOWN_TICKS
+                                        - (now - data.lastWorldFieldTick)),
+                                debugLevel.hasChunkAt(debugPos),
+                                debugLevel.hasChunkAt(debugPos.east()),
+                                player.getZ(), plan.sector,
+                                data.worldFieldHistory.size(), data.worldFieldPending.size());
+                    }
+                    return "DEFERRED_NOT_READY";
+                }
                 TransactionJournalStorage.save(server, candidate.journal());
                 // Each change has a fully materialized BEFORE image in its own
                 // durable journal. A crash after this save but before memory
