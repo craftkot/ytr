@@ -51,3 +51,25 @@ jar {
         rename { "${it}_${project.base.archivesName.get()}" }
     }
 }
+
+// Diagnostic inventory from the exact Minecraft classes used to compile
+// this branch, not from unrelated mappings or a guessed renderer version.
+tasks.register('dumpTerrainRendererApi') {
+    def output = layout.buildDirectory.file('terrain-renderer-api.txt')
+    outputs.file(output)
+    doLast {
+        def target = output.get().asFile
+        target.parentFile.mkdirs()
+        def process = new ProcessBuilder(
+                new File(System.getProperty('java.home'), 'bin/javap').absolutePath,
+                '-p', '-c', '-classpath', sourceSets.main.compileClasspath.asPath,
+                'net.minecraft.client.renderer.LevelRenderer',
+                'net.minecraft.client.renderer.chunk.ChunkSectionsToRender',
+                'net.minecraft.client.renderer.chunk.ChunkSectionLayerGroup',
+                'com.mojang.renderpearl.api.commands.RenderPass')
+                .redirectErrorStream(true).redirectOutput(target).start()
+        if (process.waitFor() != 0)
+            throw new GradleException('Renderer API inspection failed: ' + target.text)
+        logger.lifecycle('Exact renderer bytecode inventory: ' + target)
+    }
+}
