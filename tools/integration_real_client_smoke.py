@@ -240,6 +240,14 @@ def main() -> None:
             time.sleep(8)
             before = screenshot("01-before-fold.png")
             acknowledge("ci-before-captured.allow")
+            # The probe uses vanilla extraction frames, not server-side yaw.
+            frame_logs = await_marker(proc, "OPERATOR_FRAME_REALITY_EXIT_SUCCESS", 45)
+            import re
+            match = re.search(r"OPERATOR_FRAME_REALITY_EXIT_SUCCESS previousFrame=(\d+) exitFrame=(\d+) yawDelta=([\d.]+) positionDelta=([\d.Ee+-]+) selectionNanos=(\d+) variantRevision=1", frame_logs)
+            if not match or int(match[2]) - int(match[1]) != 1 or float(match[3]) < 150 or float(match[4]) > .25:
+                raise RuntimeError("Frame-reality exit was not an in-place adjacent-frame turn")
+            log("OPERATOR_FRAME_REALITY_SELECTION_SUCCESS: adjacent extraction frames, "
+                + match[5] + " ns selector CPU time (not GPU or world mutation time)")
 
             await_marker(proc, "OPERATOR_CLIENT_TEST AUTONOMOUS_BLOCK_MOVED", 90)
             time.sleep(3)
