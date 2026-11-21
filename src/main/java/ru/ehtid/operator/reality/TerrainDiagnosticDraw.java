@@ -52,7 +52,10 @@ final class TerrainDiagnosticDraw {
             RenderSystem.bindDefaultUniforms(pass);
             pass.setUniform("DynamicTransforms",uniform);
             pass.setVertexBuffer(0,pair.buffer(alternate).slice());
-            pass.draw(pair.vertexCount(alternate),1,0,0);
+            // Draw each independently addressable section directly from
+            // its resident vertex range; no per-section copies or uploads.
+            for(var range:pair.ranges(alternate).values())
+                pass.draw(range.vertexCount(),1,range.firstVertex(),0);
         } finally { pass.popDebugGroup(); }
     }
 }
