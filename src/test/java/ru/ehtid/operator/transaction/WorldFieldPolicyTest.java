@@ -29,6 +29,31 @@ class WorldFieldPolicyTest {
         assertTrue(WorldFieldPolicy.nobodyNear("minecraft:the_end", 0,0, observers));
     }
 
+    @Test void manyConnectedObserversStillVetoLastNearbyPlayer() {
+        var observers = new java.util.ArrayList<WorldFieldPolicy.Observer>();
+        for (int i = 0; i < 127; i++)
+            observers.add(new WorldFieldPolicy.Observer(
+                    "minecraft:overworld", 10_000D + i, 10_000D + i));
+        // A far-away owner cannot authorize writes when a different player
+        // or a spectator is near the border. The last observer matters.
+        observers.add(new WorldFieldPolicy.Observer(
+                "minecraft:overworld", 255.5D, 0.5D));
+        assertFalse(WorldFieldPolicy.nobodyNear(
+                "minecraft:overworld", 255, 0, observers));
+        observers.remove(observers.size() - 1);
+        assertTrue(WorldFieldPolicy.nobodyNear(
+                "minecraft:overworld", 255, 0, observers));
+        observers.add(new WorldFieldPolicy.Observer(
+                "minecraft:the_nether", 255.5D, 0.5D));
+        assertTrue(WorldFieldPolicy.nobodyNear(
+                "minecraft:overworld", 255, 0, observers));
+        observers.add(new WorldFieldPolicy.Observer(
+                "minecraft:overworld", Double.NaN, 0.5D));
+        assertFalse(WorldFieldPolicy.nobodyNear(
+                "minecraft:overworld", 255, 0, observers),
+                "Invalid coordinates must fail closed");
+    }
+
     @Test void globalFieldRefusesPlayerBuiltStructureProximity() {
         var journal = TunnelFoldService.twoCellJournal(
                 java.util.UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
