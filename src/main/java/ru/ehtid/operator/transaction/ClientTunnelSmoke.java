@@ -186,6 +186,17 @@ public final class ClientTunnelSmoke {
     }
 
     private static void buildCameraScene(ServerLevel level) {
+        // CI-only surface fixture: seed terrain alone can lie well below
+        // this elevated camera, preventing both GPU tiles from ever entering
+        // the frustum. Build two real stone surfaces north of the tunnel,
+        // with a shared continuous edge and room for the +/-4 height variants.
+        // They are deliberately outside the physical fold's safety halo.
+        for (int x=-32; x<32; x++)
+            for (int z=-32; z<-8; z++) {
+                int top=Y+2+(Math.floorDiv(-z-8,8)%2);
+                level.setBlock(new BlockPos(x,top-1,z),Blocks.STONE.defaultBlockState(),2);
+                level.setBlock(new BlockPos(x,top,z),Blocks.STONE.defaultBlockState(),2);
+            }
         // Build a real cave corridor in a disposable integrated world, with a
         // camera vantage at z=8.5 and mutation at z=0.
         for (int x = -4; x <= 4; x++)
