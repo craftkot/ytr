@@ -244,26 +244,30 @@ def capture_gpu_diagnostic(proc, revision: int) -> Path:
     return path
 
 
-def capture_section_replacement(proc) -> None:
-    # A/B/C: unchanged vanilla, one opaque section omitted, then the
-    # exact resident range submitted in the solid pass at the same camera.
-    normal = screenshot("section-vanilla.png")
+def capture_section_replacement(proc, multi=False) -> None:
+    # A/B/C: unchanged vanilla, opaque sections omitted, then exact
+    # resident ranges submitted in the solid pass at the same camera.
+    prefix = "multi-section" if multi else "section"
+    normal = screenshot(f"{prefix}-vanilla.png")
     captures = []
-    for mode, filename in [(1, "ci-gpu-hide-section.allow"), (2, "ci-gpu-replace.allow")]:
+    modes = [(3, "ci-gpu-hide-multi.allow"), (4, "ci-gpu-replace-multi.allow")] if multi else [(1, "ci-gpu-hide-section.allow"), (2, "ci-gpu-replace.allow")]
+    for mode, filename in modes:
         flag = MARKER_DIR / filename
         flag.write_text("disposable section substitution test\n")
         try:
-            logtext = await_marker(proc, f"OPERATOR_SECTION_REPLACEMENT mode={mode} section=-1,12,-1", 30)
-            match = re.search(rf"OPERATOR_SECTION_REPLACEMENT mode={mode} section=-1,12,-1 suppressedLayers=(\d+) drawn=(true|false)", logtext)
-            if not match or int(match[1]) < 1 or (match[2] == "true") != (mode == 2):
+            marker = (f"OPERATOR_MULTI_SECTION_REPLACEMENT mode={mode} sections=2" if multi
+                      else f"OPERATOR_SECTION_REPLACEMENT mode={mode} section=-1,12,-1")
+            logtext = await_marker(proc, marker, 30)
+            match = re.search(re.escape(marker) + r" suppressedLayers=(\d+) drawn=(true|false)", logtext)
+            if not match or int(match[1]) < (2 if multi else 1) or (match[2] == "true") != (mode in (2, 4)):
                 raise RuntimeError("Unexpected section submission result")
             time.sleep(2)
-            captures.append(screenshot(f"section-mode-{mode}.png"))
+            captures.append(screenshot(f"{prefix}-mode-{mode}.png"))
         finally:
             flag.unlink(missing_ok=True)
         await_marker(proc, f"OPERATOR_SECTION_REPLACEMENT_DISABLED mode={mode}", 15)
         time.sleep(1)
-    restored = screenshot("section-vanilla-restored.png")
+    restored = screenshot(f"{prefix}-vanilla-restored.png")
     with Image.open(normal) as before, Image.open(captures[0]) as hidden, Image.open(captures[1]) as replaced, Image.open(restored) as after:
         # Count substantial differences only in the main world viewport.
         roi = (160, 90, 1120, 620)
@@ -272,12 +276,12 @@ def capture_section_replacement(proc) -> None:
         removed = diff(before, hidden)
         added = diff(hidden, replaced)
         drift = diff(before, after)
-        removed.save(SCREENSHOTS / "section-removed-mask.png")
-        added.save(SCREENSHOTS / "section-replacement-mask.png")
+        removed.save(SCREENSHOTS / f"{prefix}-removed-mask.png")
+        added.save(SCREENSHOTS / f"{prefix}-replacement-mask.png")
         removed_count = removed.histogram()[255]
         added_count = added.histogram()[255]
         drift_count = drift.histogram()[255]
-        log(f"Actual section substitution: removed={removed_count}, replacement={added_count}, restored-drift={drift_count}")
+        log(f"Actual {prefix} substitution: removed={removed_count}, replacement={added_count}, restored-drift={drift_count}")
         if removed_count < 100 or added_count < 100:
             raise RuntimeError("No visible exact section removal or substitute geometry")
         if drift_count > max(200, removed_count // 4):
@@ -379,6 +383,7 @@ def main() -> None:
             alternate_gpu_image = capture_gpu_diagnostic(proc, 1)
             compare_gpu_silhouettes(original_gpu_image, alternate_gpu_image)
             capture_section_replacement(proc)
+            capture_section_replacement(proc, multi=True)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
