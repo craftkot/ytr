@@ -204,7 +204,7 @@ def capture_gpu_diagnostic(proc, revision: int) -> Path:
     baseline = screenshot(f"gpu-terrain-revision-{revision}-baseline.png")
     flag.write_text("draw resident mesh for visual acceptance only\n")
     try:
-        await_marker(proc, f"OPERATOR_TERRAIN_GPU_DRAW revision={revision} tiles=2", 30)
+        await_marker(proc, f"OPERATOR_TERRAIN_GPU_DRAW revision={revision} tiles=2 mode=xray", 30)
         time.sleep(2)
         path = screenshot(f"gpu-terrain-revision-{revision}.png")
         mask = diagnostic_mask(path, bool(revision))
@@ -214,6 +214,29 @@ def capture_gpu_diagnostic(proc, revision: int) -> Path:
         log(f"Resident GPU revision {revision}: {count} diagnostic pixels, {new_pixels} new")
         if new_pixels < 300:
             raise RuntimeError("Resident GPU draw did not produce enough new screenshot pixels")
+        # Same resident buffers, same camera, same tint; only the depth test
+        # changes. Opaque tunnel walls should suppress a significant subset.
+        depth_flag = MARKER_DIR / "ci-gpu-depth.allow"
+        depth_flag.write_text("enable read-only vanilla depth test\n")
+        try:
+            await_marker(proc, f"OPERATOR_TERRAIN_GPU_DRAW revision={revision} tiles=2 mode=depth", 30)
+            time.sleep(2)
+            depth_path = screenshot(f"gpu-terrain-revision-{revision}-depth.png")
+            xray_only = ImageChops.subtract(mask, background)
+            depth_only = ImageChops.subtract(diagnostic_mask(depth_path, bool(revision)), background)
+            blocked = ImageChops.subtract(xray_only, depth_only)
+            unexpected = ImageChops.subtract(depth_only, xray_only)
+            blocked.save(SCREENSHOTS / f"gpu-terrain-revision-{revision}-occlusion.png")
+            occluded_count = blocked.histogram()[255]
+            leaked_count = unexpected.histogram()[255]
+            visible_count = depth_only.histogram()[255]
+            log(f"Resident GPU depth revision {revision}: occluded={occluded_count}, visible={visible_count}, outside-xray={leaked_count}")
+            if occluded_count < max(300, new_pixels // 10):
+                raise RuntimeError("Real vanilla depth did not occlude resident terrain")
+            if leaked_count > max(100, new_pixels // 100):
+                raise RuntimeError("Depth-tested terrain appeared outside its X-ray silhouette")
+        finally:
+            depth_flag.unlink(missing_ok=True)
     finally:
         flag.unlink(missing_ok=True)
     await_marker(proc, f"OPERATOR_TERRAIN_GPU_DRAW_DISABLED revision={revision}", 15)
