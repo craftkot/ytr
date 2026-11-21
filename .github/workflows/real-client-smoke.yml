@@ -2,7 +2,7 @@ name: Operator Reality - Real Minecraft Client
 
 on:
   push:
-    branches: [ operator-dev, feature/deferred-chunk-boundaries , feature/frame-reality, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement ]
+    branches: [ operator-dev, feature/deferred-chunk-boundaries , feature/frame-reality, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement, feature/repeated-terrain-revisions ]
     paths:
       - 'src/**'
       - 'tools/seed_graphical_client_world.py'
