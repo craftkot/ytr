@@ -2,7 +2,7 @@ name: Operator Reality - Real Minecraft Client
 
 on:
   push:
-    branches: [ operator-dev, feature/deferred-chunk-boundaries , feature/frame-reality, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth ]
+    branches: [ operator-dev, feature/deferred-chunk-boundaries , feature/frame-reality, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement ]
     paths:
       - 'src/**'
       - 'tools/seed_graphical_client_world.py'
@@ -36,6 +36,14 @@ jobs:
           gradle-version: '9.8.2'
       - name: Compile and run JUnit
         run: gradle clean test build --no-daemon
+      - name: Inspect exact terrain renderer API
+        run: gradle dumpTerrainRendererApi --no-daemon
+      - name: Upload renderer API inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: terrain-renderer-api
+          path: build/terrain-renderer-api.txt
+          if-no-files-found: error
       - name: Generate disposable Minecraft 26.3 singleplayer world
         run: python3 tools/seed_graphical_client_world.py
       - name: Launch actual game window and capture scene
