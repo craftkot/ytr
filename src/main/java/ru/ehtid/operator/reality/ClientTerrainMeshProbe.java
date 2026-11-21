@@ -1,6 +1,10 @@
 package ru.ehtid.operator.reality;
 
 import java.util.Arrays;
+import java.nio.file.Files;
+import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.phys.Vec3;
+import com.mojang.renderpearl.api.commands.RenderPass;
 import java.util.concurrent.CompletableFuture;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Camera;
@@ -31,6 +35,9 @@ public final class ClientTerrainMeshProbe {
     private static int next;
     private static boolean armed,preloaded,switched,returned;
     private static long frame,exitFrame;
+    private static boolean debugDraw;
+    private static Vec3 drawEye;
+    private static int lastDrawPhase=-1;
 
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
     private static final class Tile {
@@ -56,6 +63,9 @@ public final class ClientTerrainMeshProbe {
             reset();
             level=client.level;
         }
+        debugDraw=client.getSingleplayerServer()!=null && Files.isRegularFile(
+                client.getSingleplayerServer().getWorldPath(LevelResource.ROOT)
+                        .resolve("operator_reality/ci-gpu-draw.allow"));
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
         if(Math.abs(client.player.getX()-.5D)>.3D
@@ -149,7 +159,8 @@ public final class ClientTerrainMeshProbe {
     }
 
     public static void onFrame(Camera camera) {
-        if(!ENABLED || !RenderSystem.isOnRenderThread() || !armed || returned || level==null
+        drawEye=null;
+        if(!ENABLED || !RenderSystem.isOnRenderThread() || !armed || level==null
                 || Minecraft.getInstance().level!=level) return;
         frame++;
         if(camera==null || camera.isPanoramicMode()
@@ -161,6 +172,10 @@ public final class ClientTerrainMeshProbe {
         if(!Double.isFinite(pos.x)||!Double.isFinite(pos.y)||!Double.isFinite(pos.z)) {
             FIELD.sample(null);return;
         }
+        if(debugDraw && preloaded && Math.abs(pos.x-.5D)<.3D
+                && Math.abs(pos.z-4.5D)<.3D && pos.y>200D && pos.y<204D
+                && Math.abs(Math.abs(camera.yRot())-180F)<8F) drawEye=pos;
+        if(returned) return;
         if(!preloaded) {
             // No upload on an exit frame. Wait for a view of both tiles;
             // upload just one pair per frame, then establish continuity.
@@ -232,7 +247,29 @@ public final class ClientTerrainMeshProbe {
         }
     }
 
+    /** Submit the selected resident buffers to the actual world render pass.
+     * CI diagnostic only: no depth test, no vanilla terrain replacement. */
+    public static void draw(RenderPass pass) {
+        if(!ENABLED || !debugDraw || drawEye==null || !preloaded) return;
+        int phase=switched?1:0, count=0;
+        for(var tile:tiles) {
+            var active=FIELD.active(tile.id);
+            if(active==null || active.alternate()!=switched) return;
+        }
+        for(var tile:tiles) {
+            var active=FIELD.active(tile.id);
+            TerrainDiagnosticDraw.draw(pass,active.resource(),active.alternate(),
+                    tile.x,tile.z,drawEye);
+            count++;
+        }
+        if(lastDrawPhase!=phase) {
+            lastDrawPhase=phase;
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_DRAW revision={} tiles={}",phase,count);
+        }
+    }
+
     public static void closeGpu() {
+        drawEye=null;debugDraw=false;lastDrawPhase=-1;
         FIELD.close();
         for(var tile:tiles) if(tile.pending!=null) tile.pending.cancel(false);
     }
