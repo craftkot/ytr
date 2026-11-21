@@ -37,7 +37,7 @@ public final class ClientTunnelSmoke {
     private long phaseStart;
     private String ownerId = "";
     private int repeatRevision=2;
-    private boolean repeatAway;
+    private boolean repeatAway,repeatViewActive;
 
     public void tick(MinecraftServer server, ObservationEngine observer) {
         if (!Boolean.getBoolean("operator.reality.ciClientSmoke")
@@ -114,19 +114,32 @@ public final class ClientTunnelSmoke {
                     // actual client acknowledges the hidden extraction frame.
                     // No additional server block changes during these turns.
                     if (Files.isRegularFile(directory.resolve("ci-gpu-repeat.allow"))) {
+                        if (!repeatViewActive) {
+                            // An elevated test vantage sees the changing top faces,
+                            // instead of a single opaque wall filling the tunnel.
+                            level.setBlock(new BlockPos(0,223,10),Blocks.STONE.defaultBlockState(),2);
+                            placeRepeatCamera(player,180.0F);
+                            repeatViewActive=true;
+                            return;
+                        }
                         if (repeatRevision<=4) {
                             if (!repeatAway && Files.isRegularFile(directory.resolve("ci-repeat-away-"+repeatRevision+".allow"))) {
-                                placeCamera(player,4.5D,0.0F);
+                                placeRepeatCamera(player,0.0F);
                                 repeatAway=true;
                                 OperatorMod.LOGGER.info("OPERATOR_REPEAT_CAMERA_AWAY revision={}",repeatRevision);
                             } else if (repeatAway && Files.isRegularFile(directory.resolve("ci-repeat-return-"+repeatRevision+".allow"))) {
-                                placeCamera(player,4.5D,180.0F);
+                                placeRepeatCamera(player,180.0F);
                                 repeatAway=false;
                                 OperatorMod.LOGGER.info("OPERATOR_REPEAT_CAMERA_RETURN revision={}",repeatRevision);
                                 repeatRevision++;
                             }
                         }
                         return;
+                    }
+                    if(repeatViewActive) {
+                        placeCamera(player,4.5D,180.0F);
+                        repeatViewActive=false;
+                        OperatorMod.LOGGER.info("OPERATOR_REPEAT_VIEW_RESTORED");
                     }
                     if (!Files.isRegularFile(directory.resolve("ci-after-captured.allow"))) return;
                     // Player must move away from the target before rollback.
@@ -193,6 +206,12 @@ public final class ClientTunnelSmoke {
                 && level.getBlockState(SOURCE2).isAir()
                 && level.getBlockState(TARGET).is(Blocks.STONE)
                 && level.getBlockState(TARGET2).is(Blocks.STONE);
+    }
+
+    private static void placeRepeatCamera(ServerPlayer player,float yaw) {
+        boolean moved=player.teleportTo((ServerLevel)player.level(),
+                .5D,224D,10.5D,Set.of(),yaw,35F,true);
+        if(!moved)throw new IllegalStateException("Repeat camera teleport rejected");
     }
 
     private static void placeCamera(ServerPlayer player, double z, float yaw) {
