@@ -89,11 +89,11 @@ def run_normal(phase: int) -> None:
         # scanner BEFORE the manual rollback command is executed.
         monitor = base.rcon("operator sandbox monitor")
         print(f"WAL MONITOR PHASE {phase}: {monitor}", flush=True)
-        if phase in (6, 10):
-            expected = "APPLYING" if phase == 6 else "ROLLING_BACK"
+        if phase in (6, 10, 14):
+            expected = "APPLYING" if phase in (6, 14) else "ROLLING_BACK"
             if (expected not in monitor or "NEW SANDBOX WRITES BLOCKED" not in monitor):
                 raise RuntimeError("Unfinished WAL not detected on cold startup: " + monitor)
-        if phase in (7, 11):
+        if phase in (7, 11, 15):
             if "0 unfinished" not in monitor or "NEW SANDBOX WRITES BLOCKED" in monitor:
                 raise RuntimeError("Rolled-back WAL was not released: " + monitor)
         result = base.rcon(f"operator ci-smoke {phase}")
@@ -186,6 +186,44 @@ def run_forced_rollback_crash() -> None:
         raise
 
 
+
+def run_deferred_forced_crash() -> None:
+    """Crash after a write in each of two real chunks and before WAL ACK #3."""
+    proc, path = start(13)
+    try:
+        ready(proc)
+        try:
+            response = base.rcon("operator ci-smoke 13")
+            raise RuntimeError("Expected crash/socket loss, got " + response)
+        except (ConnectionError, BrokenPipeError, OSError, TimeoutError):
+            pass
+        proc.wait(timeout=120)
+        if proc.returncode == 0:
+            raise RuntimeError("Expected nonzero JVM exit after cross-chunk hard halt")
+        output = path.read_text(errors="replace")
+        for marker in ("OPERATOR_DEFERRED_CI_TWO_CHUNKS_FLUSHED",
+                       "OPERATOR_DEFERRED_CI_HALT_BEFORE_ACK3"):
+            if marker not in output:
+                raise RuntimeError("Deferred crash marker missing: " + marker)
+        deferred = (CRASH_WORLD / "operator_reality" / "executions"
+                    / "643ed413-ed77-4530-8939-936c9b97c1b9"
+                    / "3c2f8310-2708-453e-9633-6bd138d5c80b.json")
+        if not deferred.is_file():
+            raise RuntimeError("Cross-chunk WAL was not durable before hard halt")
+        ledger = json.loads(deferred.read_text())
+        if (ledger.get("phase") != "APPLYING"
+                or ledger.get("pendingOperation") != "APPLY"
+                or ledger.get("appliedWrites") != 2
+                or ledger.get("totalWrites") != 4):
+            raise RuntimeError("Unexpected cross-chunk crash WAL: " + repr(ledger))
+        print("OPERATOR_DEFERRED_REAL_JVM_CRASH_CONFIRMED: "
+              "two chunks flushed, WAL has two ACKs and pending third write",
+              flush=True)
+    except BaseException:
+        cleanup(proc, path)
+        raise
+
+
 def main() -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Refusing hard-crash integration test outside GitHub Actions")
@@ -209,10 +247,15 @@ def main() -> None:
         run_forced_rollback_crash()
         run_normal(10)
         run_normal(11)
+        run_normal(12)
+        run_deferred_forced_crash()
+        run_normal(14)
+        run_normal(15)
     finally:
         MARKER.unlink(missing_ok=True)
         properties.write_text(before)
 
+    print("OPERATOR_DEFERRED_CROSS_CHUNK_UNCLEAN_RECOVERY_SUCCESS", flush=True)
     print("OPERATOR_UNCLEAN_CRASH_RECOVERY_SUCCESS", flush=True)
 
 
