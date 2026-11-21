@@ -221,7 +221,7 @@ public final class OperatorCommands {
                 .then(Commands.literal("ci-smoke")
                         .requires(source -> Boolean.getBoolean("operator.reality.ciSmoke")
                                 && source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
-                        .then(Commands.argument("phase", IntegerArgumentType.integer(1, 11))
+                        .then(Commands.argument("phase", IntegerArgumentType.integer(1, 15))
                                 .executes(context -> {
                                     var source = context.getSource();
                                     String output = ServerRelocationSmoke.phase(
