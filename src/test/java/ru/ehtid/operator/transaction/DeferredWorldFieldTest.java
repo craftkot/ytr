@@ -55,6 +55,41 @@ class DeferredWorldFieldTest {
         assertFalse(DeferredWorldFieldService.pendingValid(null, history, 24001L));
     }
 
+    @Test void multiplayerDeferredProbeHasSingleFairOwnerPerCycle() {
+        UUID secondOwner = UUID.fromString("e8d1d74a-e4b8-4200-9dc6-d6a40bc60f33");
+        var first = DeferredChunkPlan.create(
+                OWNER, "minecraft:overworld", 15, 202, 0, 24000L);
+        var second = DeferredChunkPlan.create(
+                secondOwner, "minecraft:overworld", 79, 202, 0, 24000L);
+        Map<String, DeferredChunkPlan> pending = new LinkedHashMap<>();
+        pending.put(first.sector, first);
+        pending.put(second.sector, second);
+
+        for (long tick = 24000L; tick <= 25600L; tick += 200L) {
+            boolean a = DeferredWorldFieldService.assignedProbe(pending, OWNER, tick);
+            boolean b = DeferredWorldFieldService.assignedProbe(pending, secondOwner, tick);
+            assertNotEquals(a, b, "Exactly one owner gets the costly audit at tick " + tick);
+            assertFalse(DeferredWorldFieldService.assignedProbe(pending, OWNER, tick + 1L));
+            if (tick >= 24200L) {
+                boolean previousA = DeferredWorldFieldService.assignedProbe(
+                        pending, OWNER, tick - 200L);
+                assertNotEquals(previousA, a, "Round-robin must not starve either player");
+            }
+        }
+        assertFalse(DeferredWorldFieldService.assignedProbe(pending, UUID.randomUUID(), 24000L));
+        assertFalse(DeferredWorldFieldService.assignedProbe(Map.of(), OWNER, 24000L));
+
+        // Disconnecting the other owner does not block the remaining one.
+        pending.remove(second.sector);
+        assertTrue(DeferredWorldFieldService.assignedProbe(pending, OWNER, 24200L));
+
+        // A corrupt stored plan fails closed instead of getting a scheduling slot.
+        second.planId = "malformed";
+        pending.put(second.sector, second);
+        assertFalse(DeferredWorldFieldService.assignedProbe(pending, OWNER, 24200L));
+        assertFalse(DeferredWorldFieldService.assignedProbe(pending, secondOwner, 24200L));
+    }
+
     @Test void fourWriteJournalSpansExactlyTwoChunksAndRollbackWorks() {
         var border = TunnelFoldService.twoCellJournal(OWNER,
                 "minecraft:overworld", new BlockPos(16,202,0),
