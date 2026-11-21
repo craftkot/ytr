@@ -185,6 +185,33 @@ def acknowledge(name: str) -> None:
     path.write_text("frame captured from actual Minecraft client\n")
 
 
+def diagnostic_pixels(path: Path, alternate: bool) -> int:
+    with Image.open(path) as image:
+        # Count strong chroma pixels, not merely a changed log or frame.
+        pixels = image.convert("RGB").crop((80, 60, 1200, 660)).getdata()
+        return sum(1 for r,g,b in pixels if b>140 and
+                   (g>140 and g-r>80 and b-r>80 if alternate
+                    else r>140 and r-g>80 and b-g>80))
+
+
+def capture_gpu_diagnostic(proc, revision: int) -> None:
+    flag = MARKER_DIR / "ci-gpu-draw.allow"
+    flag.write_text("draw resident mesh for visual acceptance only\n")
+    try:
+        await_marker(proc, f"OPERATOR_TERRAIN_GPU_DRAW revision={revision} tiles=2", 30)
+        time.sleep(2)
+        path = screenshot(f"gpu-terrain-revision-{revision}.png")
+        count = diagnostic_pixels(path, bool(revision))
+        log(f"Resident GPU revision {revision}: {count} diagnostic-color pixels")
+        if count < 300:
+            raise RuntimeError("Resident GPU draw did not produce enough actual screenshot pixels")
+    finally:
+        flag.unlink(missing_ok=True)
+    # Restore ordinary rendering before the original block/rollback captures.
+    await_marker(proc, f"OPERATOR_TERRAIN_GPU_DRAW_DISABLED revision={revision}", 15)
+    time.sleep(1)
+
+
 def main() -> None:
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("Refusing to create screenshots outside isolated GitHub CI")
@@ -240,6 +267,7 @@ def main() -> None:
             time.sleep(8)
             await_marker(proc, "OPERATOR_TERRAIN_MESH_ARMED", 45)
             await_marker(proc, "OPERATOR_TERRAIN_GPU_PRELOADED tiles=2", 60)
+            capture_gpu_diagnostic(proc, 0)
             before = screenshot("01-before-fold.png")
             acknowledge("ci-before-captured.allow")
             # The probe uses vanilla extraction frames, not server-side yaw.
@@ -265,7 +293,8 @@ def main() -> None:
             gpu_return = re.search(r"OPERATOR_TERRAIN_GPU_RETURN frame=(\d+) vertices=(\d+) tiles=2", gpu_logs)
             if not gpu_return or int(gpu_return[1]) <= int(gpu_switch[1]) or gpu_return[2] != gpu_switch[2]:
                 raise RuntimeError("Both selected GPU variants must persist on turn-back")
-            log("Both independently preloaded GPU tiles switched in one frame and persisted on return (not vanilla terrain drawing)")
+            log("Both independently preloaded GPU tiles switched in one frame and persisted on return")
+            capture_gpu_diagnostic(proc, 1)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
