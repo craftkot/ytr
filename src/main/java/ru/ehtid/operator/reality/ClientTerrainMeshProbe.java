@@ -63,9 +63,14 @@ public final class ClientTerrainMeshProbe {
             reset();
             level=client.level;
         }
-        debugDraw=client.getSingleplayerServer()!=null && Files.isRegularFile(
+        boolean requested=client.getSingleplayerServer()!=null && Files.isRegularFile(
                 client.getSingleplayerServer().getWorldPath(LevelResource.ROOT)
                         .resolve("operator_reality/ci-gpu-draw.allow"));
+        if(debugDraw && !requested) {
+            drawEye=null;
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_DRAW_DISABLED revision={}",lastDrawPhase);
+        }
+        debugDraw=requested;
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
         if(Math.abs(client.player.getX()-.5D)>.3D
