@@ -39,7 +39,8 @@ public final class ClientTerrainMeshProbe {
     private static Tile[] tiles=newTiles();
     private static int next;
     private static boolean armed,preloaded,switched,returned;
-    private static long frame,exitFrame;
+    private static long frame,exitFrame,returnFrame;
+    private static boolean autoReady,autoSubmitted;
     private static boolean debugDraw, depthDraw;
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
@@ -95,14 +96,17 @@ public final class ClientTerrainMeshProbe {
         int requestedReplacement=0;
         if(server!=null && !requested) {
             var root=server.getWorldPath(LevelResource.ROOT).resolve("operator_reality");
-            if(Files.isRegularFile(root.resolve("ci-gpu-replace-multi.allow"))) requestedReplacement=4;
+            if(Files.isRegularFile(root.resolve("ci-gpu-auto-return.allow"))) requestedReplacement=5;
+            else if(Files.isRegularFile(root.resolve("ci-gpu-replace-multi.allow"))) requestedReplacement=4;
             else if(Files.isRegularFile(root.resolve("ci-gpu-hide-multi.allow"))) requestedReplacement=3;
             else if(Files.isRegularFile(root.resolve("ci-gpu-replace.allow"))) requestedReplacement=2;
             else if(Files.isRegularFile(root.resolve("ci-gpu-hide-section.allow"))) requestedReplacement=1;
         }
         if(replacementMode!=0 && requestedReplacement==0)
             OperatorMod.LOGGER.info("OPERATOR_SECTION_REPLACEMENT_DISABLED mode={}",replacementMode);
-        if(replacementMode!=requestedReplacement) lastReplacementMode=0;
+        if(replacementMode!=requestedReplacement) {
+            lastReplacementMode=0;autoReady=false;autoSubmitted=false;
+        }
         replacementMode=requestedReplacement;
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
@@ -213,9 +217,18 @@ public final class ClientTerrainMeshProbe {
         if(debugDraw && preloaded && Math.abs(pos.x-.5D)<.3D
                 && Math.abs(pos.z-4.5D)<.3D && pos.y>200D && pos.y<204D
                 && Math.abs(Math.abs(camera.yRot())-180F)<8F) drawEye=pos;
-        if(replacementMode!=0 && preloaded && returned && Math.abs(pos.x-.5D)<.3D
+        boolean fixtureView=Math.abs(pos.x-.5D)<.3D
                 && Math.abs(pos.z-4.5D)<.3D && pos.y>200D && pos.y<204D
-                && Math.abs(Math.abs(camera.yRot())-180F)<8F) {
+                && Math.abs(Math.abs(camera.yRot())-180F)<8F;
+        // Compile the replacement pipeline before the player turns, not on
+        // the first visible frame. The Python controller waits for this ACK.
+        if(replacementMode==5 && !autoReady && preloaded && !switched && fixtureView
+                && TerrainDiagnosticDraw.replacementReady()) {
+            autoReady=true;
+            OperatorMod.LOGGER.info("OPERATOR_AUTO_RETURN_ARMED frame={} sections=2 bytes={}",frame,FIELD.usedBytes());
+        }
+        if(replacementMode!=0 && preloaded && returned && fixtureView
+                && (replacementMode!=5 || autoReady)) {
             prepareReplacementFrame(pos,replacementMode>=3?BOTH:SINGLE);
         }
         if(returned) return;
@@ -282,7 +295,12 @@ public final class ClientTerrainMeshProbe {
                     throw new IllegalStateException("GPU terrain variant lost on return");
                 vertices+=active.resource().vertexCount(true);quads+=active.mesh().quadCount();
             }
-            returned=true;
+            returned=true;returnFrame=frame;
+            // Prepare on THIS extraction, before vanilla builds its draw
+            // groups. Never defer automatic substitution to the next tick.
+            if(replacementMode==5 && autoReady && fixtureView) {
+                prepareReplacementFrame(pos,BOTH);
+            }
             OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_RETURN frame={} vertices={} tiles={}",
                     frame,vertices,tiles.length);
             OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_RETURN exitFrame={} returnFrame={} revision=1 quads={}",
@@ -360,11 +378,16 @@ public final class ClientTerrainMeshProbe {
     public static void drawMaskedSection(RenderPass pass) {
         if(masked.isEmpty() || replacementEye==null || replacementDrawn) return;
         replacementDrawn=true;
-        boolean draw=replacementMode==2 || replacementMode==4;
+        boolean draw=replacementMode==2 || replacementMode==4 || replacementMode==5;
         if(draw) for(var key:masked) {
             var replacement=replacements.get(key);
             TerrainDiagnosticDraw.drawReplacement(pass,replacement.active().resource(),true,
                     replacement.tile().x,replacement.tile().z,replacementEye,key);
+        }
+        if(replacementMode==5 && !autoSubmitted && masked.size()==BOTH.size()) {
+            autoSubmitted=true;
+            OperatorMod.LOGGER.info("OPERATOR_AUTO_RETURN_DRAW exitFrame={} returnFrame={} drawFrame={} sections={} bytes={}",
+                    exitFrame,returnFrame,frame,masked.size(),FIELD.usedBytes());
         }
         if(lastReplacementMode!=replacementMode && masked.size()==replacements.size()) {
             lastReplacementMode=replacementMode;
@@ -387,6 +410,7 @@ public final class ClientTerrainMeshProbe {
 
     private static void reset() {
         closeGpu();tiles=newTiles();next=0;
-        armed=false;preloaded=false;switched=false;returned=false;frame=0;exitFrame=0;
+        armed=false;preloaded=false;switched=false;returned=false;frame=0;exitFrame=0;returnFrame=0;
+        autoReady=false;autoSubmitted=false;
     }
 }
