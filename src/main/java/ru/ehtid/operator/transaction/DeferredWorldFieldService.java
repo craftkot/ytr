@@ -100,8 +100,14 @@ public final class DeferredWorldFieldService {
         int surface = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
                 plan.targetX, plan.targetZ);
         int bottom = Math.max(level.getMinY() + 5, surface - 80);
-        for (int y = surface - 8, sampled = 0;
-             y >= bottom && sampled++ < MAX_HEIGHT_SAMPLES; y--) {
+        // An unloaded-chunk intent stores a preferred Y. Evaluate it first
+        // after the complete geometry/observer audit; terrain heightmaps can
+        // differ across real chunk loads and otherwise starve a valid plan.
+        // The remaining height search remains strictly bounded.
+        for (int sampled = 0; sampled < MAX_HEIGHT_SAMPLES; sampled++) {
+            int y = sampled == 0 ? plan.preferredY : surface - 8 - (sampled - 1);
+            if (sampled > 0 && y < bottom) break;
+            if (sampled > 0 && y == plan.preferredY) continue;
             WorldFieldService.Candidate candidate = WorldFieldService.prepareAt(
                     server, actor, new BlockPos(plan.targetX,y,plan.targetZ),
                     data.worldFieldHistory);

@@ -88,6 +88,20 @@ public final class ClientDeferredChunkSmoke {
                     OperatorMod.LOGGER.info("OPERATOR_DEFERRED_TEST TWO_CHUNKS_LOADED_AFTER_PLAN");
                 }
                 case 2 -> {
+                    if (now % 200L == 0L) {
+                        var snapshot = OperatorStorage.load(server);
+                        var direct = WorldFieldService.prepareAt(
+                                server, player, TARGET, snapshot.worldFieldHistory);
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_DEFERRED_SCENE original={} sourceStone={} "
+                                + "targetAir={} surface={} preferredCandidate={}",
+                                original(level), level.getBlockState(SOURCE).is(Blocks.STONE),
+                                level.getBlockState(TARGET).isAir(),
+                                level.getHeight(
+                                        net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                                        TARGET.getX(), TARGET.getZ()),
+                                direct != null);
+                    }
                     // CI FIXTURE ONLY: the player is kept outside the 112-block
                     // observer exclusion, and both previously generated chunks
                     // are reloaded if Minecraft evicts one during the long
