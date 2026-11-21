@@ -82,12 +82,19 @@ public final class ClientDeferredChunkSmoke {
                     if (!original(level)) { fail("INITIAL_GEOMETRY_INVALID"); return; }
                     // Stay outside the 112-block observer exclusion but
                     // within the usual loaded-chunk radius (7 chunks).
-                    teleport(player, 255.5D, 116.5D, 0.0F);
+                    teleport(player, 290.5D, 110.5D, 0.0F);
                     phase = 2;
                     startTick = now;
                     OperatorMod.LOGGER.info("OPERATOR_DEFERRED_TEST TWO_CHUNKS_LOADED_AFTER_PLAN");
                 }
                 case 2 -> {
+                    // CI FIXTURE ONLY: the player is kept outside the 112-block
+                    // observer exclusion, and both previously generated chunks
+                    // are reloaded if Minecraft evicts one during the long
+                    // deterministic screenshot handshake. Production uses
+                    // hasChunkAt only and NEVER force-loads chunks.
+                    level.getChunk(15, 0);
+                    level.getChunk(16, 0);
                     if (!folded(level)) {
                         if (now - startTick > 1900L) fail("COMMIT_TIMEOUT");
                         return;
@@ -125,7 +132,7 @@ public final class ClientDeferredChunkSmoke {
                     if (!Files.isRegularFile(root.resolve("ci-deferred-after-captured.allow"))) return;
                     // Stay outside the 112-block observer exclusion but
                     // within the usual loaded-chunk radius (7 chunks).
-                    teleport(player, 255.5D, 116.5D, 0.0F);
+                    teleport(player, 290.5D, 110.5D, 0.0F);
                     String result = observer.rollbackWorldField(player, server);
                     if (!result.startsWith("Tunnel fold rollback ROLLED_BACK")
                             || !original(level)) {
