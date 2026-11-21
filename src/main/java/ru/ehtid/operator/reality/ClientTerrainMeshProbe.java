@@ -3,7 +3,6 @@ package ru.ehtid.operator.reality;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.buffers.GpuBuffer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -27,16 +26,16 @@ public final class ClientTerrainMeshProbe {
     private static final int X=0, Z=-32, N=PreparedTerrainSurface.SIZE;
     private static final int TOTAL=N*N+4*N, BUDGET=96;
     private static final String REGION="ci-surface-tile";
-    private static final FrameTerrainBuffers BUFFERS=new FrameTerrainBuffers();
+    private static final FrameGpuTerrainField<GpuTerrainMeshPair> FIELD=
+            new FrameGpuTerrainField<>(FrameGpuTerrainField.DEFAULT_BUDGET);
     private static ClientLevel level;
     private static int[] capture=new int[TOTAL];
     private static int[] original;
     private static int cursor;
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
     private static CompletableFuture<Prepared> pending;
-    private static GpuTerrainMeshPair.Packed gpuPending;
-    private static GpuTerrainMeshPair gpuPair;
-    private static GpuBuffer activeGpu;
+    private static Prepared gpuPending;
+    private static FrameRealitySelector.Bounds regionBounds;
     private static AABB guarded;
     private static boolean armed, switched, returned;
     private static long frame, exitFrame;
@@ -115,11 +114,8 @@ public final class ClientTerrainMeshProbe {
         }
         var bounds=new FrameRealitySelector.Bounds(X,min-1,Z,X+N,max+1,Z+N);
         guarded=new AABB(X,min-1,Z,X+N,max+1,Z+N).inflate(.25D);
-        if(!BUFFERS.watch(REGION,bounds,pair.original())
-                || !BUFFERS.prepared(REGION,BUFFERS.epoch(),pair,Arrays.copyOf(capture,N*N))) {
-            reset(); return;
-        }
-        gpuPending=prepared.packed();
+        regionBounds=bounds;
+        gpuPending=prepared;
         armed=true;
         OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_ARMED columns={} changed={} originalQuads={} alternateQuads={}",
                 N*N,changed,pair.original().quadCount(),pair.alternate().quadCount());
@@ -132,55 +128,64 @@ public final class ClientTerrainMeshProbe {
         if(camera==null || camera.isPanoramicMode()
                 || camera.getCapturedFrustum()!=null || camera.getCullFrustum()==null
                 || camera.entity()==null) {
-            BUFFERS.sample(null); return;
+            FIELD.sample(null); return;
         }
-        boolean visible=camera.getCullFrustum().isVisible(guarded);
-        if(gpuPair==null) {
+        boolean visible=camera.getCullFrustum().isVisible(guarded)
+                || guarded.inflate(1D).contains(camera.position());
+        if(FIELD.active(REGION)==null) {
             if(!visible || gpuPending==null) return; // Never upload on the exit frame.
-            gpuPair=GpuTerrainMeshPair.upload(gpuPending);
-            gpuPending=null;
-            activeGpu=gpuPair.buffer(false);
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_PRELOADED originalBytes={} alternateBytes={}",
-                    activeGpu.size(),gpuPair.buffer(true).size());
+            var pair=GpuTerrainMeshPair.upload(gpuPending.packed());
+            boolean adopted=false;
+            try {
+                long bytes=pair.buffer(false).size()+pair.buffer(true).size();
+                adopted=FIELD.register(REGION,regionBounds,gpuPending.mesh(),pair,bytes);
+                if(!adopted) {
+                    OperatorMod.LOGGER.error("OPERATOR_TERRAIN_GPU_BUDGET_REJECTED");
+                    reset();
+                    return;
+                }
+                OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_PRELOADED originalBytes={} alternateBytes={}",
+                        pair.buffer(false).size(),pair.buffer(true).size());
+                gpuPending=null;
+            } finally {
+                if(!adopted) pair.close();
+            }
         }
-        var before=BUFFERS.active(REGION);
+        var before=FIELD.active(REGION);
         long start=System.nanoTime();
-        int swaps=BUFFERS.sample(b->visible);
+        var changes=FIELD.sample(b->visible);
         long duration=System.nanoTime()-start;
-        var after=BUFFERS.active(REGION);
-        if(!switched && swaps==1 && !visible && before.mesh()!=after.mesh()
+        var after=FIELD.active(REGION);
+        if(!switched && changes.size()==1 && !visible && before.mesh()!=after.mesh()
                 && after.revision()==1) {
-            var oldGpu=activeGpu;
-            activeGpu=gpuPair.buffer(true);
-            if(oldGpu==activeGpu || activeGpu.isClosed())
+            var oldGpu=before.resource().buffer(before.alternate());
+            var activeGpu=after.resource().buffer(after.alternate());
+            if(oldGpu==activeGpu || activeGpu.isClosed() || !after.alternate())
                 throw new IllegalStateException("GPU terrain pair failed to switch");
             OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_SWITCH frame={} vertices={} bytes={}",
-                    frame,gpuPair.vertexCount(true),activeGpu.size());
+                    frame,after.resource().vertexCount(true),activeGpu.size());
             switched=true;exitFrame=frame;
             OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_SWITCH frame={} nanos={} revision={} quads={}",
                     frame,duration,after.revision(),after.mesh().quadCount());
         } else if(switched && visible && after.revision()==1
                 && before.mesh()==after.mesh()) {
-            if(activeGpu!=gpuPair.buffer(true) || activeGpu.isClosed())
+            if(!after.alternate() || after.resource().buffer(true).isClosed())
                 throw new IllegalStateException("GPU terrain variant lost on return");
             returned=true;
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_RETURN frame={} vertices={}",frame,gpuPair.vertexCount(true));
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_RETURN frame={} vertices={}",frame,after.resource().vertexCount(true));
             OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_RETURN exitFrame={} returnFrame={} revision={} quads={}",
                     exitFrame,frame,after.revision(),after.mesh().quadCount());
         }
     }
 
     public static void closeGpu() {
-        if(gpuPair!=null) {
-            gpuPair.close();
-            gpuPair=null;
-        }
-        activeGpu=null;gpuPending=null;
+        FIELD.close();
+        gpuPending=null;
     }
 
     private static void reset() {
         closeGpu();
-        BUFFERS.clear(); capture=new int[TOTAL];original=null;
+        capture=new int[TOTAL];original=null;regionBounds=null;
         cursor=0;pending=null;guarded=null;
         armed=false;switched=false;returned=false;frame=0;exitFrame=0;
     }
