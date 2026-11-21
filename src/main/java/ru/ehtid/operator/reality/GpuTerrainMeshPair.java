@@ -90,12 +90,26 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
                 in.get(q);
                 for(int i:order) {
                     for(int axis=0;axis<3;axis++) out.putFloat(q[i*3+axis]);
-                    out.putInt(0xffffffff);
+                    // Encode geometry, never revision ID. Height bands and face
+                    // orientation expose internal shape even when the outer
+                    // silhouette is occluded by the tunnel.
+                    int shade=diagnosticShade(q,i);
+                    out.put((byte)shade).put((byte)shade).put((byte)shade).put((byte)255);
                 }
             }
             ranges.put(entry.getKey(),new Range(first,out.position()/VERTEX_BYTES-first));
         }
         return new PackedVariant(out.flip(),vertices,java.util.Collections.unmodifiableMap(ranges));
+    }
+
+    static int diagnosticShade(int[] q,int vertex) {
+        int ax=q[3]-q[0],ay=q[4]-q[1],az=q[5]-q[2];
+        int bx=q[6]-q[0],by=q[7]-q[1],bz=q[8]-q[2];
+        long nx=(long)ay*bz-(long)az*by,ny=(long)az*bx-(long)ax*bz;
+        int band=Math.floorMod(q[vertex*3+1],8);
+        int direction=ny!=0?14:nx!=0?0:7;
+        // All values remain bright enough for the existing cyan/magenta mask.
+        return 184+band*7+direction;
     }
 
     public static GpuTerrainMeshPair upload(Packed bytes) {
