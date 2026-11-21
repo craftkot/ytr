@@ -355,6 +355,9 @@ def main() -> None:
             await_marker(proc, "OPERATOR_TERRAIN_GPU_PRELOADED tiles=2", 60)
             original_gpu_image = capture_gpu_diagnostic(proc, 0)
             before = screenshot("01-before-fold.png")
+            auto_flag = MARKER_DIR / "ci-gpu-auto-return.allow"
+            auto_flag.write_text("arm before the in-place turn; no post-return enable\n")
+            await_marker(proc, "OPERATOR_AUTO_RETURN_ARMED", 30)
             acknowledge("ci-before-captured.allow")
             # The probe uses vanilla extraction frames, not server-side yaw.
             frame_logs = await_marker(proc, "OPERATOR_FRAME_REALITY_EXIT_SUCCESS", 45)
@@ -380,6 +383,27 @@ def main() -> None:
             if not gpu_return or int(gpu_return[1]) <= int(gpu_switch[1]) or gpu_return[2] != gpu_switch[2]:
                 raise RuntimeError("Both selected GPU variants must persist on turn-back")
             log("Both independently preloaded GPU tiles switched in one frame and persisted on return")
+            auto_logs = await_marker(proc, "OPERATOR_AUTO_RETURN_DRAW", 30)
+            auto_arm = re.search(r"OPERATOR_AUTO_RETURN_ARMED frame=(\d+) sections=2 bytes=(\d+)", auto_logs)
+            auto_draw = re.search(r"OPERATOR_AUTO_RETURN_DRAW exitFrame=(\d+) returnFrame=(\d+) drawFrame=(\d+) sections=2 bytes=(\d+)", auto_logs)
+            if (not auto_arm or not auto_draw
+                    or int(auto_arm[1]) >= int(gpu_switch[1])
+                    or auto_draw[1] != gpu_switch[1]
+                    or auto_draw[2] != gpu_return[1]
+                    or auto_draw[3] != gpu_return[1]
+                    or auto_draw[4] != auto_arm[2]):
+                raise RuntimeError("Automatic resident section draw missed the first returning extraction frame")
+            log(f"Automatic first-return solid-pass submission: exit={auto_draw[1]}, return={auto_draw[2]}, draw={auto_draw[3]}, unchangedBytes={auto_draw[4]}")
+            auto_image = screenshot("auto-first-return-resident.png")
+            auto_flag.unlink(missing_ok=True)
+            await_marker(proc, "OPERATOR_SECTION_REPLACEMENT_DISABLED mode=5", 15)
+            time.sleep(1)
+            auto_control = screenshot("auto-first-return-vanilla.png")
+            actual_pixels = ImageChops.subtract(diagnostic_mask(auto_image, True),
+                                                diagnostic_mask(auto_control, True)).histogram()[255]
+            log(f"Automatic return diagnostic pixels: {actual_pixels}")
+            if actual_pixels < 300:
+                raise RuntimeError("Automatic return submission was not visible in the game window")
             alternate_gpu_image = capture_gpu_diagnostic(proc, 1)
             compare_gpu_silhouettes(original_gpu_image, alternate_gpu_image)
             capture_section_replacement(proc)
