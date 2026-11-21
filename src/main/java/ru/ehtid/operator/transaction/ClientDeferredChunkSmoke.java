@@ -178,7 +178,7 @@ public final class ClientDeferredChunkSmoke {
     // opaque-ray preflight checks all intervening chunks (z=0..8).
     private static void keepFixtureRayChunksLoaded(ServerLevel level) {
         for (int cx = 15; cx <= 16; cx++)
-            for (int cz = 0; cz <= 8; cz++)
+            for (int cz = -1; cz <= 8; cz++)
                 level.getChunk(cx, cz);
     }
 
@@ -206,6 +206,12 @@ public final class ClientDeferredChunkSmoke {
         level.setBlock(SOURCE2,Blocks.STONE.defaultBlockState(),2);
         level.setBlock(TARGET,Blocks.AIR.defaultBlockState(),2);
         level.setBlock(TARGET2,Blocks.AIR.defaultBlockState(),2);
+        // Keep the remote survival player at the intended elevation for the
+        // entire natural-tick acceptance test. Without this platform gravity
+        // drops the observer below the opaque barrier and changes the ray.
+        for (int x = 252; x <= 259; x++)
+            for (int z = 112; z <= 120; z++)
+                level.setBlock(new BlockPos(x,Y-1,z),Blocks.STONE.defaultBlockState(),2);
         // Opaque terrain between the remote actor and target, still loaded
         // into the disposable test world; glass would fail the production gate.
         for (int x = 252; x <= 259; x++)
