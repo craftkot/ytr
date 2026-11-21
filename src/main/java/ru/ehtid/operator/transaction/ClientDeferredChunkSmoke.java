@@ -107,8 +107,7 @@ public final class ClientDeferredChunkSmoke {
                     // are reloaded if Minecraft evicts one during the long
                     // deterministic screenshot handshake. Production uses
                     // hasChunkAt only and NEVER force-loads chunks.
-                    level.getChunk(15, 0);
-                    level.getChunk(16, 0);
+                    keepFixtureRayChunksLoaded(level);
                     if (!folded(level)) {
                         if (now - startTick > 1900L) fail("COMMIT_TIMEOUT");
                         return;
@@ -147,6 +146,7 @@ public final class ClientDeferredChunkSmoke {
                     // Stay outside the 112-block observer exclusion but
                     // within the usual loaded-chunk radius (7 chunks).
                     teleport(player, 255.5D, 116.5D, 0.0F);
+                    keepFixtureRayChunksLoaded(level);
                     String result = observer.rollbackWorldField(player, server);
                     if (!result.startsWith("Tunnel fold rollback ROLLED_BACK")
                             || !original(level)) {
@@ -170,6 +170,16 @@ public final class ClientDeferredChunkSmoke {
         } catch (IOException | RuntimeException exception) {
             fail(exception.getClass().getSimpleName() + "_" + exception.getMessage());
         }
+    }
+
+    // Disposable CI fixture only. Production deferred scheduling NEVER forces
+    // chunks; it refuses writes when any segment of the observer ray is absent.
+    // Keeping only the two endpoint chunks loaded is insufficient because the
+    // opaque-ray preflight checks all intervening chunks (z=0..8).
+    private static void keepFixtureRayChunksLoaded(ServerLevel level) {
+        for (int cx = 15; cx <= 16; cx++)
+            for (int cz = 0; cz <= 8; cz++)
+                level.getChunk(cx, cz);
     }
 
     private static void buildScene(ServerLevel level) {
