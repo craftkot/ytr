@@ -25,6 +25,7 @@ public final class OperatorClientMod implements ClientModInitializer {
     public void onInitializeClient() {
         if (!Boolean.getBoolean("operator.reality.ciClientSmoke")
                 || !"true".equals(System.getenv("GITHUB_ACTIONS"))) return;
+        ClientTickEvents.END_CLIENT_TICK.register(ru.ehtid.operator.reality.ClientTerrainMeshProbe::tick);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.level == null || client.player == null) return;
             long tick = client.level.getGameTime();
