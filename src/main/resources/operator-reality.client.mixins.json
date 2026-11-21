@@ -3,7 +3,8 @@
   "package": "ru.ehtid.operator.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "LevelExtractorMixin"
+    "LevelExtractorMixin",
+    "GameRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
