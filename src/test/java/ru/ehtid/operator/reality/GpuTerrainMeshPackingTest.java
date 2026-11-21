@@ -27,7 +27,11 @@ class GpuTerrainMeshPackingTest {
                           0,70,0, 1,70,1, 1,70,0};
         for(int i=0;i<expected.length;i+=3) {
             for(int axis=0;axis<3;axis++) assertEquals(expected[i+axis],bytes.getFloat());
-            assertEquals(0xffffffff,bytes.getInt());
+            int shade=184+Math.floorMod(70,8)*7+14;
+            assertEquals(shade,Byte.toUnsignedInt(bytes.get()));
+            assertEquals(shade,Byte.toUnsignedInt(bytes.get()));
+            assertEquals(shade,Byte.toUnsignedInt(bytes.get()));
+            assertEquals(255,Byte.toUnsignedInt(bytes.get()));
         }
         // Accessors return independent positions over immutable storage.
         assertEquals(0,packed.original().position());
@@ -54,5 +58,15 @@ class GpuTerrainMeshPackingTest {
             assertEquals(alt?packed.alternateVertices():packed.originalVertices(),next);
             assertThrows(UnsupportedOperationException.class,ranges::clear);
         }
+    }
+    @Test void diagnosticShadeDependsOnGeometryNotRevision() {
+        int[] top={0,200,0,0,200,1,1,200,1,1,200,0};
+        int[] raised=top.clone();
+        for(int i=1;i<12;i+=3)raised[i]++;
+        int[] wall={0,200,0,0,200,1,0,201,1,0,201,0};
+        assertNotEquals(GpuTerrainMeshPair.diagnosticShade(top,0),GpuTerrainMeshPair.diagnosticShade(raised,0));
+        assertNotEquals(GpuTerrainMeshPair.diagnosticShade(top,0),GpuTerrainMeshPair.diagnosticShade(wall,0));
+        for(int[] quad:new int[][]{top,raised,wall})
+            for(int v=0;v<4;v++)assertTrue(GpuTerrainMeshPair.diagnosticShade(quad,v)>=184);
     }
 }
