@@ -238,6 +238,7 @@ def main() -> None:
             if "starting integrated minecraft server" not in logs.lower():
                 log("World spawn confirmed by actual ServerPlayer callback")
             time.sleep(8)
+            await_marker(proc, "OPERATOR_TERRAIN_MESH_ARMED", 45)
             before = screenshot("01-before-fold.png")
             acknowledge("ci-before-captured.allow")
             # The probe uses vanilla extraction frames, not server-side yaw.
@@ -249,7 +250,9 @@ def main() -> None:
             log("OPERATOR_FRAME_REALITY_SELECTION_SUCCESS: adjacent extraction frames, "
                 + match[5] + " ns selector CPU time (not GPU or world mutation time)")
 
+            await_marker(proc, "OPERATOR_TERRAIN_MESH_SWITCH", 45)
             await_marker(proc, "OPERATOR_CLIENT_TEST AUTONOMOUS_BLOCK_MOVED", 90)
+            await_marker(proc, "OPERATOR_TERRAIN_MESH_RETURN", 45)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
