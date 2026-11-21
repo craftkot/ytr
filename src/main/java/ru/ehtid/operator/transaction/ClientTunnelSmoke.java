@@ -65,6 +65,17 @@ public final class ClientTunnelSmoke {
                     // Wait for an actual frame captured from the Minecraft window.
                     if (tick - phaseStart < 100
                             || !Files.isRegularFile(directory.resolve("ci-before-captured.allow"))) return;
+                    // Turn 180 degrees in place first. The client extraction
+                    // hook must select the prepared revision on the first
+                    // hidden frame, independently of the server tick rate.
+                    placeCamera(player, 4.5D, 0.0F);
+                    phase = 6;
+                    phaseStart = tick;
+                    OperatorMod.LOGGER.info("OPERATOR_FRAME_REALITY_TEST TURN_IN_PLACE");
+                }
+                case 6 -> {
+                    // Allow slow software-rendered CI frames to be drawn.
+                    if (tick - phaseStart < 40) return;
                     // Real connected actor is moved behind the mapped tunnel and
                     // made to face away to satisfy the same TUNNEL_FOLD planner.
                     placeCamera(player, 22.5D, 0.0F);
