@@ -41,6 +41,8 @@ public final class ClientTerrainMeshProbe {
     private static boolean armed,preloaded,switched,returned;
     private static long frame,exitFrame,returnFrame;
     private static boolean autoReady,autoSubmitted;
+    private static long repeatTarget=2,repeatArmed,repeatExit,repeatReturn,repeatDrawn;
+    private static boolean repeatWaitingReturn;
     private static boolean debugDraw, depthDraw;
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
@@ -65,6 +67,7 @@ public final class ClientTerrainMeshProbe {
         final int[] capture=new int[TOTAL];
         int[] original;
         int cursor;
+        long captureRevision=1;
         CompletableFuture<Prepared> pending;
         Prepared ready;
         FrameRealitySelector.Bounds bounds;
@@ -96,7 +99,8 @@ public final class ClientTerrainMeshProbe {
         int requestedReplacement=0;
         if(server!=null && !requested) {
             var root=server.getWorldPath(LevelResource.ROOT).resolve("operator_reality");
-            if(Files.isRegularFile(root.resolve("ci-gpu-auto-return.allow"))) requestedReplacement=5;
+            if(Files.isRegularFile(root.resolve("ci-gpu-repeat.allow"))) requestedReplacement=6;
+            else if(Files.isRegularFile(root.resolve("ci-gpu-auto-return.allow"))) requestedReplacement=5;
             else if(Files.isRegularFile(root.resolve("ci-gpu-replace-multi.allow"))) requestedReplacement=4;
             else if(Files.isRegularFile(root.resolve("ci-gpu-hide-multi.allow"))) requestedReplacement=3;
             else if(Files.isRegularFile(root.resolve("ci-gpu-replace.allow"))) requestedReplacement=2;
@@ -108,6 +112,7 @@ public final class ClientTerrainMeshProbe {
             lastReplacementMode=0;autoReady=false;autoSubmitted=false;
         }
         replacementMode=requestedReplacement;
+        if(replacementMode==6 && returned && level!=null) {tickRepeat();return;}
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
         if(Math.abs(client.player.getX()-.5D)>.3D
@@ -157,8 +162,9 @@ public final class ClientTerrainMeshProbe {
             t.original=t.capture.clone();
             int[] frozen=t.original;
             int minY=level.getMinY(),maxY=level.getMaxY(),x=t.x,z=t.z;
+            long revision=t.captureRevision;
             t.pending=CompletableFuture.supplyAsync(()->{
-                var surface=PreparedTerrainSurface.prepare(x,z,913L,1L,minY,maxY,
+                var surface=PreparedTerrainSurface.prepare(x,z,913L,revision,minY,maxY,
                         Arrays.copyOf(frozen,N*N));
                 var halo=new PreparedTerrainMesh.Halo(
                         Arrays.copyOfRange(frozen,N*N,N*N+N),
@@ -190,8 +196,11 @@ public final class ClientTerrainMeshProbe {
             OperatorMod.LOGGER.error("OPERATOR_TERRAIN_MESH_NO_VARIATION region={}",t.id);
             reset(); return false;
         }
-        t.bounds=new FrameRealitySelector.Bounds(t.x,min-1,t.z,t.x+N,max+1,t.z+N);
-        t.guarded=new AABB(t.x,min-1,t.z,t.x+N,max+1,t.z+N).inflate(.25D);
+        if(t.bounds==null) {
+            // Conservative envelope covers future +/-4 variants as well.
+            t.bounds=new FrameRealitySelector.Bounds(t.x,min-5,t.z,t.x+N,max+5,t.z+N);
+            t.guarded=new AABB(t.x,min-5,t.z,t.x+N,max+5,t.z+N).inflate(.25D);
+        }
         t.ready=prepared;return true;
     }
 
@@ -226,6 +235,9 @@ public final class ClientTerrainMeshProbe {
                 && TerrainDiagnosticDraw.replacementReady()) {
             autoReady=true;
             OperatorMod.LOGGER.info("OPERATOR_AUTO_RETURN_ARMED frame={} sections=2 bytes={}",frame,FIELD.usedBytes());
+        }
+        if(replacementMode==6 && returned) {
+            repeatFrame(camera,pos,fixtureView);return;
         }
         if(replacementMode!=0 && preloaded && returned && fixtureView
                 && (replacementMode!=5 || autoReady)) {
@@ -308,6 +320,76 @@ public final class ClientTerrainMeshProbe {
         }
     }
 
+    // CI-only repeat controller. Each revision is captured again from live
+    // heightmaps, generated on the worker, then revalidated before upload.
+    private static void tickRepeat() {
+        if(repeatWaitingReturn || repeatArmed==repeatTarget || repeatTarget>4) return;
+        var t=tiles[Math.floorMod(next++,tiles.length)];
+        if(FIELD.hasPending(t.id) || t.ready!=null) return;
+        if(t.captureRevision!=repeatTarget) {
+            t.captureRevision=repeatTarget;t.cursor=0;t.original=null;t.pending=null;
+        }
+        advance(t);
+    }
+
+    private static boolean allVisible(Camera camera) {
+        for(var tile:tiles) if(!visible(camera,tile)) return false;
+        return true;
+    }
+
+    private static void repeatFrame(Camera camera,Vec3 pos,boolean fixtureView) {
+        var changes=FIELD.sample(bounds->{
+            for(var t:tiles) if(t.bounds==bounds)return visible(camera,t);
+            throw new IllegalStateException("Unknown repeat region");
+        });
+        if(!changes.isEmpty()) {
+            if(changes.size()!=tiles.length || repeatArmed!=repeatTarget)
+                throw new IllegalStateException("Partial repeat transition");
+            for(var change:changes) {
+                if(change.revision()!=repeatTarget || change.exitFrame()-change.previousVisibleFrame()!=1)
+                    throw new IllegalStateException("Invalid repeat exit");
+            }
+            repeatWaitingReturn=true;repeatExit=frame;
+            OperatorMod.LOGGER.info("OPERATOR_REPEAT_EXIT revision={} frame={} tiles={} bytes={}",
+                    repeatTarget,frame,changes.size(),FIELD.usedBytes());
+            return;
+        }
+        if(!fixtureView || !allVisible(camera)) return;
+        if(repeatWaitingReturn) {
+            if(repeatReturn<repeatExit)repeatReturn=frame;
+            prepareReplacementFrame(pos,BOTH);
+            return;
+        }
+        // Current revision stays drawn while preparing the next. Retire only
+        // after the previous return draw was submitted, outside the exit.
+        FIELD.releaseRetired();
+        prepareReplacementFrame(pos,BOTH);
+        if(repeatTarget>4 || repeatArmed==repeatTarget) return;
+        // Both CPU meshes must be ready before starting the staged upload.
+        for(var t:tiles) if(!FIELD.hasPending(t.id) && t.ready==null)return;
+        for(var t:tiles) {
+            if(FIELD.hasPending(t.id))continue;
+            var prepared=t.ready;
+            var packed=prepared.packed();
+            long bytes=(long)packed.original().remaining()+packed.alternate().remaining();
+            if(bytes>FrameGpuTerrainField.DEFAULT_BUDGET-FIELD.usedBytes())
+                throw new IllegalStateException("Repeat GPU budget exceeded");
+            var pair=GpuTerrainMeshPair.upload(packed);
+            boolean adopted=false;
+            try {
+                adopted=FIELD.stage(t.id,prepared.mesh(),pair,bytes);
+                if(!adopted)throw new IllegalStateException("Repeat staging rejected "+t.id);
+                t.ready=null;t.pending=null;t.original=null;
+            } finally {
+                if(!adopted)pair.close();
+            }
+            break;
+        }
+        for(var t:tiles)if(!FIELD.hasPending(t.id))return;
+        repeatArmed=repeatTarget;
+        OperatorMod.LOGGER.info("OPERATOR_REPEAT_ARMED revision={} frame={} tiles=2 bytes={}",repeatTarget,frame,FIELD.usedBytes());
+    }
+
     /** Submit the selected resident buffers to the actual world render pass.
      * CI diagnostic only: selectable read-only depth test, no vanilla terrain replacement. */
     public static void draw(RenderPass pass) {
@@ -378,11 +460,20 @@ public final class ClientTerrainMeshProbe {
     public static void drawMaskedSection(RenderPass pass) {
         if(masked.isEmpty() || replacementEye==null || replacementDrawn) return;
         replacementDrawn=true;
-        boolean draw=replacementMode==2 || replacementMode==4 || replacementMode==5;
+        boolean draw=replacementMode==2 || replacementMode==4 || replacementMode==5 || replacementMode==6;
         if(draw) for(var key:masked) {
             var replacement=replacements.get(key);
             TerrainDiagnosticDraw.drawReplacement(pass,replacement.active().resource(),true,
                     replacement.tile().x,replacement.tile().z,replacementEye,key);
+        }
+        if(replacementMode==6 && repeatWaitingReturn && masked.size()==BOTH.size()) {
+            for(var key:masked) if(replacements.get(key).active().revision()!=repeatTarget)
+                throw new IllegalStateException("Wrong repeat revision drawn");
+            if(frame!=repeatReturn)throw new IllegalStateException("Repeat missed first return frame");
+            repeatDrawn=repeatTarget;
+            OperatorMod.LOGGER.info("OPERATOR_REPEAT_DRAW revision={} exitFrame={} returnFrame={} drawFrame={} sections={} bytes={}",
+                    repeatDrawn,repeatExit,repeatReturn,frame,masked.size(),FIELD.usedBytes());
+            repeatWaitingReturn=false;repeatTarget++;
         }
         if(replacementMode==5 && !autoSubmitted && masked.size()==BOTH.size()) {
             autoSubmitted=true;
@@ -412,5 +503,6 @@ public final class ClientTerrainMeshProbe {
         closeGpu();tiles=newTiles();next=0;
         armed=false;preloaded=false;switched=false;returned=false;frame=0;exitFrame=0;returnFrame=0;
         autoReady=false;autoSubmitted=false;
+        repeatTarget=2;repeatArmed=0;repeatExit=0;repeatReturn=0;repeatDrawn=0;repeatWaitingReturn=false;
     }
 }
