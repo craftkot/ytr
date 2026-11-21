@@ -33,4 +33,26 @@ class GpuTerrainMeshPackingTest {
         assertEquals(0,packed.original().position());
         assertEquals(6144*16,packed.original().remaining());
     }
+    @Test void gpuRangesAreContiguousAndMatchEachSection() {
+        int[] h=new int[1024],side=new int[32];
+        Arrays.fill(side,20);
+        for(int z=0;z<32;z++) for(int x=0;x<32;x++) h[z*32+x]=x<16?65:20;
+        var pair=PreparedTerrainMesh.compile(
+                PreparedTerrainSurface.prepare(-32,0,913,1,-64,320,h),
+                new PreparedTerrainMesh.Halo(side,side,side,side));
+        var packed=GpuTerrainMeshPair.pack(pair);
+        for(boolean alt:new boolean[]{false,true}) {
+            var sections=SectionTerrainMesh.split(pair,alt);
+            var ranges=packed.ranges(alt);
+            assertEquals(sections.keySet(),ranges.keySet());
+            int next=0;
+            for(var e:ranges.entrySet()) {
+                assertEquals(next,e.getValue().firstVertex());
+                assertEquals(sections.get(e.getKey()).quadCount()*6,e.getValue().vertexCount());
+                next+=e.getValue().vertexCount();
+            }
+            assertEquals(alt?packed.alternateVertices():packed.originalVertices(),next);
+            assertThrows(UnsupportedOperationException.class,ranges::clear);
+        }
+    }
 }
