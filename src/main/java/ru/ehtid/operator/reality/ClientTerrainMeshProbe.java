@@ -42,7 +42,7 @@ public final class ClientTerrainMeshProbe {
     private static long frame,exitFrame,returnFrame;
     private static boolean autoReady,autoSubmitted;
     private static long repeatTarget=2,repeatArmed,repeatExit,repeatReturn,repeatDrawn;
-    private static boolean repeatWaitingReturn;
+    private static boolean repeatWaitingReturn,repeatBaselineDrawn;
     private static boolean debugDraw, depthDraw;
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
@@ -237,7 +237,9 @@ public final class ClientTerrainMeshProbe {
             OperatorMod.LOGGER.info("OPERATOR_AUTO_RETURN_ARMED frame={} sections=2 bytes={}",frame,FIELD.usedBytes());
         }
         if(replacementMode==6 && returned) {
-            repeatFrame(camera,pos,fixtureView);return;
+            boolean repeatView=Math.abs(pos.x-.5D)<.3D && Math.abs(pos.z-10.5D)<.3D
+                    && pos.y>224D && pos.y<227D && Math.abs(Math.abs(camera.yRot())-180F)<8F;
+            repeatFrame(camera,pos,repeatView);return;
         }
         if(replacementMode!=0 && preloaded && returned && fixtureView
                 && (replacementMode!=5 || autoReady)) {
@@ -466,6 +468,13 @@ public final class ClientTerrainMeshProbe {
             TerrainDiagnosticDraw.drawReplacement(pass,replacement.active().resource(),true,
                     replacement.tile().x,replacement.tile().z,replacementEye,key);
         }
+        if(replacementMode==6 && !repeatBaselineDrawn && masked.size()==BOTH.size()
+                && !repeatWaitingReturn && repeatTarget==2) {
+            for(var key:masked)if(replacements.get(key).active().revision()!=1)
+                throw new IllegalStateException("Wrong repeat baseline revision");
+            repeatBaselineDrawn=true;
+            OperatorMod.LOGGER.info("OPERATOR_REPEAT_BASELINE_DRAW frame={} sections=2",frame);
+        }
         if(replacementMode==6 && repeatWaitingReturn && masked.size()==BOTH.size()) {
             for(var key:masked) if(replacements.get(key).active().revision()!=repeatTarget)
                 throw new IllegalStateException("Wrong repeat revision drawn");
@@ -503,6 +512,6 @@ public final class ClientTerrainMeshProbe {
         closeGpu();tiles=newTiles();next=0;
         armed=false;preloaded=false;switched=false;returned=false;frame=0;exitFrame=0;returnFrame=0;
         autoReady=false;autoSubmitted=false;
-        repeatTarget=2;repeatArmed=0;repeatExit=0;repeatReturn=0;repeatDrawn=0;repeatWaitingReturn=false;
+        repeatTarget=2;repeatArmed=0;repeatExit=0;repeatReturn=0;repeatDrawn=0;repeatWaitingReturn=false;repeatBaselineDrawn=false;
     }
 }
