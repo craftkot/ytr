@@ -158,7 +158,9 @@ public final class ObservationEngine {
             // Independent, world-scale offscreen scheduler. No forced chunk
             // loading, at most one event per world per 1200 ticks.
             if (now % OperatorBrain.EVALUATION_INTERVAL_TICKS == 0L
-                    && data.worldFieldEnabled) {
+                    && data.worldFieldEnabled
+                    && DeferredWorldFieldService.assignedProbe(
+                            data.worldFieldPending, player.getUUID(), now)) {
                 String deferred = attemptDeferredWorldField(server, player, memory, now);
                 if (deferred.startsWith("Tunnel fold"))
                     OperatorMod.LOGGER.info("Deferred cross-chunk field {}: {}",
