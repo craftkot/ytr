@@ -36,6 +36,8 @@ public final class ClientTunnelSmoke {
     private int phase;
     private long phaseStart;
     private String ownerId = "";
+    private int repeatRevision=2;
+    private boolean repeatAway;
 
     public void tick(MinecraftServer server, ObservationEngine observer) {
         if (!Boolean.getBoolean("operator.reality.ciClientSmoke")
@@ -108,6 +110,24 @@ public final class ClientTunnelSmoke {
                             + "sourceAir=true targetStone=true wal=COMMITTED", ownerId);
                 }
                 case 3 -> {
+                    // Repeated in-place camera turns are held until the
+                    // actual client acknowledges the hidden extraction frame.
+                    // No additional server block changes during these turns.
+                    if (Files.isRegularFile(directory.resolve("ci-gpu-repeat.allow"))) {
+                        if (repeatRevision<=4) {
+                            if (!repeatAway && Files.isRegularFile(directory.resolve("ci-repeat-away-"+repeatRevision+".allow"))) {
+                                placeCamera(player,4.5D,0.0F);
+                                repeatAway=true;
+                                OperatorMod.LOGGER.info("OPERATOR_REPEAT_CAMERA_AWAY revision={}",repeatRevision);
+                            } else if (repeatAway && Files.isRegularFile(directory.resolve("ci-repeat-return-"+repeatRevision+".allow"))) {
+                                placeCamera(player,4.5D,180.0F);
+                                repeatAway=false;
+                                OperatorMod.LOGGER.info("OPERATOR_REPEAT_CAMERA_RETURN revision={}",repeatRevision);
+                                repeatRevision++;
+                            }
+                        }
+                        return;
+                    }
                     if (!Files.isRegularFile(directory.resolve("ci-after-captured.allow"))) return;
                     // Player must move away from the target before rollback.
                     placeCamera(player, 22.5D, 0.0F);
