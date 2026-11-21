@@ -2,7 +2,7 @@ name: Operator Reality - Real Minecraft Client
 
 on:
   push:
-    branches: [ operator-dev, feature/deferred-chunk-boundaries ]
+    branches: [ operator-dev, feature/deferred-chunk-boundaries, feature/deferred-world-budget ]
     paths:
       - 'src/**'
       - 'tools/seed_graphical_client_world.py'
