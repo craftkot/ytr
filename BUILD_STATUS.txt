@@ -1,3 +1,13 @@
+Operator Reality 0.26.0 — deferred cross-chunk experiment
+
+- Staged pending intents before chunk load; committed and rolled back real cross-boundary x=255/256 transaction in graphical CI baseline:
+  https://github.com/craftkot/ytr/actions/runs/42605819049
+- Baseline dedicated server CI:
+  https://github.com/craftkot/ytr/actions/runs/42605818985
+- Added full WAL write/ACK fault-injection coverage and 128-observer safety regression on experimental branch. Confirm current CI before merging.
+- This is not a guarantee of pre-client-send mutation, crash durability under real hard-power-off, TPS stability on loaded modpacks or multi-client invisibility.
+- Production global opt-in stays OFF by default.
+
 Operator: Reality 0.25.0 — distributed offscreen World Field
 
 As of feature/seamless-world-field:
