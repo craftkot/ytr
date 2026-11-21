@@ -1,6 +1,10 @@
 package ru.ehtid.operator.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.sugar.Local;
+import net.minecraft.core.BlockPos;
+import net.minecraft.client.renderer.chunk.SectionMesh;
+import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.renderpearl.api.commands.RenderPass;
 import com.mojang.renderpearl.api.textures.GpuSampler;
@@ -22,5 +26,22 @@ public abstract class LevelRendererMixin {
             GpuTextureView atlas,boolean wireframe,Operation<Void> vanilla) {
         vanilla.call(sections,group,pass,sampler,atlas,wireframe);
         ClientTerrainMeshProbe.draw(pass);
+    }
+    @WrapOperation(method="extractSectionDrawGroups",at=@At(value="INVOKE",
+            target="Lnet/minecraft/client/renderer/chunk/SectionMesh;getSectionDraw(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionMesh$SectionDraw;"))
+    private SectionMesh.SectionDraw operator$maskExactSection(SectionMesh mesh,
+            ChunkSectionLayer layer,Operation<SectionMesh.SectionDraw> vanilla,
+            @Local BlockPos origin) {
+        var draw=vanilla.call(mesh,layer);
+        return draw!=null && !layer.translucent() && ClientTerrainMeshProbe.maskVanillaSection(origin)?null:draw;
+    }
+
+    @WrapOperation(method="executeSolid",at=@At(value="INVOKE",
+            target="Lnet/minecraft/client/renderer/chunk/ChunkSectionsToRender;renderGroup(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayerGroup;Lcom/mojang/renderpearl/api/commands/RenderPass;Lcom/mojang/renderpearl/api/textures/GpuSampler;Lcom/mojang/renderpearl/api/textures/GpuTextureView;Z)V"))
+    private void operator$drawReplacementSection(ChunkSectionsToRender sections,
+            ChunkSectionLayerGroup group,RenderPass pass,GpuSampler sampler,
+            GpuTextureView atlas,boolean wireframe,Operation<Void> vanilla) {
+        vanilla.call(sections,group,pass,sampler,atlas,wireframe);
+        ClientTerrainMeshProbe.drawMaskedSection(pass);
     }
 }
