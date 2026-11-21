@@ -244,6 +244,45 @@ def capture_gpu_diagnostic(proc, revision: int) -> Path:
     return path
 
 
+def capture_repeated_revisions(proc, prior: Path) -> None:
+    import re
+    flag = MARKER_DIR / "ci-gpu-repeat.allow"
+    flag.write_text("repeat actual camera turns through revisions 2, 3, 4\n")
+    previous = diagnostic_mask(prior, True)
+    last_return = 0
+    try:
+        for revision in range(2, 5):
+            text = await_marker(proc, f"OPERATOR_REPEAT_ARMED revision={revision} ", 60)
+            armed = re.search(rf"OPERATOR_REPEAT_ARMED revision={revision} frame=(\d+) tiles=2 bytes=(\d+)", text)
+            if not armed or int(armed[1]) <= last_return:
+                raise RuntimeError("Repeat revision was not prepared after preceding return")
+            acknowledge(f"ci-repeat-away-{revision}.allow")
+            text = await_marker(proc, f"OPERATOR_REPEAT_EXIT revision={revision} ", 30)
+            exit_match = re.search(rf"OPERATOR_REPEAT_EXIT revision={revision} frame=(\d+) tiles=2 bytes=(\d+)", text)
+            if not exit_match or int(exit_match[1]) <= int(armed[1]) or exit_match[2] != armed[2]:
+                raise RuntimeError("Repeat exit changed unprepared resource ownership")
+            acknowledge(f"ci-repeat-return-{revision}.allow")
+            text = await_marker(proc, f"OPERATOR_REPEAT_DRAW revision={revision} ", 30)
+            drawn = re.search(rf"OPERATOR_REPEAT_DRAW revision={revision} exitFrame=(\d+) returnFrame=(\d+) drawFrame=(\d+) sections=2 bytes=(\d+)", text)
+            if (not drawn or drawn[1] != exit_match[1] or drawn[2] != drawn[3]
+                    or int(drawn[2]) <= int(drawn[1]) or drawn[4] != armed[2]):
+                raise RuntimeError("Repeat failed same-frame resident return")
+            last_return = int(drawn[2])
+            time.sleep(1)
+            path = screenshot(f"repeat-revision-{revision}.png")
+            current = diagnostic_mask(path, True)
+            delta = ImageChops.difference(previous, current)
+            changed = delta.histogram()[255]
+            delta.save(SCREENSHOTS / f"repeat-revision-{revision}-difference.png")
+            log(f"Repeated actual revision {revision}: exit={drawn[1]}, return={drawn[2]}, silhouetteDifference={changed}")
+            if current.histogram()[255] < 300 or changed < 100:
+                raise RuntimeError("Repeated revision did not visibly change the geometry")
+            previous = current
+    finally:
+        flag.unlink(missing_ok=True)
+    await_marker(proc, "OPERATOR_SECTION_REPLACEMENT_DISABLED mode=6", 15)
+    time.sleep(1)
+
 def capture_section_replacement(proc, multi=False) -> None:
     # A/B/C: unchanged vanilla, opaque sections omitted, then exact
     # resident ranges submitted in the solid pass at the same camera.
@@ -408,6 +447,7 @@ def main() -> None:
             compare_gpu_silhouettes(original_gpu_image, alternate_gpu_image)
             capture_section_replacement(proc)
             capture_section_replacement(proc, multi=True)
+            capture_repeated_revisions(proc, auto_image)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
