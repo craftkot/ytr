@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.26.0 — Deferred Cross-Chunk World Field (experimental)
+
+- Persist an intention to inspect an unloaded cross-chunk boundary; revalidate after BOTH chunks become loaded and only mutate from a later server tick, never inside CHUNK_LOAD.
+- Durable two-sector reservation and conflict exclusion for the x=255/256 boundary; preserve older V1 histories and WAL recovery.
+- Real rendered Minecraft client in CI observed the two-chunk change and rollback (63,161 changed ROI pixels in prior successful baseline).
+- Added fault injection at all nine WAL persistence points using independently deserialized records and a multi-observer policy regression with 128 viewers.
+- Important limits: chunk-load event is not a pre-send guarantee, actual multi-client and dedicated cross-chunk hard-JVM crash tests are still pending, and TPS benchmarking is not yet certified.
+
+
 ## 0.25.0 — Global World Field (experimental)
 
 - Added a sector-indexed world field that independently selects distant, already-loaded cave chunks (16 sectors maximum, 1200 ticks between attempts); all real mutations use V3 four-write WAL journals.

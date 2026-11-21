@@ -195,6 +195,89 @@ class TunnelFoldEngineTest {
         assertNull(store.state);
     }
 
+    @Test void deferredFieldV2ReservesBoth64BlockSectorsAndRollsBackAfterCrash() {
+        var journal = TunnelFoldService.twoCellJournal(
+                UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                "minecraft:overworld", new BlockPos(256,202,0),
+                new BlockPos(255,202,0), 24_000L);
+        journal.sourceSnapshotId = WorldFieldService.MARKER_V2;
+        journal.sourceSnapshotSha256 = WorldFieldService.MARKER_V2;
+        journal.sha256 = TransactionIntegrity.fingerprint(journal);
+        assertTrue(SandboxTransactionEngine.isTunnelFold(journal));
+        assertTrue(ChunkBoundaryPolicy.spansExactlyTwoChunks(journal));
+        var sectors = WorldFieldSectorFootprint.sectors(journal);
+        assertEquals(java.util.Set.of("minecraft:overworld|3,0",
+                "minecraft:overworld|4,0"), sectors);
+        var world = new MemoryWorld(journal);
+        var store = new Store();
+        store.failUpdate = 2;
+        var interrupted = SandboxTransactionEngine.applyTunnelFold(
+                journal, world, () -> 24001L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED, interrupted.outcome());
+        assertEquals("APPLY", store.reload().pendingOperation);
+        store.failUpdate = -1;
+        var restored = SandboxTransactionEngine.rollback(
+                journal, store.reload(), world, () -> 24002L, store);
+        assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK, restored.outcome());
+        for (int z = 0; z < 2; z++) {
+            assertEquals(STONE, world.read(256,202,z));
+            assertEquals(AIR, world.read(255,202,z));
+        }
+        // The injected crash happens after one write, not after all four:
+        // restoredWrites counts the cells that actually needed recovery.
+        assertEquals(restored.confirmedWrites(), store.reload().restoredWrites);
+        assertTrue(store.reload().restoredWrites > 0);
+        assertTrue(store.reload().restoredWrites <= 4);
+        assertEquals("ROLLED_BACK", store.reload().phase);
+    }
+
+    /**
+     * Simulate a JVM disappearing at EVERY WAL persist point, including the
+     * unacknowledged fourth cell and the terminal COMMITTED phase. Each
+     * rollback reads a fresh serialized ledger instead of the mutable object
+     * left in the crashed execution context.
+     *
+     * This is fault injection, not a replacement for a real cold-JVM test.
+     */
+    @Test void eachCrossChunkWalCrashPointRecoversFromPersistedLedger() {
+        for (int failedWrite = 1; failedWrite <= 9; failedWrite++) {
+            var journal = TunnelFoldService.twoCellJournal(
+                    UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),
+                    "minecraft:overworld", new BlockPos(256,202,0),
+                    new BlockPos(255,202,0), 24_000L);
+            journal.sourceSnapshotId = WorldFieldService.MARKER_V2;
+            journal.sourceSnapshotSha256 = WorldFieldService.MARKER_V2;
+            journal.sha256 = TransactionIntegrity.fingerprint(journal);
+            assertTrue(ChunkBoundaryPolicy.spansExactlyTwoChunks(journal));
+            assertEquals(2, WorldFieldSectorFootprint.sectors(journal).size());
+
+            var world = new MemoryWorld(journal);
+            var durable = new Store();
+            durable.failUpdate = failedWrite;
+            var interrupted = SandboxTransactionEngine.applyTunnelFold(
+                    journal, world, () -> 24_001L, durable);
+            assertEquals(SandboxTransactionEngine.Outcome.INTERRUPTED,
+                    interrupted.outcome(), "WAL injection #" + failedWrite);
+            assertNotNull(durable.state);
+            assertTrue(durable.reload().matches(journal),
+                    "Interrupted ledger must remain verifiable #" + failedWrite);
+
+            // A NEW ledger instance loaded from durable JSON models cold restart.
+            durable.failUpdate = -1;
+            var restored = SandboxTransactionEngine.rollback(
+                    journal, durable.reload(), world, () -> 24_002L, durable);
+            assertEquals(SandboxTransactionEngine.Outcome.ROLLED_BACK,
+                    restored.outcome(), "Recovery at WAL #" + failedWrite);
+            assertEquals("ROLLED_BACK", durable.reload().phase);
+            for (int z = 0; z <= 1; z++) {
+                assertEquals(STONE, world.read(256,202,z),
+                        "Source cell after recovery #" + failedWrite);
+                assertEquals(AIR, world.read(255,202,z),
+                        "Target cell after recovery #" + failedWrite);
+            }
+        }
+    }
+
     private static TransactionJournal fixture() {
         return TunnelFoldService.oneCellJournal(
                 UUID.fromString("fafe6475-202f-4a4d-bf6c-250dd5b58001"),

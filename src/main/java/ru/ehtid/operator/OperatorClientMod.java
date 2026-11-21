@@ -15,8 +15,11 @@ import net.minecraft.world.level.block.Blocks;
 public final class OperatorClientMod implements ClientModInitializer {
     private static final BlockPos SOURCE = new BlockPos(1, 202, 0);
     private static final BlockPos TARGET = new BlockPos(0, 202, 0);
+    private static final BlockPos DEFERRED_SOURCE = new BlockPos(256,202,0);
+    private static final BlockPos DEFERRED_TARGET = new BlockPos(255,202,0);
     private long lastSample;
     private String previous = "";
+    private String previousDeferred = "";
 
     @Override
     public void onInitializeClient() {
@@ -41,6 +44,25 @@ public final class OperatorClientMod implements ClientModInitializer {
                         client.player.getYRot(), client.player.getXRot(), tick);
                 previous = snapshot;
                 lastSample = tick;
+            }
+            // Second site is exactly on the x=255/256 chunk boundary.
+            // Read the CLIENT'S own chunks after returning from the remote
+            // location so this cannot be satisfied by server-only WAL logs.
+            if (Math.abs(client.player.getX() - 255.5D) < 12D
+                    && Math.abs(client.player.getZ()) < 30D
+                    && client.level.hasChunkAt(DEFERRED_SOURCE)
+                    && client.level.hasChunkAt(DEFERRED_TARGET)) {
+                String dSource = client.level.getBlockState(DEFERRED_SOURCE).is(Blocks.STONE)
+                        ? "STONE" : client.level.getBlockState(DEFERRED_SOURCE).isAir() ? "AIR" : "OTHER";
+                String dTarget = client.level.getBlockState(DEFERRED_TARGET).is(Blocks.STONE)
+                        ? "STONE" : client.level.getBlockState(DEFERRED_TARGET).isAir() ? "AIR" : "OTHER";
+                String state = dSource + "/" + dTarget;
+                if (!state.equals(previousDeferred)) {
+                    OperatorMod.LOGGER.info(
+                            "OPERATOR_CLIENT_DEFERRED_RENDER_STATE source={} target={} yaw={} tick={}",
+                            dSource, dTarget, client.player.getYRot(), tick);
+                    previousDeferred = state;
+                }
             }
         });
     }
