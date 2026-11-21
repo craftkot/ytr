@@ -3,6 +3,8 @@ package ru.ehtid.operator.reality;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Objects;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.renderpearl.api.buffers.GpuBuffer;
 
@@ -17,27 +19,34 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
     public static final int VERTEX_BYTES=3*Float.BYTES+4;
     private final GpuBuffer original,alternate;
     private final int originalVertices,alternateVertices;
+    private final Map<SectionTerrainMesh.Key,Range> originalRanges,alternateRanges;
+    public record Range(int firstVertex,int vertexCount) {}
     private boolean closed;
 
     private GpuTerrainMeshPair(GpuBuffer original,GpuBuffer alternate,int originalVertices,
-                               int alternateVertices) {
+                               int alternateVertices,Map<SectionTerrainMesh.Key,Range> originalRanges,
+                               Map<SectionTerrainMesh.Key,Range> alternateRanges) {
         this.original=original;this.alternate=alternate;
         this.originalVertices=originalVertices;this.alternateVertices=alternateVertices;
+        this.originalRanges=originalRanges;this.alternateRanges=alternateRanges;
     }
 
     /** Worker-safe preparation: both immutable CPU triangle buffers. */
     public static final class Packed {
         private final ByteBuffer original, alternate;
         private final int originalVertices, alternateVertices;
+        private final Map<SectionTerrainMesh.Key,Range> originalRanges,alternateRanges;
 
         private Packed(ByteBuffer original,ByteBuffer alternate,
-                       int originalVertices,int alternateVertices) {
+                       int originalVertices,int alternateVertices,
+                       Map<SectionTerrainMesh.Key,Range> originalRanges,
+                       Map<SectionTerrainMesh.Key,Range> alternateRanges) {
             Objects.requireNonNull(original);
             Objects.requireNonNull(alternate);
             if(!original.isDirect()||!alternate.isDirect()
                     ||originalVertices<=0||alternateVertices<=0
-                    ||originalVertices>PreparedTerrainMesh.MAX_QUADS*6
-                    ||alternateVertices>PreparedTerrainMesh.MAX_QUADS*6
+                    ||originalVertices>SectionTerrainMesh.MAX_SPLIT_QUADS*6
+                    ||alternateVertices>SectionTerrainMesh.MAX_SPLIT_QUADS*6
                     ||original.remaining()!=originalVertices*VERTEX_BYTES
                     ||alternate.remaining()!=alternateVertices*VERTEX_BYTES)
                 throw new IllegalArgumentException("Invalid packed GPU mesh");
@@ -45,35 +54,48 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
             this.alternate=alternate.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
             this.originalVertices=originalVertices;
             this.alternateVertices=alternateVertices;
+            this.originalRanges=originalRanges;this.alternateRanges=alternateRanges;
         }
         public ByteBuffer original() {return original.asReadOnlyBuffer().order(ByteOrder.nativeOrder());}
         public ByteBuffer alternate() {return alternate.asReadOnlyBuffer().order(ByteOrder.nativeOrder());}
         public int originalVertices() {return originalVertices;}
         public int alternateVertices() {return alternateVertices;}
+        public Map<SectionTerrainMesh.Key,Range> ranges(boolean alternative) {
+            return alternative?alternateRanges:originalRanges;
+        }
     }
+
+    private record PackedVariant(ByteBuffer bytes,int vertices,Map<SectionTerrainMesh.Key,Range> ranges) {}
 
     public static Packed pack(PreparedTerrainMesh meshes) {
-        var a=triangles(meshes.original());
-        var b=triangles(meshes.alternate());
-        return new Packed(a,b,meshes.original().quadCount()*6,
-                meshes.alternate().quadCount()*6);
+        var a=triangles(SectionTerrainMesh.split(meshes,false));
+        var b=triangles(SectionTerrainMesh.split(meshes,true));
+        return new Packed(a.bytes(),b.bytes(),a.vertices(),b.vertices(),a.ranges(),b.ranges());
     }
 
-    private static ByteBuffer triangles(PreparedTerrainMesh.Mesh mesh) {
-        ByteBuffer out=ByteBuffer.allocateDirect(mesh.quadCount()*6*VERTEX_BYTES)
+    private static PackedVariant triangles(Map<SectionTerrainMesh.Key,SectionTerrainMesh.Section> sections) {
+        int vertices=0;
+        for(var section:sections.values()) vertices=Math.addExact(vertices,section.quadCount()*6);
+        if(vertices<=0||vertices>SectionTerrainMesh.MAX_SPLIT_QUADS*6)
+            throw new IllegalArgumentException("Section vertex budget");
+        ByteBuffer out=ByteBuffer.allocateDirect(Math.multiplyExact(vertices,VERTEX_BYTES))
                 .order(ByteOrder.nativeOrder());
-        var in=mesh.vertices();
+        Map<SectionTerrainMesh.Key,Range> ranges=new LinkedHashMap<>();
         int[] q=new int[12];
         int[] order={0,1,2,0,2,3};
-        while(in.hasRemaining()) {
-            in.get(q);
-            for(int i:order) {
-                for(int axis=0;axis<3;axis++) out.putFloat(q[i*3+axis]);
-                // White vertex color; the render pass selects diagnostic tint.
-                out.putInt(0xffffffff);
+        for(var entry:sections.entrySet()) {
+            var in=entry.getValue().vertices();
+            int first=out.position()/VERTEX_BYTES;
+            while(in.hasRemaining()) {
+                in.get(q);
+                for(int i:order) {
+                    for(int axis=0;axis<3;axis++) out.putFloat(q[i*3+axis]);
+                    out.putInt(0xffffffff);
+                }
             }
+            ranges.put(entry.getKey(),new Range(first,out.position()/VERTEX_BYTES-first));
         }
-        return out.flip();
+        return new PackedVariant(out.flip(),vertices,java.util.Collections.unmodifiableMap(ranges));
     }
 
     public static GpuTerrainMeshPair upload(Packed bytes) {
@@ -88,7 +110,8 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
                     ||a.size()!=(long)bytes.originalVertices()*VERTEX_BYTES
                     ||b.size()!=(long)bytes.alternateVertices()*VERTEX_BYTES)
                 throw new IllegalStateException("Incomplete GPU terrain allocation");
-            return new GpuTerrainMeshPair(a,b,bytes.originalVertices(),bytes.alternateVertices());
+            return new GpuTerrainMeshPair(a,b,bytes.originalVertices(),bytes.alternateVertices(),
+                    bytes.ranges(false),bytes.ranges(true));
         } catch(RuntimeException | Error exception) {
             if(b!=null)b.close();
             if(a!=null)a.close();
@@ -103,6 +126,11 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
 
     public int vertexCount(boolean alternative) {
         return alternative?alternateVertices:originalVertices;
+    }
+
+    /** Immutable section-to-draw-range lookup; no extra GPU allocation. */
+    public Map<SectionTerrainMesh.Key,Range> ranges(boolean alternative) {
+        return alternative?alternateRanges:originalRanges;
     }
 
     @Override public void close() {
