@@ -12,78 +12,101 @@ import net.minecraft.world.phys.AABB;
 import ru.ehtid.operator.OperatorMod;
 
 /**
- * CI-only real-client bridge. Snapshot actual loaded client heightmap columns
- * on the client thread (bounded per tick); generate and compile both immutable
- * CPU meshes on a worker. Re-read the entire input including its halo before
- * publication. The real vanilla camera then selects the mesh reference on the
- * first outside-frustum frame. Does not install meshes into the vanilla GPU
- * renderer, mutate block states or change collision.
+ * CI-only, real heightmap and GPU allocation test for two adjacent terrain
+ * tiles. Bounded snapshot reads on the owning client thread, immutable mesh
+ * preparation away from it, then at most one GPU upload per visible frame.
+ * The vanilla camera selects all ready regions in one frame pass.
+ * This does not replace vanilla rendering or change server blocks/collision.
  */
 public final class ClientTerrainMeshProbe {
     private static final boolean ENABLED =
             Boolean.getBoolean("operator.reality.ciClientSmoke")
                     && "true".equals(System.getenv("GITHUB_ACTIONS"));
-    private static final int X=0, Z=-32, N=PreparedTerrainSurface.SIZE;
+    private static final int N=PreparedTerrainSurface.SIZE;
     private static final int TOTAL=N*N+4*N, BUDGET=96;
-    private static final String REGION="ci-surface-tile";
     private static final FrameGpuTerrainField<GpuTerrainMeshPair> FIELD=
             new FrameGpuTerrainField<>(FrameGpuTerrainField.DEFAULT_BUDGET);
     private static ClientLevel level;
-    private static int[] capture=new int[TOTAL];
-    private static int[] original;
-    private static int cursor;
-    private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
-    private static CompletableFuture<Prepared> pending;
-    private static Prepared gpuPending;
-    private static FrameRealitySelector.Bounds regionBounds;
-    private static AABB guarded;
-    private static boolean armed, switched, returned;
-    private static long frame, exitFrame;
+    private static Tile[] tiles=newTiles();
+    private static int next;
+    private static boolean armed,preloaded,switched,returned;
+    private static long frame,exitFrame;
 
+    private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
+    private static final class Tile {
+        final String id;
+        final int x,z;
+        final int[] capture=new int[TOTAL];
+        int[] original;
+        int cursor;
+        CompletableFuture<Prepared> pending;
+        Prepared ready;
+        FrameRealitySelector.Bounds bounds;
+        AABB guarded;
+        Tile(String id,int x,int z) {this.id=id;this.x=x;this.z=z;}
+    }
+    private static Tile[] newTiles() {
+        return new Tile[]{new Tile("ci-east",0,-32),new Tile("ci-west",-32,-32)};
+    }
     private ClientTerrainMeshProbe() {}
 
     public static void tick(Minecraft client) {
         if(!ENABLED || !client.isSameThread()) return;
         if(client.level!=level) {
-            level=client.level;
             reset();
+            level=client.level;
         }
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
-        // The existing graphical test's initial in-place camera fixture.
         if(Math.abs(client.player.getX()-.5D)>.3D
                 || Math.abs(client.player.getZ()-4.5D)>.3D
                 || Math.abs(client.player.getY()-200D)>1D
                 || Math.abs(Math.abs(client.player.getYRot())-180F)>8F) return;
-        if(pending!=null && !pending.isDone()) return;
-        if(pending!=null && pending.isCompletedExceptionally()) {
-            OperatorMod.LOGGER.error("OPERATOR_TERRAIN_MESH_WORKER_FAILED");
-            reset();
-            return;
+        // One tile per tick, so two tiles do not double the read budget.
+        Tile t=tiles[next++ % tiles.length];
+        if(t.ready==null && !advance(t)) return;
+        int changed=0,originalQuads=0,alternateQuads=0;
+        for(var tile:tiles) {
+            if(tile.ready==null) return;
+            var pair=tile.ready.mesh();
+            originalQuads+=pair.original().quadCount();
+            alternateQuads+=pair.alternate().quadCount();
+            for(int z=0;z<N;z++)for(int x=0;x<N;x++)
+                if(pair.original().topY(x,z)!=pair.alternate().topY(x,z))changed++;
         }
-        int end=Math.min(TOTAL,cursor+BUDGET);
-        for(;cursor<end;cursor++) {
-            int i=cursor, x,z;
+        armed=true;
+        OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_ARMED columns={} changed={} originalQuads={} alternateQuads={} tiles={}",
+                tiles.length*N*N,changed,originalQuads,alternateQuads,tiles.length);
+    }
+
+    private static boolean advance(Tile t) {
+        if(t.pending!=null && !t.pending.isDone()) return false;
+        if(t.pending!=null && t.pending.isCompletedExceptionally()) {
+            OperatorMod.LOGGER.error("OPERATOR_TERRAIN_MESH_WORKER_FAILED region={}",t.id);
+            reset(); return false;
+        }
+        int end=Math.min(TOTAL,t.cursor+BUDGET);
+        for(;t.cursor<end;t.cursor++) {
+            int i=t.cursor,x,z;
             if(i<N*N) {
-                x=X+i%N; z=Z+i/N;
+                x=t.x+i%N;z=t.z+i/N;
             } else {
-                int side=(i-N*N)/N, k=(i-N*N)%N;
-                x=switch(side) {case 0 -> X-1;case 1 -> X+N;default -> X+k;};
-                z=switch(side) {case 2 -> Z-1;case 3 -> Z+N;default -> Z+k;};
+                int side=(i-N*N)/N,k=(i-N*N)%N;
+                x=switch(side) {case 0 -> t.x-1;case 1 -> t.x+N;default -> t.x+k;};
+                z=switch(side) {case 2 -> t.z-1;case 3 -> t.z+N;default -> t.z+k;};
             }
             if(!level.hasChunkAt(new BlockPos(x,level.getMinY(),z))) {
-                cursor=0;
-                return;
+                t.cursor=0; return false;
             }
-            capture[i]=level.getHeight(Heightmap.Types.WORLD_SURFACE,x,z);
+            t.capture[i]=level.getHeight(Heightmap.Types.WORLD_SURFACE,x,z);
         }
-        if(cursor!=TOTAL) return;
-        if(pending==null) {
-            original=capture.clone();
-            int[] frozen=original;
-            int minY=level.getMinY(),maxY=level.getMaxY();
-            pending=CompletableFuture.supplyAsync(()->{
-                var surface=PreparedTerrainSurface.prepare(X,Z,913L,1L,minY,maxY,
+        if(t.cursor!=TOTAL) return false;
+        if(t.pending==null) {
+            t.original=t.capture.clone();
+            int[] frozen=t.original;
+            int minY=level.getMinY(),maxY=level.getMaxY(),x=t.x,z=t.z;
+            t.pending=CompletableFuture.supplyAsync(()->{
+                var surface=PreparedTerrainSurface.prepare(x,z,913L,1L,minY,maxY,
                         Arrays.copyOf(frozen,N*N));
                 var halo=new PreparedTerrainMesh.Halo(
                         Arrays.copyOfRange(frozen,N*N,N*N+N),
@@ -93,32 +116,36 @@ public final class ClientTerrainMeshProbe {
                 var mesh=PreparedTerrainMesh.compile(surface,halo);
                 return new Prepared(mesh,GpuTerrainMeshPair.pack(mesh));
             });
-            cursor=0;
-            return;
+            t.cursor=0;return false;
         }
-        if(!Arrays.equals(original,capture)) {
-            reset();
-            return;
+        if(!Arrays.equals(t.original,t.capture)) {
+            reset();return false;
         }
-        var prepared=pending.join();
+        var prepared=t.pending.join();
         var pair=prepared.mesh();
-        int min=Integer.MAX_VALUE,max=Integer.MIN_VALUE, changed=0;
-        for(int z=0;z<N;z++)for(int x=0;x<N;x++) {
-            int a=pair.original().topY(x,z), b=pair.alternate().topY(x,z);
-            min=Math.min(min,Math.min(a,b));max=Math.max(max,Math.max(a,b));
-            if(a!=b)changed++;
+        int min=Integer.MAX_VALUE,max=Integer.MIN_VALUE,changed=0;
+        // Include vertical faces down to the halo, not just top heights.
+        for(var mesh:new PreparedTerrainMesh.Mesh[]{pair.original(),pair.alternate()}) {
+            var vertices=mesh.vertices();
+            while(vertices.hasRemaining()) {
+                vertices.get();int y=vertices.get();vertices.get();
+                min=Math.min(min,y);max=Math.max(max,y);
+            }
         }
+        for(int z=0;z<N;z++)for(int x=0;x<N;x++)
+            if(pair.original().topY(x,z)!=pair.alternate().topY(x,z))changed++;
         if(changed==0) {
-            OperatorMod.LOGGER.error("OPERATOR_TERRAIN_MESH_NO_VARIATION");
-            reset(); return;
+            OperatorMod.LOGGER.error("OPERATOR_TERRAIN_MESH_NO_VARIATION region={}",t.id);
+            reset(); return false;
         }
-        var bounds=new FrameRealitySelector.Bounds(X,min-1,Z,X+N,max+1,Z+N);
-        guarded=new AABB(X,min-1,Z,X+N,max+1,Z+N).inflate(.25D);
-        regionBounds=bounds;
-        gpuPending=prepared;
-        armed=true;
-        OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_ARMED columns={} changed={} originalQuads={} alternateQuads={}",
-                N*N,changed,pair.original().quadCount(),pair.alternate().quadCount());
+        t.bounds=new FrameRealitySelector.Bounds(t.x,min-1,t.z,t.x+N,max+1,t.z+N);
+        t.guarded=new AABB(t.x,min-1,t.z,t.x+N,max+1,t.z+N).inflate(.25D);
+        t.ready=prepared;return true;
+    }
+
+    private static boolean visible(Camera camera,Tile tile) {
+        return camera.getCullFrustum().isVisible(tile.guarded)
+                || tile.guarded.inflate(1D).contains(camera.position());
     }
 
     public static void onFrame(Camera camera) {
@@ -128,65 +155,90 @@ public final class ClientTerrainMeshProbe {
         if(camera==null || camera.isPanoramicMode()
                 || camera.getCapturedFrustum()!=null || camera.getCullFrustum()==null
                 || camera.entity()==null) {
-            FIELD.sample(null); return;
+            FIELD.sample(null);return;
         }
-        boolean visible=camera.getCullFrustum().isVisible(guarded)
-                || guarded.inflate(1D).contains(camera.position());
-        if(FIELD.active(REGION)==null) {
-            if(!visible || gpuPending==null) return; // Never upload on the exit frame.
-            var pair=GpuTerrainMeshPair.upload(gpuPending.packed());
-            boolean adopted=false;
-            try {
-                long bytes=pair.buffer(false).size()+pair.buffer(true).size();
-                adopted=FIELD.register(REGION,regionBounds,gpuPending.mesh(),pair,bytes);
-                if(!adopted) {
-                    OperatorMod.LOGGER.error("OPERATOR_TERRAIN_GPU_BUDGET_REJECTED");
-                    reset();
-                    return;
+        var pos=camera.position();
+        if(!Double.isFinite(pos.x)||!Double.isFinite(pos.y)||!Double.isFinite(pos.z)) {
+            FIELD.sample(null);return;
+        }
+        if(!preloaded) {
+            // No upload on an exit frame. Wait for a view of both tiles;
+            // upload just one pair per frame, then establish continuity.
+            for(var tile:tiles) if(!visible(camera,tile)) return;
+            for(var tile:tiles) {
+                if(FIELD.active(tile.id)!=null) continue;
+                var packed=tile.ready.packed();
+                long bytes=(long)packed.original().remaining()+packed.alternate().remaining();
+                if(bytes>FrameGpuTerrainField.DEFAULT_BUDGET-FIELD.usedBytes()) {
+                    reset();return;
                 }
-                OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_PRELOADED originalBytes={} alternateBytes={}",
-                        pair.buffer(false).size(),pair.buffer(true).size());
-                gpuPending=null;
-            } finally {
-                if(!adopted) pair.close();
+                var pair=GpuTerrainMeshPair.upload(packed);
+                boolean adopted=false;
+                try {
+                    adopted=FIELD.register(tile.id,tile.bounds,tile.ready.mesh(),pair,bytes);
+                    if(!adopted) {reset();return;}
+                    long a=pair.buffer(false).size(),b=pair.buffer(true).size();
+                    OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_TILE_READY region={} originalBytes={} alternateBytes={}",tile.id,a,b);
+                    tile.ready=null;tile.pending=null;tile.original=null;
+                } finally {
+                    if(!adopted)pair.close();
+                }
+                break;
             }
+            if(FIELD.tileCount()!=tiles.length) return;
+            preloaded=true;
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_PRELOADED tiles={} totalBytes={}",
+                    FIELD.tileCount(),FIELD.usedBytes());
         }
-        var before=FIELD.active(REGION);
+        // A single sample evaluates every tile BEFORE any selection.
         long start=System.nanoTime();
-        var changes=FIELD.sample(b->visible);
-        long duration=System.nanoTime()-start;
-        var after=FIELD.active(REGION);
-        if(!switched && changes.size()==1 && !visible && before.mesh()!=after.mesh()
-                && after.revision()==1) {
-            var oldGpu=before.resource().buffer(before.alternate());
-            var activeGpu=after.resource().buffer(after.alternate());
-            if(oldGpu==activeGpu || activeGpu.isClosed() || !after.alternate())
-                throw new IllegalStateException("GPU terrain pair failed to switch");
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_SWITCH frame={} vertices={} bytes={}",
-                    frame,after.resource().vertexCount(true),activeGpu.size());
+        var changes=FIELD.sample(bounds->{
+            for(var tile:tiles) if(tile.bounds==bounds) return visible(camera,tile);
+            throw new IllegalStateException("Unknown terrain tile");
+        });
+        long elapsed=System.nanoTime()-start;
+        if(!switched && !changes.isEmpty()) {
+            if(changes.size()!=tiles.length)
+                throw new IllegalStateException("Expected both fixture tiles to exit on one frame");
+            int vertices=0,quads=0;long bytes=0;
+            for(var change:changes) {
+                var after=FIELD.active(change.regionId());
+                var pair=after.resource();
+                var active=pair.buffer(after.alternate());
+                if(!after.alternate() || after.revision()!=1 || active==pair.buffer(false)
+                        || active.isClosed() || change.exitFrame()-change.previousVisibleFrame()!=1)
+                    throw new IllegalStateException("GPU terrain pair failed to switch");
+                vertices+=pair.vertexCount(true);quads+=after.mesh().quadCount();bytes+=active.size();
+            }
             switched=true;exitFrame=frame;
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_SWITCH frame={} nanos={} revision={} quads={}",
-                    frame,duration,after.revision(),after.mesh().quadCount());
-        } else if(switched && visible && after.revision()==1
-                && before.mesh()==after.mesh()) {
-            if(!after.alternate() || after.resource().buffer(true).isClosed())
-                throw new IllegalStateException("GPU terrain variant lost on return");
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_SWITCH frame={} vertices={} bytes={} tiles={}",
+                    frame,vertices,bytes,changes.size());
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_SWITCH frame={} nanos={} revision=1 quads={}",
+                    frame,elapsed,quads);
+        } else if(switched) {
+            for(var tile:tiles) if(!visible(camera,tile)) return;
+            int vertices=0,quads=0;
+            for(var tile:tiles) {
+                var active=FIELD.active(tile.id);
+                if(!active.alternate() || active.resource().buffer(true).isClosed())
+                    throw new IllegalStateException("GPU terrain variant lost on return");
+                vertices+=active.resource().vertexCount(true);quads+=active.mesh().quadCount();
+            }
             returned=true;
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_RETURN frame={} vertices={}",frame,after.resource().vertexCount(true));
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_RETURN exitFrame={} returnFrame={} revision={} quads={}",
-                    exitFrame,frame,after.revision(),after.mesh().quadCount());
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_RETURN frame={} vertices={} tiles={}",
+                    frame,vertices,tiles.length);
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_MESH_RETURN exitFrame={} returnFrame={} revision=1 quads={}",
+                    exitFrame,frame,quads);
         }
     }
 
     public static void closeGpu() {
         FIELD.close();
-        gpuPending=null;
+        for(var tile:tiles) if(tile.pending!=null) tile.pending.cancel(false);
     }
 
     private static void reset() {
-        closeGpu();
-        capture=new int[TOTAL];original=null;regionBounds=null;
-        cursor=0;pending=null;guarded=null;
-        armed=false;switched=false;returned=false;frame=0;exitFrame=0;
+        closeGpu();tiles=newTiles();next=0;
+        armed=false;preloaded=false;switched=false;returned=false;frame=0;exitFrame=0;
     }
 }
