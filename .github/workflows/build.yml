@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' , feature/frame-reality, feature/prepared-terrain-field, feature/prebuilt-terrain-mesh ]
+    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' , feature/frame-reality, feature/prepared-terrain-field, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
