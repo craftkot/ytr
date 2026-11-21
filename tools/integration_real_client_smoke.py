@@ -239,7 +239,7 @@ def main() -> None:
                 log("World spawn confirmed by actual ServerPlayer callback")
             time.sleep(8)
             await_marker(proc, "OPERATOR_TERRAIN_MESH_ARMED", 45)
-            await_marker(proc, "OPERATOR_TERRAIN_GPU_PRELOADED", 45)
+            await_marker(proc, "OPERATOR_TERRAIN_GPU_PRELOADED tiles=2", 60)
             before = screenshot("01-before-fold.png")
             acknowledge("ci-before-captured.allow")
             # The probe uses vanilla extraction frames, not server-side yaw.
@@ -252,10 +252,20 @@ def main() -> None:
                 + match[5] + " ns selector CPU time (not GPU or world mutation time)")
 
             await_marker(proc, "OPERATOR_TERRAIN_MESH_SWITCH", 45)
-            await_marker(proc, "OPERATOR_TERRAIN_GPU_SWITCH", 45)
+            gpu_logs = await_marker(proc, "OPERATOR_TERRAIN_GPU_SWITCH", 45)
+            gpu_switch = re.search(r"OPERATOR_TERRAIN_GPU_SWITCH frame=(\d+) vertices=(\d+) bytes=(\d+) tiles=2", gpu_logs)
+            if not gpu_switch or int(gpu_switch[2]) == 0 or int(gpu_switch[3]) == 0:
+                raise RuntimeError("Two real GPU mesh pairs did not switch together")
+            for tile in ("ci-east", "ci-west"):
+                if f"OPERATOR_TERRAIN_GPU_TILE_READY region={tile} " not in gpu_logs:
+                    raise RuntimeError(f"Missing independently uploaded GPU pair: {tile}")
             await_marker(proc, "OPERATOR_CLIENT_TEST AUTONOMOUS_BLOCK_MOVED", 90)
             await_marker(proc, "OPERATOR_TERRAIN_MESH_RETURN", 45)
-            await_marker(proc, "OPERATOR_TERRAIN_GPU_RETURN", 45)
+            gpu_logs = await_marker(proc, "OPERATOR_TERRAIN_GPU_RETURN", 45)
+            gpu_return = re.search(r"OPERATOR_TERRAIN_GPU_RETURN frame=(\d+) vertices=(\d+) tiles=2", gpu_logs)
+            if not gpu_return or int(gpu_return[1]) <= int(gpu_switch[1]) or gpu_return[2] != gpu_switch[2]:
+                raise RuntimeError("Both selected GPU variants must persist on turn-back")
+            log("Both independently preloaded GPU tiles switched in one frame and persisted on return (not vanilla terrain drawing)")
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
