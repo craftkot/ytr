@@ -244,13 +244,18 @@ def capture_gpu_diagnostic(proc, revision: int) -> Path:
     return path
 
 
-def capture_repeated_revisions(proc, prior: Path) -> None:
+def capture_repeated_revisions(proc) -> None:
     import re
     flag = MARKER_DIR / "ci-gpu-repeat.allow"
     flag.write_text("repeat actual camera turns through revisions 2, 3, 4\n")
-    previous = diagnostic_mask(prior, True)
     last_return = 0
     try:
+        await_marker(proc, "OPERATOR_REPEAT_BASELINE_DRAW", 30)
+        time.sleep(2)
+        prior = screenshot("repeat-revision-1.png")
+        previous = diagnostic_mask(prior, True)
+        if previous.histogram()[255] < 300:
+            raise RuntimeError("Elevated repeat vantage did not capture resident terrain")
         for revision in range(2, 5):
             text = await_marker(proc, f"OPERATOR_REPEAT_ARMED revision={revision} ", 60)
             armed = re.search(rf"OPERATOR_REPEAT_ARMED revision={revision} frame=(\d+) tiles=2 bytes=(\d+)", text)
@@ -272,16 +277,29 @@ def capture_repeated_revisions(proc, prior: Path) -> None:
             path = screenshot(f"repeat-revision-{revision}.png")
             current = diagnostic_mask(path, True)
             delta = ImageChops.difference(previous, current)
-            changed = delta.histogram()[255]
-            delta.save(SCREENSHOTS / f"repeat-revision-{revision}-difference.png")
-            log(f"Repeated actual revision {revision}: exit={drawn[1]}, return={drawn[2]}, silhouetteDifference={changed}")
+            silhouette_changed = delta.histogram()[255]
+            # Only compare height-coded diagnostic pixels inside BOTH masks.
+            # This excludes changes in the vanilla sky, entities and lighting,
+            # and never treats the revision number itself as a visual change.
+            with Image.open(prior) as before, Image.open(path) as after:
+                a = before.convert("RGB").crop((80, 60, 1200, 660)).getchannel("G")
+                b = after.convert("RGB").crop((80, 60, 1200, 660)).getchannel("G")
+                height_delta = ImageChops.difference(a, b).point(lambda p: 255 if p >= 5 else 0)
+                internal = ImageChops.multiply(height_delta, ImageChops.multiply(previous, current))
+                internal_changed = internal.histogram()[255]
+                combined = ImageChops.lighter(delta, internal)
+                combined.save(SCREENSHOTS / f"repeat-revision-{revision}-difference.png")
+            changed = silhouette_changed + internal_changed
+            log(f"Repeated actual revision {revision}: exit={drawn[1]}, return={drawn[2]}, silhouetteDifference={silhouette_changed}, internalGeometryDifference={internal_changed}")
             if current.histogram()[255] < 300 or changed < 100:
                 raise RuntimeError("Repeated revision did not visibly change the geometry")
             previous = current
+            prior = path
     finally:
         flag.unlink(missing_ok=True)
     await_marker(proc, "OPERATOR_SECTION_REPLACEMENT_DISABLED mode=6", 15)
-    time.sleep(1)
+    await_marker(proc, "OPERATOR_REPEAT_VIEW_RESTORED", 15)
+    time.sleep(2)
 
 def capture_section_replacement(proc, multi=False) -> None:
     # A/B/C: unchanged vanilla, opaque sections omitted, then exact
@@ -447,7 +465,7 @@ def main() -> None:
             compare_gpu_silhouettes(original_gpu_image, alternate_gpu_image)
             capture_section_replacement(proc)
             capture_section_replacement(proc, multi=True)
-            capture_repeated_revisions(proc, auto_image)
+            capture_repeated_revisions(proc)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
