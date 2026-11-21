@@ -9,12 +9,12 @@ import com.mojang.renderpearl.api.buffers.GpuBuffer;
 /**
  * Client-only experimental persistent GPU vertex buffers. Both alternatives
  * are uploaded ahead of the visibility exit. A swap is just pointer selection.
- * The current format is position-only triangles; no vanilla terrain pipeline,
+ * The current format is position + RGBA triangles; no vanilla terrain pipeline,
  * textures, lighting or server collision changes are installed by this class.
  * All GPU ownership operations must run on Minecraft's render thread.
  */
 public final class GpuTerrainMeshPair implements AutoCloseable {
-    public static final int VERTEX_BYTES=3*Float.BYTES;
+    public static final int VERTEX_BYTES=3*Float.BYTES+4;
     private final GpuBuffer original,alternate;
     private final int originalVertices,alternateVertices;
     private boolean closed;
@@ -67,8 +67,11 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
         int[] order={0,1,2,0,2,3};
         while(in.hasRemaining()) {
             in.get(q);
-            for(int i:order) for(int axis=0;axis<3;axis++)
-                out.putFloat(q[i*3+axis]);
+            for(int i:order) {
+                for(int axis=0;axis<3;axis++) out.putFloat(q[i*3+axis]);
+                // White vertex color; the render pass selects diagnostic tint.
+                out.putInt(0xffffffff);
+            }
         }
         return out.flip();
     }
