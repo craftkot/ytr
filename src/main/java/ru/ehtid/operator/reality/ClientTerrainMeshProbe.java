@@ -35,9 +35,10 @@ public final class ClientTerrainMeshProbe {
     private static int next;
     private static boolean armed,preloaded,switched,returned;
     private static long frame,exitFrame;
-    private static boolean debugDraw;
+    private static boolean debugDraw, depthDraw;
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
+    private static boolean lastDrawDepth;
 
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
     private static final class Tile {
@@ -71,6 +72,8 @@ public final class ClientTerrainMeshProbe {
             OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_DRAW_DISABLED revision={}",lastDrawPhase);
         }
         debugDraw=requested;
+        depthDraw=requested && Files.isRegularFile(client.getSingleplayerServer()
+                .getWorldPath(LevelResource.ROOT).resolve("operator_reality/ci-gpu-depth.allow"));
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
         if(Math.abs(client.player.getX()-.5D)>.3D
@@ -253,7 +256,7 @@ public final class ClientTerrainMeshProbe {
     }
 
     /** Submit the selected resident buffers to the actual world render pass.
-     * CI diagnostic only: no depth test, no vanilla terrain replacement. */
+     * CI diagnostic only: selectable read-only depth test, no vanilla terrain replacement. */
     public static void draw(RenderPass pass) {
         if(!ENABLED || !debugDraw || drawEye==null || !preloaded) return;
         int phase=switched?1:0, count=0;
@@ -264,17 +267,19 @@ public final class ClientTerrainMeshProbe {
         for(var tile:tiles) {
             var active=FIELD.active(tile.id);
             TerrainDiagnosticDraw.draw(pass,active.resource(),active.alternate(),
-                    tile.x,tile.z,drawEye);
+                    tile.x,tile.z,drawEye,depthDraw);
             count++;
         }
-        if(lastDrawPhase!=phase) {
+        if(lastDrawPhase!=phase || lastDrawDepth!=depthDraw) {
             lastDrawPhase=phase;
-            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_DRAW revision={} tiles={}",phase,count);
+            lastDrawDepth=depthDraw;
+            OperatorMod.LOGGER.info("OPERATOR_TERRAIN_GPU_DRAW revision={} tiles={} mode={}",
+                    phase,count,depthDraw?"depth":"xray");
         }
     }
 
     public static void closeGpu() {
-        drawEye=null;debugDraw=false;lastDrawPhase=-1;
+        drawEye=null;debugDraw=false;depthDraw=false;lastDrawPhase=-1;lastDrawDepth=false;
         FIELD.close();
         for(var tile:tiles) if(tile.pending!=null) tile.pending.cancel(false);
     }
