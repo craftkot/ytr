@@ -68,4 +68,59 @@ class FrameGpuTerrainFieldTest {
             assertEquals(1,field.sample(box->false).size());
         }
     }
+    @Test void manyNewRevisionsKeepActiveUntilNextVisibleToHiddenTransition() {
+        try(var field=new FrameGpuTerrainField<Resource>(200)) {
+            var current=new Resource();
+            assertTrue(field.register("a",bounds(0),pair(0,1),current,100));
+            field.sample(box->true);field.sample(box->false);
+            for(long revision=2;revision<=65;revision++) {
+                var next=new Resource();
+                var mesh=pair(0,revision);
+                assertTrue(field.stage("a",mesh,next,100));
+                assertTrue(field.hasPending("a"));
+                assertTrue(field.sample(box->false).isEmpty());
+                assertSame(current,field.active("a").resource());
+                field.sample(box->true);
+                var chosen=field.sample(box->false);
+                assertEquals(1,chosen.size());
+                assertEquals(revision,chosen.getFirst().revision());
+                assertEquals(1,chosen.getFirst().exitFrame()-chosen.getFirst().previousVisibleFrame());
+                assertSame(next,field.active("a").resource());
+                assertSame(mesh.alternate(),field.active("a").mesh());
+                assertEquals(0,current.closes);
+                assertEquals(200,field.usedBytes());
+                assertFalse(field.stage("a",pair(0,revision+1),new Resource(),1));
+                field.releaseRetired();
+                assertEquals(1,current.closes);
+                assertEquals(100,field.usedBytes());
+                assertEquals(0,field.retiredCount());
+                current=next;
+            }
+        }
+    }
+    @Test void stagingRejectsStaleDuplicateWrongOriginAndUncoveredGeometry() {
+        try(var field=new FrameGpuTerrainField<Resource>(500)) {
+            var original=new Resource(); var next=new Resource();var rejected=new Resource();
+            assertTrue(field.register("a",bounds(0),pair(0,1),original,100));
+            assertFalse(field.stage("a",pair(0,2),next,100));
+            field.sample(b->true);field.sample(b->false);
+            assertFalse(field.stage("a",pair(0,1),next,100));
+            assertFalse(field.stage("a",pair(32,2),next,100));
+            assertFalse(field.stage("a",pair(0,2),original,100));
+            int[] heights=new int[1024],edges=new int[32];
+            Arrays.fill(heights,120);Arrays.fill(edges,120);
+            var outside=PreparedTerrainMesh.compile(
+                    PreparedTerrainSurface.prepare(0,0,913,2,-64,320,heights),
+                    new PreparedTerrainMesh.Halo(edges,edges,edges,edges));
+            assertFalse(field.stage("a",outside,rejected,100));
+            assertTrue(field.stage("a",pair(0,2),next,100));
+            assertFalse(field.stage("a",pair(0,3),rejected,100));
+            field.sample(b->true);field.sample(null);
+            assertTrue(field.sample(b->false).isEmpty());
+            assertSame(original,field.active("a").resource());
+            assertEquals(0,rejected.closes);
+            field.close();
+            assertEquals(1,original.closes);assertEquals(1,next.closes);
+        }
+    }
 }
