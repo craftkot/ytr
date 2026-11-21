@@ -1,6 +1,11 @@
 package ru.ehtid.operator.reality;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.nio.file.Files;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.Vec3;
@@ -39,11 +44,17 @@ public final class ClientTerrainMeshProbe {
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
     private static boolean lastDrawDepth;
-    // One explicitly chosen disposable CI section. No production suppression.
+    // Only explicit sections of the disposable CI fixture may be suppressed.
     private static final SectionTerrainMesh.Key TEST_SECTION=new SectionTerrainMesh.Key(-1,12,-1);
+    private static final SectionTerrainMesh.Key EAST_SECTION=new SectionTerrainMesh.Key(0,12,-1);
+    private static final List<SectionTerrainMesh.Key> SINGLE=List.of(TEST_SECTION);
+    private static final List<SectionTerrainMesh.Key> BOTH=List.of(TEST_SECTION,EAST_SECTION);
+    private record Replacement(Tile tile,FrameGpuTerrainField.Active<GpuTerrainMeshPair> active) {}
+    private static final Map<SectionTerrainMesh.Key,Replacement> replacements=new LinkedHashMap<>();
+    private static final Set<SectionTerrainMesh.Key> masked=new LinkedHashSet<>();
+    private static final BlockPos.MutableBlockPos sectionCheck=new BlockPos.MutableBlockPos();
     private static int replacementMode,lastReplacementMode,suppressed;
-    private static FrameGpuTerrainField.Active<GpuTerrainMeshPair> replacementActive;
-    private static Tile replacementTile;
+    private static boolean replacementDrawn;
     private static Vec3 replacementEye;
 
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
@@ -84,11 +95,14 @@ public final class ClientTerrainMeshProbe {
         int requestedReplacement=0;
         if(server!=null && !requested) {
             var root=server.getWorldPath(LevelResource.ROOT).resolve("operator_reality");
-            if(Files.isRegularFile(root.resolve("ci-gpu-replace.allow"))) requestedReplacement=2;
+            if(Files.isRegularFile(root.resolve("ci-gpu-replace-multi.allow"))) requestedReplacement=4;
+            else if(Files.isRegularFile(root.resolve("ci-gpu-hide-multi.allow"))) requestedReplacement=3;
+            else if(Files.isRegularFile(root.resolve("ci-gpu-replace.allow"))) requestedReplacement=2;
             else if(Files.isRegularFile(root.resolve("ci-gpu-hide-section.allow"))) requestedReplacement=1;
         }
         if(replacementMode!=0 && requestedReplacement==0)
             OperatorMod.LOGGER.info("OPERATOR_SECTION_REPLACEMENT_DISABLED mode={}",replacementMode);
+        if(replacementMode!=requestedReplacement) lastReplacementMode=0;
         replacementMode=requestedReplacement;
         if(armed || level==null || client.player==null
                 || client.getSingleplayerServer()==null) return;
@@ -183,7 +197,7 @@ public final class ClientTerrainMeshProbe {
     }
 
     public static void onFrame(Camera camera) {
-        drawEye=null;replacementActive=null;replacementTile=null;replacementEye=null;suppressed=0;
+        drawEye=null;clearReplacementFrame();
         if(!ENABLED || !RenderSystem.isOnRenderThread() || !armed || level==null
                 || Minecraft.getInstance().level!=level) return;
         frame++;
@@ -202,14 +216,7 @@ public final class ClientTerrainMeshProbe {
         if(replacementMode!=0 && preloaded && returned && Math.abs(pos.x-.5D)<.3D
                 && Math.abs(pos.z-4.5D)<.3D && pos.y>200D && pos.y<204D
                 && Math.abs(Math.abs(camera.yRot())-180F)<8F) {
-            for(var tile:tiles) {
-                var active=FIELD.active(tile.id);
-                if(active==null || !active.alternate() || active.resource().buffer(true).isClosed()
-                        || !active.resource().ranges(true).containsKey(TEST_SECTION)
-                        || !active.resource().ranges(false).containsKey(TEST_SECTION)) continue;
-                if(!TerrainDiagnosticDraw.replacementReady()) break;
-                replacementActive=active;replacementTile=tile;replacementEye=pos;break;
-            }
+            prepareReplacementFrame(pos,replacementMode>=3?BOTH:SINGLE);
         }
         if(returned) return;
         if(!preloaded) {
@@ -306,35 +313,74 @@ public final class ClientTerrainMeshProbe {
         }
     }
 
+    private static void clearReplacementFrame() {
+        replacements.clear();masked.clear();replacementEye=null;
+        suppressed=0;replacementDrawn=false;
+    }
+
+    /** All requested sections must have live ranges before any mask is allowed. */
+    private static void prepareReplacementFrame(Vec3 eye,List<SectionTerrainMesh.Key> keys) {
+        if(!TerrainDiagnosticDraw.replacementReady()) return;
+        for(var key:keys) {
+            if(!level.hasChunkAt(sectionCheck.set(key.x()*16,key.y()*16,key.z()*16))) {
+                clearReplacementFrame();return;
+            }
+            Replacement match=null;
+            for(var tile:tiles) {
+                var active=FIELD.active(tile.id);
+                if(active==null || !active.alternate() || active.resource().buffer(true).isClosed()
+                        || !active.resource().ranges(true).containsKey(key)
+                        || !active.resource().ranges(false).containsKey(key)) continue;
+                var range=active.resource().ranges(true).get(key);
+                if(range.vertexCount()<=0 || range.firstVertex()<0
+                        || (long)range.firstVertex()+range.vertexCount()>active.resource().vertexCount(true)
+                        || match!=null) {clearReplacementFrame();return;}
+                match=new Replacement(tile,active);
+            }
+            if(match==null) {clearReplacementFrame();return;}
+            replacements.put(key,match);
+        }
+        replacementEye=eye;
+    }
+
     /** Exact section selection during vanilla draw extraction. No cache mutation.
      * Only the disposable CI fixture may intentionally mask partial geometry. */
     public static boolean maskVanillaSection(BlockPos origin) {
-        if(!ENABLED || replacementMode==0 || replacementActive==null || replacementEye==null
+        if(!ENABLED || replacementMode==0 || replacementEye==null
                 || !RenderSystem.isOnRenderThread() || Minecraft.getInstance().level!=level
-                || origin.getX()!=TEST_SECTION.x()*16 || origin.getY()!=TEST_SECTION.y()*16
-                || origin.getZ()!=TEST_SECTION.z()*16) return false;
+                || (origin.getX()&15)!=0 || (origin.getY()&15)!=0 || (origin.getZ()&15)!=0) return false;
+        var key=new SectionTerrainMesh.Key(origin.getX()>>4,origin.getY()>>4,origin.getZ()>>4);
+        if(!replacements.containsKey(key)) return false;
+        masked.add(key);
         suppressed++;
         return true;
     }
 
-    /** Same frame and solid pass, after vanilla opaque geometry and before features. */
+    /** Submit only actually masked sections, exactly once in the solid pass. */
     public static void drawMaskedSection(RenderPass pass) {
-        if(suppressed==0 || replacementActive==null || replacementEye==null) return;
-        if(replacementMode==2) {
-            TerrainDiagnosticDraw.drawReplacement(pass,replacementActive.resource(),true,
-                    replacementTile.x,replacementTile.z,replacementEye,TEST_SECTION);
+        if(masked.isEmpty() || replacementEye==null || replacementDrawn) return;
+        replacementDrawn=true;
+        boolean draw=replacementMode==2 || replacementMode==4;
+        if(draw) for(var key:masked) {
+            var replacement=replacements.get(key);
+            TerrainDiagnosticDraw.drawReplacement(pass,replacement.active().resource(),true,
+                    replacement.tile().x,replacement.tile().z,replacementEye,key);
         }
-        if(lastReplacementMode!=replacementMode) {
+        if(lastReplacementMode!=replacementMode && masked.size()==replacements.size()) {
             lastReplacementMode=replacementMode;
-            OperatorMod.LOGGER.info("OPERATOR_SECTION_REPLACEMENT mode={} section=-1,12,-1 suppressedLayers={} drawn={}",
-                    replacementMode,suppressed,replacementMode==2);
+            if(replacementMode<3) {
+                OperatorMod.LOGGER.info("OPERATOR_SECTION_REPLACEMENT mode={} section=-1,12,-1 suppressedLayers={} drawn={}",
+                        replacementMode,suppressed,draw);
+            } else {
+                OperatorMod.LOGGER.info("OPERATOR_MULTI_SECTION_REPLACEMENT mode={} sections={} suppressedLayers={} drawn={}",
+                        replacementMode,masked.size(),suppressed,draw);
+            }
         }
     }
 
     public static void closeGpu() {
         drawEye=null;debugDraw=false;depthDraw=false;lastDrawPhase=-1;lastDrawDepth=false;
-        replacementMode=0;lastReplacementMode=0;suppressed=0;
-        replacementActive=null;replacementTile=null;replacementEye=null;
+        replacementMode=0;lastReplacementMode=0;clearReplacementFrame();
         FIELD.close();
         for(var tile:tiles) if(tile.pending!=null) tile.pending.cancel(false);
     }
