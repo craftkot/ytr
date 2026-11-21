@@ -27,7 +27,7 @@ def main() -> None:
     (RUN / "server.properties").write_text(
         "enable-rcon=true\nrcon.port=25575\n"
         "rcon.password=operator-ci-smoke-password\n"
-        "online-mode=false\nserver-port=25565\n"
+        "online-mode=false\nserver-port=25565\nlevel-seed=913\n"
     )
     with OUT.open("wb") as log:
         proc = subprocess.Popen(
