@@ -26,21 +26,30 @@ public final class GpuTerrainMeshPair implements AutoCloseable {
     }
 
     /** Worker-safe preparation: both immutable CPU triangle buffers. */
-    public record Packed(ByteBuffer original,ByteBuffer alternate,
-                         int originalVertices,int alternateVertices) {
-        public Packed {
+    public static final class Packed {
+        private final ByteBuffer original, alternate;
+        private final int originalVertices, alternateVertices;
+
+        private Packed(ByteBuffer original,ByteBuffer alternate,
+                       int originalVertices,int alternateVertices) {
             Objects.requireNonNull(original);
             Objects.requireNonNull(alternate);
             if(!original.isDirect()||!alternate.isDirect()
                     ||originalVertices<=0||alternateVertices<=0
+                    ||originalVertices>PreparedTerrainMesh.MAX_QUADS*6
+                    ||alternateVertices>PreparedTerrainMesh.MAX_QUADS*6
                     ||original.remaining()!=originalVertices*VERTEX_BYTES
                     ||alternate.remaining()!=alternateVertices*VERTEX_BYTES)
                 throw new IllegalArgumentException("Invalid packed GPU mesh");
-            original=original.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
-            alternate=alternate.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
+            this.original=original.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
+            this.alternate=alternate.asReadOnlyBuffer().order(ByteOrder.nativeOrder());
+            this.originalVertices=originalVertices;
+            this.alternateVertices=alternateVertices;
         }
-        @Override public ByteBuffer original() {return original.asReadOnlyBuffer().order(ByteOrder.nativeOrder());}
-        @Override public ByteBuffer alternate() {return alternate.asReadOnlyBuffer().order(ByteOrder.nativeOrder());}
+        public ByteBuffer original() {return original.asReadOnlyBuffer().order(ByteOrder.nativeOrder());}
+        public ByteBuffer alternate() {return alternate.asReadOnlyBuffer().order(ByteOrder.nativeOrder());}
+        public int originalVertices() {return originalVertices;}
+        public int alternateVertices() {return alternateVertices;}
     }
 
     public static Packed pack(PreparedTerrainMesh meshes) {
