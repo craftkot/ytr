@@ -244,6 +244,45 @@ def capture_gpu_diagnostic(proc, revision: int) -> Path:
     return path
 
 
+def capture_section_replacement(proc) -> None:
+    # A/B/C: unchanged vanilla, one opaque section omitted, then the
+    # exact resident range submitted in the solid pass at the same camera.
+    normal = screenshot("section-vanilla.png")
+    captures = []
+    for mode, filename in [(1, "ci-gpu-hide-section.allow"), (2, "ci-gpu-replace.allow")]:
+        flag = MARKER_DIR / filename
+        flag.write_text("disposable section substitution test\n")
+        try:
+            logtext = await_marker(proc, f"OPERATOR_SECTION_REPLACEMENT mode={mode} section=-1,12,-1", 30)
+            match = re.search(rf"OPERATOR_SECTION_REPLACEMENT mode={mode} section=-1,12,-1 suppressedLayers=(\d+) drawn=(true|false)", logtext)
+            if not match or int(match[1]) < 1 or (match[2] == "true") != (mode == 2):
+                raise RuntimeError("Unexpected section submission result")
+            time.sleep(2)
+            captures.append(screenshot(f"section-mode-{mode}.png"))
+        finally:
+            flag.unlink(missing_ok=True)
+        await_marker(proc, f"OPERATOR_SECTION_REPLACEMENT_DISABLED mode={mode}", 15)
+        time.sleep(1)
+    restored = screenshot("section-vanilla-restored.png")
+    with Image.open(normal) as before, Image.open(captures[0]) as hidden, Image.open(captures[1]) as replaced, Image.open(restored) as after:
+        # Count substantial differences only in the main world viewport.
+        roi = (160, 90, 1120, 620)
+        def diff(a, b):
+            return ImageChops.difference(a.convert("RGB").crop(roi), b.convert("RGB").crop(roi)).convert("L").point(lambda p: 255 if p >= 30 else 0)
+        removed = diff(before, hidden)
+        added = diff(hidden, replaced)
+        drift = diff(before, after)
+        removed.save(SCREENSHOTS / "section-removed-mask.png")
+        added.save(SCREENSHOTS / "section-replacement-mask.png")
+        removed_count = removed.histogram()[255]
+        added_count = added.histogram()[255]
+        drift_count = drift.histogram()[255]
+        log(f"Actual section substitution: removed={removed_count}, replacement={added_count}, restored-drift={drift_count}")
+        if removed_count < 100 or added_count < 100:
+            raise RuntimeError("No visible exact section removal or substitute geometry")
+        if drift_count > max(200, removed_count // 4):
+            raise RuntimeError("Vanilla restoration did not reproduce initial scene")
+
 def compare_gpu_silhouettes(original: Path, alternate: Path) -> None:
     a = diagnostic_mask(original, False)
     b = diagnostic_mask(alternate, True)
@@ -339,6 +378,7 @@ def main() -> None:
             log("Both independently preloaded GPU tiles switched in one frame and persisted on return")
             alternate_gpu_image = capture_gpu_diagnostic(proc, 1)
             compare_gpu_silhouettes(original_gpu_image, alternate_gpu_image)
+            capture_section_replacement(proc)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
