@@ -46,11 +46,13 @@ def await_marker(proc: subprocess.Popen[bytes], marker: str,
         data = CLIENT_LOG.read_text(encoding="utf-8", errors="replace") if CLIENT_LOG.is_file() else ""
         if ("OPERATOR_CLIENT_TEST FAILED" in data
                 or "OPERATOR_WORLD_FIELD_TEST FAILED" in data
-                or "OPERATOR_DEFERRED_TEST FAILED" in data):
+                or "OPERATOR_DEFERRED_TEST FAILED" in data
+                or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in data):
             bad = [x for x in data.splitlines()
                    if "OPERATOR_CLIENT_TEST FAILED" in x
                    or "OPERATOR_WORLD_FIELD_TEST FAILED" in x
-                   or "OPERATOR_DEFERRED_TEST FAILED" in x]
+                   or "OPERATOR_DEFERRED_TEST FAILED" in x
+                   or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in x]
             raise RuntimeError("Test controller reported failure: " + " | ".join(bad[-3:]))
         if marker in data:
             log("Verified integrated-world marker " + marker)
@@ -375,6 +377,28 @@ def capture_dynamic_section_substitution(proc) -> None:
             raise RuntimeError("Dynamic resident geometry did not replace and restore actual vanilla sections")
 
 
+def capture_real_voxel_surface(proc) -> None:
+    # The complete volumetric baseline is read from actual ClientLevel
+    # blocks, not inferred from the heightmap. Non-stone blocks must fail
+    # closed, including the six surrounding section faces.
+    marker = MARKER_DIR / "ci-voxel-section.allow"
+    marker.write_text("capture exact stone/air voxel section and halo from real Minecraft\\n")
+    try:
+        log_data = await_marker(proc, "OPERATOR_VOXEL_SECTION_REAL_SUCCESS", 60)
+        result = re.search(
+            r"OPERATOR_VOXEL_SECTION_REAL_SUCCESS x=(-?\d+) y=(-?\d+) z=(-?\d+) "
+            r"stone=(\d+) air=(\d+) exposedFaces=(\d+) top=(\d+) bottom=(\d+)",
+            log_data)
+        if not result or (int(result[1]),int(result[2]),int(result[3])) != (-2,12,-2):
+            raise RuntimeError("Wrong real-world voxel section was captured")
+        stone,air,faces,top,bottom=map(int,result.groups()[3:])
+        if stone+air!=4096 or stone<200 or faces<250 or top<200:
+            raise RuntimeError("Real 3D voxel capture omitted full stone, air or top geometry")
+        log(f"Real Minecraft voxel capture: stone={stone}, air={air}, exposedFaces={faces}, top={top}, bottom={bottom}")
+    finally:
+        marker.unlink(missing_ok=True)
+
+
 def capture_dynamic_pivot(proc) -> None:
     # Verify the moving camera cache does NOT discard preloaded terrain
     # merely because the player turns 180 degrees in place.
@@ -626,6 +650,7 @@ def main() -> None:
                 raise RuntimeError("Dynamic terrain did not capture and upload four actual world tiles")
             log(f"Camera-relative GPU preload: {len(initial_tiles)} real terrain uploads before moving the player")
             capture_dynamic_gpu_diagnostic(proc)
+            capture_real_voxel_surface(proc)
             capture_dynamic_pivot(proc)
             capture_dynamic_section_substitution(proc)
             time.sleep(3)
