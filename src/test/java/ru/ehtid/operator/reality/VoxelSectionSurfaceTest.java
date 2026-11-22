@@ -105,4 +105,30 @@ class VoxelSectionSurfaceTest {
         assertEquals(6,surface.compile().quads().size());
         assertThrows(UnsupportedOperationException.class,()->surface.compile().quads().clear());
     }
+    @Test void everyVoxelFaceProducesOutwardWoundTightUnitCubeGeometry() {
+        var core=cube(VoxelSectionSurface.AIR);
+        core[VoxelSectionSurface.index(8,6,8)]=VoxelSectionSurface.STONE;
+        var mesh=new VoxelSectionSurface(core,VoxelSectionSurface.Halo.filled(VoxelSectionSurface.AIR)).compile();
+        for(var quad:mesh.quads()) {
+            var v=quad.vertices();
+            assertEquals(12,v.length);
+            for(int i=0;i<12;i+=3) {
+                assertTrue(v[i]>=8 && v[i]<=9);
+                assertTrue(v[i+1]>=6 && v[i+1]<=7);
+                assertTrue(v[i+2]>=8 && v[i+2]<=9);
+            }
+            int ax=v[3]-v[0],ay=v[4]-v[1],az=v[5]-v[2];
+            int bx=v[6]-v[0],by=v[7]-v[1],bz=v[8]-v[2];
+            int nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+            int[] normal=switch(quad.face()) {
+                case WEST -> new int[]{-1,0,0};
+                case EAST -> new int[]{1,0,0};
+                case DOWN -> new int[]{0,-1,0};
+                case UP -> new int[]{0,1,0};
+                case NORTH -> new int[]{0,0,-1};
+                case SOUTH -> new int[]{0,0,1};
+            };
+            assertArrayEquals(normal,new int[]{nx,ny,nz});
+        }
+    }
 }
