@@ -43,6 +43,7 @@ public final class ClientTerrainMeshProbe {
     private static boolean autoReady,autoSubmitted;
     private static long repeatTarget=2,repeatArmed,repeatExit,repeatReturn,repeatDrawn;
     private static boolean repeatWaitingReturn,repeatBaselineDrawn;
+    private static boolean dynamicPlanVerified;
     private static boolean debugDraw, depthDraw;
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
@@ -75,7 +76,11 @@ public final class ClientTerrainMeshProbe {
         Tile(String id,int x,int z) {this.id=id;this.x=x;this.z=z;}
     }
     private static Tile[] newTiles() {
-        return new Tile[]{new Tile("ci-east",0,-32),new Tile("ci-west",-32,-32)};
+        // The CI fixture now goes through the same camera-relative planner
+        // as a moving 64-region field. Names preserve existing log contracts.
+        var planned=TerrainRegionPlanner.plan(.5D,4.5D,180D,2,2);
+        return new Tile[]{new Tile("ci-east",planned.get(0).x(),planned.get(0).z()),
+                new Tile("ci-west",planned.get(1).x(),planned.get(1).z())};
     }
     private ClientTerrainMeshProbe() {}
 
@@ -222,6 +227,17 @@ public final class ClientTerrainMeshProbe {
         var pos=camera.position();
         if(!Double.isFinite(pos.x)||!Double.isFinite(pos.y)||!Double.isFinite(pos.z)) {
             FIELD.sample(null);return;
+        }
+        if(!dynamicPlanVerified && Math.abs(pos.x-.5D)<.3D
+                && Math.abs(pos.z-4.5D)<.3D && Math.abs(Math.abs(camera.yRot())-180F)<8F) {
+            var requested=TerrainRegionPlanner.plan(pos.x,pos.z,camera.yRot(),2,2);
+            if(requested.size()!=tiles.length)throw new IllegalStateException("Dynamic fixture region budget");
+            for(int i=0;i<tiles.length;i++)
+                if(tiles[i].x!=requested.get(i).x() || tiles[i].z!=requested.get(i).z())
+                    throw new IllegalStateException("Camera-relative terrain plan does not match fixture");
+            dynamicPlanVerified=true;
+            OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_REGION_PLAN tiles={} east={} west={} frame={}",
+                    requested.size(),requested.get(0).id(),requested.get(1).id(),frame);
         }
         if(debugDraw && preloaded && Math.abs(pos.x-.5D)<.3D
                 && Math.abs(pos.z-4.5D)<.3D && pos.y>200D && pos.y<204D
@@ -513,5 +529,6 @@ public final class ClientTerrainMeshProbe {
         armed=false;preloaded=false;switched=false;returned=false;frame=0;exitFrame=0;returnFrame=0;
         autoReady=false;autoSubmitted=false;
         repeatTarget=2;repeatArmed=0;repeatExit=0;repeatReturn=0;repeatDrawn=0;repeatWaitingReturn=false;repeatBaselineDrawn=false;
+        dynamicPlanVerified=false;
     }
 }
