@@ -41,7 +41,8 @@ public final class TerrainRegionWindow {
         for(var key:desired) {
             var live=previous.get(key);
             if(live==null) {
-                live=new Request(key,Math.incrementExact(generation));
+                generation=Math.incrementExact(generation);
+                live=new Request(key,generation);
                 requested.add(live);
             } else retained.add(live);
             wanted.put(key,live);
