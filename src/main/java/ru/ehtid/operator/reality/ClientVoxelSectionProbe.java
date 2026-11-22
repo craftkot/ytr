@@ -3,7 +3,6 @@ package ru.ehtid.operator.reality;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -59,12 +58,12 @@ public final class ClientVoxelSectionProbe {
                         mesh.quads().size(),mesh.faceCount(VoxelSectionSurface.Face.UP),
                         mesh.faceCount(VoxelSectionSurface.Face.DOWN));
                 success=true;
-            } catch(CompletionException | RuntimeException error) {
+            } catch(RuntimeException error) {
                 fail("WORKER_"+error.getMessage());
             }
             return;
         }
-        int end=Math.min(COUNT,(verified==0 && cursor<COUNT?cursor:verified)+PER_TICK);
+        int end=Math.min(COUNT,cursor+PER_TICK);
         if(cursor<COUNT) {
             for(;cursor<end;cursor++) {
                 int value=sample(cursor);
