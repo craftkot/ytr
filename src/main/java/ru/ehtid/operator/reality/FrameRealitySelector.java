@@ -110,6 +110,11 @@ public final class FrameRealitySelector<T> {
         return selections == null ? List.of() : List.copyOf(selections);
     }
 
+    /** Remove an unloaded region without publishing a fake camera exit. */
+    public boolean unwatch(String id) {
+        return regions.remove(id)!=null;
+    }
+
     public long frame() { return frame; }
     public int watchedCount() { return regions.size(); }
 
