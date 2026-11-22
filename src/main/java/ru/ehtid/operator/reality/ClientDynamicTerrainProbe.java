@@ -195,9 +195,16 @@ public final class ClientDynamicTerrainProbe {
             OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_EVICT count={} resident={} retired={} bytes={}",
                     changed.evicted().size(),field.residentCount(),field.retiredCount(),field.gpuBytes());
         }
-        field.sample(bounds->camera.getCullFrustum().isVisible(new AABB(
+        var switches=field.sample(bounds->camera.getCullFrustum().isVisible(new AABB(
                 bounds.minX(),bounds.minY(),bounds.minZ(),
-                bounds.maxX(),bounds.maxY(),bounds.maxZ())));
+                bounds.maxX(),bounds.maxY(),bounds.maxZ()))
+                || new AABB(bounds.minX(),bounds.minY(),bounds.minZ(),
+                        bounds.maxX(),bounds.maxY(),bounds.maxZ()).inflate(1D).contains(pos));
+        if(!switches.isEmpty()) {
+            long bytes=field.gpuBytes();
+            OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_SWITCH frame={} regions={} resident={} bytes={}",
+                    extractionFrame,switches.size(),field.residentCount(),bytes);
+        }
         // Publication happens only on the owning render thread, max one pair
         // per frame. The worker completion has already been validated on tick.
         for(Iterator<Map.Entry<TerrainRegionPlanner.Key,Job>> it=jobs.entrySet().iterator();
