@@ -466,6 +466,19 @@ def main() -> None:
             capture_section_replacement(proc)
             capture_section_replacement(proc, multi=True)
             capture_repeated_revisions(proc)
+            # A separate CI-only moving-grid worker captures actual
+            # ClientLevel heightmaps, validates them and uploads four
+            # independently owned resident GPU pairs. It must NOT mask
+            # vanilla terrain or affect collision.
+            dynamic_flag = MARKER_DIR / "ci-dynamic-tiles.allow"
+            dynamic_flag.write_text("enable bounded camera-relative GPU resident tiles\n")
+            dynamic_log = await_marker(proc, "OPERATOR_DYNAMIC_GPU_WINDOW_READY resident=4 wanted=4", 95)
+            initial_tiles = re.findall(
+                r"OPERATOR_DYNAMIC_GPU_TILE_READY x=(-?\d+) z=(-?\d+) generation=(\d+) bytes=(\d+) resident=(\d+)",
+                dynamic_log)
+            if len(initial_tiles) < 4 or any(int(t[3]) <= 0 for t in initial_tiles):
+                raise RuntimeError("Dynamic terrain did not capture and upload four actual world tiles")
+            log(f"Camera-relative GPU preload: {len(initial_tiles)} real terrain uploads before moving the player")
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
@@ -620,6 +633,21 @@ def main() -> None:
                     "AIR/STONE -> STONE/AIR across WAL rollback"
                 )
             log("Two distinct client chunks confirm moved and restored block states")
+            # The player travels from z=4.5 to z=128.5 while the dynamic
+            # probe remains armed. Prove actual new GPU uploads from that
+            # loaded world area and retirement of the original window.
+            dynamic_tiles = re.findall(
+                r"OPERATOR_DYNAMIC_GPU_TILE_READY x=(-?\d+) z=(-?\d+) generation=(\d+) bytes=(\d+) resident=(\d+)",
+                client_states)
+            remote = [t for t in dynamic_tiles if abs(int(t[1])) >= 96]
+            if not remote or "OPERATOR_DYNAMIC_GPU_EVICT count=" not in client_states:
+                raise RuntimeError(
+                    "Moving real Minecraft camera did not evict old terrain and upload a new region"
+                )
+            if any(int(t[3]) <= 0 or int(t[4]) > 4 for t in dynamic_tiles):
+                raise RuntimeError("Dynamic GPU upload violated per-tile budget or residency cap")
+            log(f"Dynamic GPU residency across player travel: uploads={len(dynamic_tiles)}, remoteTiles={len(remote)}")
+            log("OPERATOR_REAL_CLIENT_DYNAMIC_GPU_SUCCESS")
             log("OPERATOR_REAL_CLIENT_DEFERRED_TWO_CHUNK_SUCCESS")
         except BaseException:
             print("--- last 100 console lines ---", file=sys.stderr)
