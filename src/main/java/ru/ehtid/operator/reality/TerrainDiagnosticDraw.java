@@ -53,6 +53,31 @@ final class TerrainDiagnosticDraw {
         drawRanges(pass,pair,alternate,x,z,eye,REPLACEMENT,key);
     }
 
+    /** Diagnostic-only cubic section submission; no vanilla section mask,
+     * no client chunk reads and no GPU allocation in this draw pass.
+     * World origin is an exact Minecraft 16-block section boundary.
+     */
+    static void drawVoxel(RenderPass pass,GpuVoxelSectionMesh mesh,
+                          SectionTerrainMesh.Key section,Vec3 eye,boolean depth) {
+        RenderSystem.assertOnRenderThread();
+        var transform=new Matrix4f(RenderSystem.getModelViewMatrixCopy());
+        transform.translate((float)((long)section.x()*16-eye.x),
+                (float)((long)section.y()*16-eye.y),
+                (float)((long)section.z()*16-eye.z));
+        var uniform=RenderSystem.getDynamicUniforms().writeTransform(
+                transform,new Vector4f(1f,1f,1f,1f),OFFSET,TEXTURE);
+        pass.pushDebugGroup(()->"Operator full voxel section diagnostic");
+        try {
+            pass.setPipeline(RenderSystem.getCompiledPipeline(depth?DEPTH:XRAY));
+            RenderSystem.bindDefaultUniforms(pass);
+            pass.setUniform("DynamicTransforms",uniform);
+            pass.setVertexBuffer(0,mesh.buffer().slice());
+            pass.draw(mesh.vertexCount(),1,0,0);
+        } finally {
+            pass.popDebugGroup();
+        }
+    }
+
     private static void drawRanges(RenderPass pass,GpuTerrainMeshPair pair,boolean alternate,
                      int x,int z,Vec3 eye,RenderPipeline pipeline,SectionTerrainMesh.Key key) {
         RenderSystem.assertOnRenderThread();
