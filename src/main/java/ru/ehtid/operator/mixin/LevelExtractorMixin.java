@@ -16,5 +16,6 @@ public abstract class LevelExtractorMixin {
             float worldPartialTicks, CallbackInfo ci) {
         ClientFrameRealityProbe.onFrame(camera);
         ru.ehtid.operator.reality.ClientTerrainMeshProbe.onFrame(camera);
+        ru.ehtid.operator.reality.ClientDynamicTerrainProbe.onFrame(camera);
     }
 }
