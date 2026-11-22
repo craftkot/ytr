@@ -97,7 +97,6 @@ public final class ClientDynamicTerrainProbe {
         xraySelected=requested && Files.isRegularFile(root.resolve("ci-dynamic-xray-selected.allow"));
         int nextMode=0;
         if(requested) {
-            var root=server.getWorldPath(LevelResource.ROOT).resolve("operator_reality");
             if(Files.isRegularFile(root.resolve("ci-dynamic-replace-section.allow")))nextMode=2;
             else if(Files.isRegularFile(root.resolve("ci-dynamic-hide-section.allow")))nextMode=1;
         }
