@@ -235,6 +235,10 @@ public final class ClientDynamicTerrainProbe {
             long bytes=field.gpuBytes();
             OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_SWITCH frame={} regions={} resident={} bytes={}",
                     extractionFrame,switches.size(),field.residentCount(),bytes);
+            for(var change:switches)
+                OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_SELECTED frame={} id={} revision={} alternate={} previousVisible={} exit={}",
+                        extractionFrame,change.regionId(),change.revision(),
+                        change.variant().alternate(),change.previousVisibleFrame(),change.exitFrame());
         }
         // Publication happens only on the owning render thread, max one pair
         // per frame. The worker completion has already been validated on tick.
