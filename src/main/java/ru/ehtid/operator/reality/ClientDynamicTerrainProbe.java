@@ -80,7 +80,7 @@ public final class ClientDynamicTerrainProbe {
             jobs.put(request.key(),new Job(request,level.getMinY(),level.getMaxY()));
         }
         for(var job:jobs.values()) {
-            if(job.ready!=null)continue;
+            if(job.ready!=null && job.validated==CELLS)continue;
             if(job.worker!=null && !job.worker.isDone())continue;
             if(job.worker!=null && job.worker.isCompletedExceptionally()) {
                 OperatorMod.LOGGER.error("OPERATOR_DYNAMIC_GPU_WORKER_FAILED key={}",job.request.key());
