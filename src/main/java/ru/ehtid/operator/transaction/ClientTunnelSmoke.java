@@ -38,6 +38,7 @@ public final class ClientTunnelSmoke {
     private String ownerId = "";
     private int repeatRevision=2;
     private boolean repeatAway,repeatViewActive;
+    private int dynamicPivotPhase;
 
     public void tick(MinecraftServer server, ObservationEngine observer) {
         if (!Boolean.getBoolean("operator.reality.ciClientSmoke")
@@ -110,6 +111,21 @@ public final class ClientTunnelSmoke {
                             + "sourceAir=true targetStone=true wal=COMMITTED", ownerId);
                 }
                 case 3 -> {
+                    // The dynamic cache must keep already-uploaded regions
+                    // resident through an instantaneous 180-degree pivot.
+                    // Fixture opt-in only; no world mutation.
+                    if(dynamicPivotPhase==0 && Files.isRegularFile(directory.resolve("ci-dynamic-pivot-away.allow"))) {
+                        placeCamera(player,4.5D,0.0F);
+                        dynamicPivotPhase=1;
+                        OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_PIVOT_AWAY");
+                        return;
+                    }
+                    if(dynamicPivotPhase==1 && Files.isRegularFile(directory.resolve("ci-dynamic-pivot-return.allow"))) {
+                        placeCamera(player,4.5D,180.0F);
+                        dynamicPivotPhase=2;
+                        OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_PIVOT_RETURN");
+                        return;
+                    }
                     // Repeated in-place camera turns are held until the
                     // actual client acknowledges the hidden extraction frame.
                     // No additional server block changes during these turns.
