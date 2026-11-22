@@ -3,6 +3,10 @@ package ru.ehtid.operator.reality;
 import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import net.minecraft.client.Camera;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -32,7 +36,13 @@ public final class ClientVoxelSectionProbe {
     private static int cursor,verified;
     private static boolean success,failed;
     private static ClientLevel world;
-    private static CompletableFuture<VoxelSectionSurface.Mesh> worker;
+    private record Prepared(VoxelSectionSurface.Mesh mesh,VoxelSectionGpuPacking.Packed packed) {}
+    private static CompletableFuture<Prepared> worker;
+    private static Prepared ready;
+    private static GpuVoxelSectionMesh resident;
+    private static Vec3 drawEye;
+    private static boolean drawRequested;
+    private static long frame,lastDrawFrame=-1;
     private static final BlockPos.MutableBlockPos pos=new BlockPos.MutableBlockPos();
 
     private ClientVoxelSectionProbe(){}
@@ -40,8 +50,10 @@ public final class ClientVoxelSectionProbe {
     public static void tick(Minecraft client) {
         if(!ENABLED || !client.isSameThread())return;
         var server=client.getSingleplayerServer();
-        boolean enabled=server!=null && Files.isRegularFile(server.getWorldPath(LevelResource.ROOT)
-                .resolve("operator_reality/ci-voxel-section.allow"));
+        var root=server==null?null:server.getWorldPath(LevelResource.ROOT)
+                .resolve("operator_reality");
+        boolean enabled=root!=null && Files.isRegularFile(root.resolve("ci-voxel-section.allow"));
+        drawRequested=enabled && Files.isRegularFile(root.resolve("ci-voxel-draw.allow"));
         if(client.level!=world) {
             clear();world=client.level;
         }
@@ -49,7 +61,8 @@ public final class ClientVoxelSectionProbe {
         if(worker!=null) {
             if(!worker.isDone())return;
             try {
-                var mesh=worker.join();
+                var prepared=worker.join();
+                var mesh=prepared.mesh();
                 if(mesh.stoneCount()<200 || mesh.quads().size()<250)
                     throw new IllegalStateException("Insufficient real stone section geometry");
                 OperatorMod.LOGGER.info(
@@ -57,6 +70,7 @@ public final class ClientVoxelSectionProbe {
                         KEY.x(),KEY.y(),KEY.z(),mesh.stoneCount(),mesh.airCount(),
                         mesh.quads().size(),mesh.faceCount(VoxelSectionSurface.Face.UP),
                         mesh.faceCount(VoxelSectionSurface.Face.DOWN));
+                ready=prepared;
                 success=true;
             } catch(RuntimeException error) {
                 fail("WORKER_"+error.getMessage());
@@ -88,8 +102,41 @@ public final class ClientVoxelSectionProbe {
                             Arrays.copyOfRange(frozen,CORE+3*HALO,CORE+4*HALO),
                             Arrays.copyOfRange(frozen,CORE+4*HALO,CORE+5*HALO),
                             Arrays.copyOfRange(frozen,CORE+5*HALO,COUNT))).compile();
-            return mesh;
+            return new Prepared(mesh,VoxelSectionGpuPacking.pack(mesh));
         });
+    }
+
+    /** Upload once on a real extraction frame. Never read a live block,
+     * compute triangles or suppress vanilla geometry in this code path. */
+    public static void onFrame(Camera camera) {
+        if(!ENABLED || !RenderSystem.isOnRenderThread())return;
+        frame++;drawEye=null;
+        if(Minecraft.getInstance().level!=world)return;
+        if(resident==null && ready!=null) {
+            resident=GpuVoxelSectionMesh.upload(ready.packed());
+            OperatorMod.LOGGER.info("OPERATOR_VOXEL_GPU_UPLOADED section={},{},{} vertices={} bytes={}",
+                    KEY.x(),KEY.y(),KEY.z(),resident.vertexCount(),
+                    (long)resident.vertexCount()*VoxelSectionGpuPacking.VERTEX_BYTES);
+            ready=null;
+        }
+        if(drawRequested && resident!=null && camera!=null
+                && !camera.isPanoramicMode() && camera.getCapturedFrustum()==null
+                && camera.getCullFrustum()!=null) drawEye=camera.position();
+    }
+
+    public static void draw(RenderPass pass) {
+        if(!ENABLED || !drawRequested || resident==null || drawEye==null
+                || lastDrawFrame==frame)return;
+        lastDrawFrame=frame;
+        TerrainDiagnosticDraw.drawVoxel(pass,resident,KEY,drawEye,false);
+        OperatorMod.LOGGER.info("OPERATOR_VOXEL_GPU_DRAW frame={} section={},{},{} vertices={}",
+                frame,KEY.x(),KEY.y(),KEY.z(),resident.vertexCount());
+    }
+
+    public static void closeGpu() {
+        if(!ENABLED || !RenderSystem.isOnRenderThread())return;
+        if(resident!=null)resident.close();
+        resident=null;drawEye=null;drawRequested=false;ready=null;lastDrawFrame=-1;
     }
 
     private static int sample(int index) {
@@ -125,5 +172,6 @@ public final class ClientVoxelSectionProbe {
     private static void clear() {
         if(worker!=null)worker.cancel(false);
         worker=null;cursor=0;verified=0;success=false;failed=false;
+        if(RenderSystem.isOnRenderThread())closeGpu();
     }
 }
