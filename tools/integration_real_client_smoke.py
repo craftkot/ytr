@@ -301,6 +301,37 @@ def capture_repeated_revisions(proc) -> None:
     await_marker(proc, "OPERATOR_REPEAT_VIEW_RESTORED", 15)
     time.sleep(2)
 
+def capture_dynamic_gpu_diagnostic(proc) -> None:
+    # Dynamic resource submission must be visible in the actual Minecraft
+    # viewport, not merely logged as a successful GPU allocation.
+    baseline = screenshot("dynamic-terrain-baseline.png")
+    flag = MARKER_DIR / "ci-dynamic-draw.allow"
+    flag.write_text("diagnostic depth-tested draw for moving camera tiles\\n")
+    try:
+        logs = await_marker(proc, "OPERATOR_DYNAMIC_GPU_DRAW frame=", 30)
+        import re
+        entries = re.findall(
+            r"OPERATOR_DYNAMIC_GPU_DRAW frame=(\d+) tiles=(\d+) alternate=(\d+) vertices=(\d+) resident=(\d+) bytes=(\d+)",
+            logs)
+        if not entries or not any(int(t[1]) == 4 and int(t[3]) > 0 and int(t[4]) == 4
+                                  for t in entries):
+            raise RuntimeError("Four dynamic tiles were not submitted in the same render pass")
+        time.sleep(2)
+        drawn = screenshot("dynamic-terrain-depth-overlay.png")
+        before = ImageChops.lighter(diagnostic_mask(baseline, False),
+                                    diagnostic_mask(baseline, True))
+        after = ImageChops.lighter(diagnostic_mask(drawn, False),
+                                   diagnostic_mask(drawn, True))
+        added = ImageChops.subtract(after, before)
+        added.save(SCREENSHOTS / "dynamic-terrain-depth-added-mask.png")
+        count = added.histogram()[255]
+        log(f"Camera-selected resident geometry visible in real client: {count} new pixels, four tiles")
+        if count < 300:
+            raise RuntimeError("Dynamic GPU draw reached render pass but did not alter actual visible pixels")
+    finally:
+        flag.unlink(missing_ok=True)
+
+
 def capture_section_replacement(proc, multi=False) -> None:
     # A/B/C: unchanged vanilla, opaque sections omitted, then exact
     # resident ranges submitted in the solid pass at the same camera.
@@ -479,6 +510,7 @@ def main() -> None:
             if len(initial_tiles) < 4 or any(int(t[3]) <= 0 for t in initial_tiles):
                 raise RuntimeError("Dynamic terrain did not capture and upload four actual world tiles")
             log(f"Camera-relative GPU preload: {len(initial_tiles)} real terrain uploads before moving the player")
+            capture_dynamic_gpu_diagnostic(proc)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
