@@ -332,6 +332,61 @@ def capture_dynamic_gpu_diagnostic(proc) -> None:
         flag.unlink(missing_ok=True)
 
 
+def capture_dynamic_pivot(proc) -> None:
+    # Verify the moving camera cache does NOT discard preloaded terrain
+    # merely because the player turns 180 degrees in place.
+    before = CLIENT_LOG.read_text(errors="replace")
+    away = MARKER_DIR / "ci-dynamic-pivot-away.allow"
+    returning = MARKER_DIR / "ci-dynamic-pivot-return.allow"
+    away.write_text("rotate in place without changing player position\\n")
+    try:
+        await_marker(proc, "OPERATOR_DYNAMIC_PIVOT_AWAY", 20)
+        time.sleep(2)
+        returning.write_text("return to north-facing camera\\n")
+        await_marker(proc, "OPERATOR_DYNAMIC_PIVOT_RETURN", 20)
+        time.sleep(2)
+        after = CLIENT_LOG.read_text(errors="replace")
+        if not after.startswith(before):
+            raise RuntimeError("Minecraft log rotated during dynamic pivot")
+        delta = after[len(before):]
+        selected = re.findall(
+            r"OPERATOR_DYNAMIC_GPU_SWITCH frame=(\d+) regions=(\d+) resident=(\d+) bytes=(\d+)",
+            delta)
+        if not selected or not any(int(t[1]) >= 1 and int(t[2]) == 4 and int(t[3]) > 0
+                                   for t in selected):
+            raise RuntimeError("No resident terrain region switched after 180-degree camera exit")
+        if "OPERATOR_DYNAMIC_GPU_EVICT" in delta or "OPERATOR_DYNAMIC_GPU_TILE_READY" in delta:
+            raise RuntimeError("Stationary camera pivot evicted or rebuilt resident GPU terrain")
+        draw_flag = MARKER_DIR / "ci-dynamic-draw.allow"
+        draw_flag.write_text("show selected alternative in actual Minecraft window\\n")
+        try:
+            found = False
+            for _ in range(20):
+                if proc.poll() is not None:
+                    raise RuntimeError("Minecraft quit during dynamic return test")
+                new = CLIENT_LOG.read_text(errors="replace")[len(before):]
+                entries = re.findall(
+                    r"OPERATOR_DYNAMIC_GPU_DRAW frame=(\d+) tiles=(\d+) alternate=(\d+) vertices=(\d+) resident=(\d+) bytes=(\d+)",
+                    new)
+                if any(int(t[2]) >= 1 and int(t[4]) == 4 for t in entries):
+                    found = True
+                    break
+                time.sleep(1)
+            if not found:
+                raise RuntimeError("Selected dynamic alternatives were not drawn after return")
+            time.sleep(1)
+            img = screenshot("dynamic-camera-pivot-alternate.png")
+            cyan = diagnostic_mask(img, True).histogram()[255]
+            log(f"Camera pivot retained four GPU tiles, switched {len(selected)} exit frames and rendered {cyan} cyan pixels")
+            if cyan < 300:
+                raise RuntimeError("Dynamic selected alternate is not visibly rendered after camera return")
+        finally:
+            draw_flag.unlink(missing_ok=True)
+    finally:
+        away.unlink(missing_ok=True)
+        returning.unlink(missing_ok=True)
+
+
 def capture_section_replacement(proc, multi=False) -> None:
     # A/B/C: unchanged vanilla, opaque sections omitted, then exact
     # resident ranges submitted in the solid pass at the same camera.
@@ -511,6 +566,7 @@ def main() -> None:
                 raise RuntimeError("Dynamic terrain did not capture and upload four actual world tiles")
             log(f"Camera-relative GPU preload: {len(initial_tiles)} real terrain uploads before moving the player")
             capture_dynamic_gpu_diagnostic(proc)
+            capture_dynamic_pivot(proc)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
