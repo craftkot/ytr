@@ -395,6 +395,29 @@ def capture_real_voxel_surface(proc) -> None:
         if stone+air!=4096 or stone<200 or faces<250 or top<200:
             raise RuntimeError("Real 3D voxel capture omitted full stone, air or top geometry")
         log(f"Real Minecraft voxel capture: stone={stone}, air={air}, exposedFaces={faces}, top={top}, bottom={bottom}")
+        gpu_log = await_marker(proc, "OPERATOR_VOXEL_GPU_UPLOADED section=-2,12,-2", 25)
+        upload = re.search(
+            r"OPERATOR_VOXEL_GPU_UPLOADED section=-2,12,-2 vertices=(\d+) bytes=(\d+)",
+            gpu_log)
+        if not upload or int(upload[1]) != faces*6 or int(upload[2]) != faces*6*16:
+            raise RuntimeError("Actual Minecraft volumetric GPU upload omitted cubic cave faces")
+        baseline = screenshot("voxel-3d-before-overlay.png")
+        visible = MARKER_DIR / "ci-voxel-draw.allow"
+        visible.write_text("enable CI-only real cubic voxel X-ray renderer\\n")
+        try:
+            await_marker(proc, "OPERATOR_VOXEL_GPU_DRAW frame=", 25)
+            time.sleep(2)
+            rendered = screenshot("voxel-3d-after-overlay.png")
+            with Image.open(baseline) as first, Image.open(rendered) as second:
+                pixel_diff = ImageChops.difference(first.convert("RGB"),second.convert("RGB"))
+                changed = sum(1 for pixel in pixel_diff.convert("L").crop((100,80,1180,650)).getdata()
+                              if pixel >= 25)
+                pixel_diff.save(SCREENSHOTS / "voxel-3d-overlay-difference.png")
+            log(f"Real stone/air cubic voxel mesh: GPU vertices={upload[1]}, bytes={upload[2]}, visible changed pixels={changed}")
+            if changed < 150:
+                raise RuntimeError("Volumetric cubic GPU mesh did not visibly render in actual Minecraft window")
+        finally:
+            visible.unlink(missing_ok=True)
     finally:
         marker.unlink(missing_ok=True)
 
