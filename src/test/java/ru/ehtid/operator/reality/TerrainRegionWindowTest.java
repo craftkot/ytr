@@ -46,4 +46,26 @@ class TerrainRegionWindowTest {
         assertThrows(IllegalArgumentException.class,()->window.update(Double.NaN,0,180));
         assertEquals(first.requested(),window.snapshot());
     }
+    @Test void instantPivotRetainsPreparedRegionsAndDoesNotInvalidateAsyncTokens() {
+        var window=new TerrainRegionWindow(2,4);
+        var north=window.update(.5,4.5,180);
+        assertEquals(4,north.requested().size());
+        for(int turn=0;turn<80;turn++) {
+            var pivot=window.update(.5,4.5,turn%2==0?0:180);
+            assertEquals(4,pivot.retained().size());
+            assertTrue(pivot.requested().isEmpty());
+            assertTrue(pivot.evicted().isEmpty());
+            assertEquals(north.requested(),pivot.retained());
+            for(var token:north.requested())assertTrue(window.accepts(token));
+        }
+        // Walking 17 blocks triggers a new window; old snapshot tokens for
+        // evicted regions must no longer be accepted.
+        var moved=window.update(.5,21.5,180);
+        assertTrue(moved.requested().size()>0);
+        assertTrue(moved.evicted().size()>0);
+        assertEquals(4,window.size());
+        for(var token:moved.evicted())assertFalse(window.accepts(token));
+        window.clear();
+        assertTrue(window.snapshot().isEmpty());
+    }
 }
