@@ -91,7 +91,8 @@ class DynamicTerrainFieldTest {
                     assertSame(buffers[i],field.active(original.get(i).key()).resource());
                 // An exit on the first turn must still select all four
                 // already-prepared resident alternatives without upload.
-                var changes=field.sample(b->turn%2!=0);
+                boolean nowVisible=turn%2!=0;
+                var changes=field.sample(b->nowVisible);
                 if(turn==0) {
                     assertEquals(4,changes.size());
                     assertTrue(changes.stream().allMatch(x->x.exitFrame()-x.previousVisibleFrame()==1));
