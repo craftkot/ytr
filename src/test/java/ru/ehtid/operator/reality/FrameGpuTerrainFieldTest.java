@@ -123,4 +123,53 @@ class FrameGpuTerrainFieldTest {
             assertEquals(1,original.closes);assertEquals(1,next.closes);
         }
     }
+
+    @Test void dynamicEvictionDefersClosingActiveAndPendingGpuPairs() {
+        try(var field=new FrameGpuTerrainField<Resource>(500)) {
+            var active=new Resource();
+            var pending=new Resource();
+            assertTrue(field.register("a",bounds(0),pair(0,1),active,100));
+            field.sample(box->true);field.sample(box->false);
+            assertTrue(field.stage("a",pair(0,2),pending,100));
+            assertEquals(200,field.usedBytes());
+            assertTrue(field.evict("a"));
+            assertFalse(field.evict("a"));
+            assertEquals(0,field.tileCount());
+            assertEquals(2,field.retiredCount());
+            assertEquals(0,active.closes);
+            assertEquals(0,pending.closes);
+            assertEquals(200,field.usedBytes());
+            assertTrue(field.sample(box->false).isEmpty());
+            field.releaseRetired();
+            assertEquals(1,active.closes);
+            assertEquals(1,pending.closes);
+            assertEquals(0,field.usedBytes());
+            assertEquals(0,field.retiredCount());
+            field.releaseRetired();
+            assertEquals(1,active.closes);
+        }
+    }
+
+    @Test void activeAndQueuedSameResourceRetiresOnceAndFreesRegionLimit() {
+        try(var field=new FrameGpuTerrainField<Resource>(100_000)) {
+            Resource[] resources=new Resource[FrameRealitySelector.MAX_WATCHED_REGIONS];
+            for(int i=0;i<resources.length;i++) {
+                resources[i]=new Resource();
+                assertTrue(field.register("tile"+i,bounds(i*32),pair(i*32,1),
+                        resources[i],100));
+            }
+            assertEquals(64,field.tileCount());
+            assertFalse(field.register("overflow",bounds(2048),pair(2048,1),
+                    new Resource(),100));
+            assertTrue(field.evict("tile0"));
+            assertEquals(1,field.retiredCount());
+            assertEquals(0,resources[0].closes);
+            assertTrue(field.register("replacement",bounds(2048),pair(2048,1),
+                    new Resource(),100));
+            assertEquals(64,field.tileCount());
+            field.releaseRetired();
+            assertEquals(1,resources[0].closes);
+            assertEquals(6400,field.usedBytes());
+        }
+    }
 }
