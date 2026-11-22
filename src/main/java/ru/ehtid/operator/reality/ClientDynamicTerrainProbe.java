@@ -4,6 +4,8 @@ import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -49,6 +51,18 @@ public final class ClientDynamicTerrainProbe {
     private static Vec3 drawEye;
     private static long extractionFrame,lastDrawFrame=-1;
     private static int nextJob;
+    // Only an explicitly identified disposable CI fixture may suppress
+    // vanilla sections. Normal play never reaches this code path.
+    private static final List<SectionTerrainMesh.Key> CI_SECTIONS=List.of(
+            new SectionTerrainMesh.Key(-1,12,-1),
+            new SectionTerrainMesh.Key(0,12,-1));
+    private record MaskedCandidate(TerrainRegionPlanner.Key tile,
+                                   FrameGpuTerrainField.Active<GpuTerrainMeshPair> active) {}
+    private static final Map<SectionTerrainMesh.Key,MaskedCandidate> candidates=new LinkedHashMap<>();
+    private static final Set<SectionTerrainMesh.Key> masked=new LinkedHashSet<>();
+    private static Vec3 replacementEye;
+    private static int replaceMode,reportedMode,maskedLayers;
+    private static boolean replacementDrawn;
 
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
     private static final class Job {
@@ -76,6 +90,18 @@ public final class ClientDynamicTerrainProbe {
                 .resolve("operator_reality/ci-dynamic-tiles.allow"));
         diagnosticDraw=requested && Files.isRegularFile(server.getWorldPath(LevelResource.ROOT)
                 .resolve("operator_reality/ci-dynamic-draw.allow"));
+        int nextMode=0;
+        if(requested) {
+            var root=server.getWorldPath(LevelResource.ROOT).resolve("operator_reality");
+            if(Files.isRegularFile(root.resolve("ci-dynamic-replace-section.allow")))nextMode=2;
+            else if(Files.isRegularFile(root.resolve("ci-dynamic-hide-section.allow")))nextMode=1;
+        }
+        if(replaceMode!=nextMode) {
+            if(replaceMode!=0 && nextMode==0)
+                OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_SECTION_DISABLED mode={}",replaceMode);
+            reportedMode=0;
+            replaceMode=nextMode;
+        }
         if(!requested || client.level==null || field==null || client.level!=level)return;
         jobs.entrySet().removeIf(entry->{
             if(field.accepts(entry.getValue().request))return false;
@@ -172,7 +198,8 @@ public final class ClientDynamicTerrainProbe {
     public static void onFrame(Camera camera) {
         if(!ENABLED || !RenderSystem.isOnRenderThread())return;
         extractionFrame++;
-        drawEye=null;
+        drawEye=null;replacementEye=null;
+        candidates.clear();masked.clear();maskedLayers=0;replacementDrawn=false;
         var current=Minecraft.getInstance().level;
         if(current!=level) {
             closeGpu();
@@ -237,10 +264,77 @@ public final class ClientDynamicTerrainProbe {
             break;
         }
         if(diagnosticDraw && field.residentCount()>0)drawEye=pos;
+        if(replaceMode!=0 && !diagnosticDraw && level==current
+                && Math.abs(pos.x-.5D)<.3D && Math.abs(pos.z-4.5D)<.3D
+                && pos.y>200D && pos.y<204D
+                && Math.abs(Math.abs(camera.yRot())-180F)<8F
+                && TerrainDiagnosticDraw.replacementReady()) {
+            prepareMaskedFrame(pos);
+        }
         if(field.residentCount()==WANTED && !allReady) {
             allReady=true;
             OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_WINDOW_READY resident={} wanted={} bytes={}",
                     field.residentCount(),field.wanted().size(),field.gpuBytes());
+        }
+    }
+
+    /**
+     * The dynamically managed GPU field supplies these ranges. They are
+     * specifically authorized by the disposable fixture whitelist, not by
+     * range existence alone. Real voxel coverage is still NOT established;
+     * production must not suppress its terrain using heightfields.
+     */
+    private static void prepareMaskedFrame(Vec3 eye) {
+        for(var section:CI_SECTIONS) {
+            var tile=SectionReplacementSafety.owner(section);
+            if(!level.hasChunkAt(new BlockPos(section.x()*16,section.y()*16,section.z()*16))) {
+                candidates.clear();return;
+            }
+            var active=field.active(tile);
+            if(active==null || active.resource().buffer(active.alternate()).isClosed()
+                    || !SectionReplacementSafety.residentRangesValid(section,tile,
+                            active.resource().ranges(false),active.resource().ranges(true),
+                            active.resource().vertexCount(false),
+                            active.resource().vertexCount(true))) {
+                candidates.clear();return;
+            }
+            candidates.put(section,new MaskedCandidate(tile,active));
+        }
+        if(candidates.size()==CI_SECTIONS.size())replacementEye=eye;
+    }
+
+    /** Mask only the two explicitly certified CI demo locations and only
+     * after an exact prevalidated resident range has been found. */
+    public static boolean maskVanillaSection(BlockPos origin) {
+        if(!ENABLED || replaceMode==0 || replacementEye==null
+                || !RenderSystem.isOnRenderThread() || level!=Minecraft.getInstance().level
+                || (origin.getX()&15)!=0 || (origin.getY()&15)!=0 || (origin.getZ()&15)!=0)
+            return false;
+        var key=new SectionTerrainMesh.Key(origin.getX()>>4,origin.getY()>>4,origin.getZ()>>4);
+        if(!candidates.containsKey(key))return false;
+        masked.add(key);
+        maskedLayers++;
+        return true;
+    }
+
+    /** Must be called after vanilla's solid-pass submission, once per
+     * extraction frame. No uploads or CPU meshing occur in this pass. */
+    public static void drawMaskedSection(RenderPass pass) {
+        if(!ENABLED || replacementEye==null || masked.isEmpty() || replacementDrawn)return;
+        replacementDrawn=true;
+        if(replaceMode==2) {
+            for(var section:masked) {
+                var candidate=candidates.get(section);
+                if(candidate==null)continue;
+                TerrainDiagnosticDraw.drawReplacement(pass,candidate.active().resource(),
+                        candidate.active().alternate(),candidate.tile().x(),
+                        candidate.tile().z(),replacementEye,section);
+            }
+        }
+        if(masked.size()==CI_SECTIONS.size() && reportedMode!=replaceMode) {
+            reportedMode=replaceMode;
+            OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_SECTION_REPLACEMENT mode={} sections={} layers={} drawn={} bytes={}",
+                    replaceMode,masked.size(),maskedLayers,replaceMode==2,field.gpuBytes());
         }
     }
 
@@ -276,5 +370,7 @@ public final class ClientDynamicTerrainProbe {
             field=null;
         }
         allReady=false;nextJob=0;drawEye=null;diagnosticDraw=false;lastDrawFrame=-1;
+        candidates.clear();masked.clear();replacementEye=null;
+        replaceMode=0;reportedMode=0;maskedLayers=0;replacementDrawn=false;
     }
 }
