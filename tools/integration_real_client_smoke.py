@@ -332,6 +332,49 @@ def capture_dynamic_gpu_diagnostic(proc) -> None:
         flag.unlink(missing_ok=True)
 
 
+def capture_dynamic_section_substitution(proc) -> None:
+    # The same two disposable Minecraft sections must be suppressible
+    # through dynamically selected resident tile buffers, not the old
+    # hardcoded GPU field. Verify hide, substitute and exact restoration.
+    vanilla = screenshot("dynamic-section-vanilla.png")
+    captures = []
+    for mode, filename in [(1, "ci-dynamic-hide-section.allow"),
+                           (2, "ci-dynamic-replace-section.allow")]:
+        flag = MARKER_DIR / filename
+        flag.write_text("CI-only dynamic terrain section substitution\\n")
+        try:
+            marker = f"OPERATOR_DYNAMIC_SECTION_REPLACEMENT mode={mode} sections=2"
+            logs = await_marker(proc, marker, 35)
+            found = re.search(re.escape(marker) +
+                              r" layers=(\d+) drawn=(true|false) bytes=(\d+)", logs)
+            if not found or int(found[1]) < 2 or int(found[3]) == 0 or (
+                    found[2] == "true") != (mode == 2):
+                raise RuntimeError("Invalid dynamic section replacement registration")
+            time.sleep(2)
+            captures.append(screenshot(f"dynamic-section-mode-{mode}.png"))
+        finally:
+            flag.unlink(missing_ok=True)
+        await_marker(proc, f"OPERATOR_DYNAMIC_SECTION_DISABLED mode={mode}", 20)
+        time.sleep(1)
+    restored = screenshot("dynamic-section-restored.png")
+    with Image.open(vanilla) as original, Image.open(captures[0]) as hidden, \
+            Image.open(captures[1]) as replaced, Image.open(restored) as final:
+        roi = (160, 90, 1120, 620)
+        def mask(a, b):
+            return ImageChops.difference(a.convert("RGB").crop(roi),
+                                         b.convert("RGB").crop(roi)
+                                         ).convert("L").point(lambda v:255 if v>=30 else 0)
+        removed = mask(original,hidden)
+        returned = mask(hidden,replaced)
+        drift = mask(original,final)
+        removed.save(SCREENSHOTS / "dynamic-section-removed-mask.png")
+        returned.save(SCREENSHOTS / "dynamic-section-replaced-mask.png")
+        missing,added,restored_drift=(m.histogram()[255] for m in (removed,returned,drift))
+        log(f"Dynamic resident section substitution: removed={missing}, replacement={added}, restored-drift={restored_drift}")
+        if missing<200 or added<200 or restored_drift>max(200,missing//4):
+            raise RuntimeError("Dynamic resident geometry did not replace and restore actual vanilla sections")
+
+
 def capture_dynamic_pivot(proc) -> None:
     # Verify the moving camera cache does NOT discard preloaded terrain
     # merely because the player turns 180 degrees in place.
@@ -567,6 +610,7 @@ def main() -> None:
             log(f"Camera-relative GPU preload: {len(initial_tiles)} real terrain uploads before moving the player")
             capture_dynamic_gpu_diagnostic(proc)
             capture_dynamic_pivot(proc)
+            capture_dynamic_section_substitution(proc)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
