@@ -512,7 +512,7 @@ def main() -> None:
             window_updates = [
                 tuple(map(int, m.groups()[:4]))
                 for m in re.finditer(
-                    r"OPERATOR_DYNAMIC_WINDOW_UPDATE frame=(\\d+) wanted=(\\d+) requested=(\\d+) evicted=(\\d+) yaw=[-\\d.]+",
+                    r"OPERATOR_DYNAMIC_WINDOW_UPDATE frame=(\d+) wanted=(\d+) requested=(\d+) evicted=(\d+) yaw=[-\d.]+",
                     client_log)
             ]
             if (len(window_updates)<2
