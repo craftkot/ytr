@@ -107,7 +107,7 @@ public final class FrameGpuTerrainField<R extends AutoCloseable> implements Auto
             var tile=tiles.get(change.regionId());
             var previous=tile.active.resource();
             tile.active=change.variant();tile.pending=null;
-            if(previous!=tile.active.resource())retired.add(previous);
+            if(previous!=tile.active.resource())retire(previous);
         }
         return selected;
     }
@@ -117,6 +117,27 @@ public final class FrameGpuTerrainField<R extends AutoCloseable> implements Auto
     }
     public long usedBytes() { return used; }
     public int tileCount() { return tiles.size(); }
+
+    /**
+     * Evict a no-longer-planned tile. Both the active and a not-yet-selected
+     * pending buffer are retired, but NOT closed during a frame in flight.
+     * Their bytes stay charged until the renderer-safe release point.
+     */
+    public boolean evict(String id) {
+        var tile=tiles.remove(id);
+        if(tile==null)return false;
+        if(!selector.unwatch(id))throw new IllegalStateException("Selector ownership drift");
+        retire(tile.active.resource());
+        if(tile.pending!=null)retire(tile.pending.resource());
+        return true;
+    }
+
+    private void retire(R resource) {
+        for(var existing:retired)if(existing==resource)return;
+        if(!owned.containsKey(resource))
+            throw new IllegalStateException("Unowned terrain resource retirement");
+        retired.add(resource);
+    }
 
     public boolean hasPending(String id) {
         var tile=tiles.get(id);return tile!=null && tile.pending!=null;
