@@ -44,6 +44,7 @@ public final class ClientTerrainMeshProbe {
     private static long repeatTarget=2,repeatArmed,repeatExit,repeatReturn,repeatDrawn;
     private static boolean repeatWaitingReturn,repeatBaselineDrawn;
     private static boolean dynamicPlanVerified;
+    private static final TerrainRegionWindow CAMERA_WINDOW=new TerrainRegionWindow(2,16);
     private static boolean debugDraw, depthDraw;
     private static Vec3 drawEye;
     private static int lastDrawPhase=-1;
@@ -225,9 +226,19 @@ public final class ClientTerrainMeshProbe {
             FIELD.sample(null);return;
         }
         var pos=camera.position();
-        if(!Double.isFinite(pos.x)||!Double.isFinite(pos.y)||!Double.isFinite(pos.z)) {
+        if(!Double.isFinite(pos.x)||!Double.isFinite(pos.y)||!Double.isFinite(pos.z)
+                || !Float.isFinite(camera.yRot())) {
+            CAMERA_WINDOW.clear();
             FIELD.sample(null);return;
         }
+        // This is a desired-region window, not permission to suppress
+        // vanilla terrain. Generation tokens let future async jobs discard
+        // stale results after the camera walks out and back.
+        var windowChange=CAMERA_WINDOW.update(pos.x,pos.z,camera.yRot());
+        if(!windowChange.requested().isEmpty() || !windowChange.evicted().isEmpty())
+            OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_WINDOW_UPDATE frame={} wanted={} requested={} evicted={} yaw={}",
+                    frame,CAMERA_WINDOW.size(),windowChange.requested().size(),
+                    windowChange.evicted().size(),camera.yRot());
         if(!dynamicPlanVerified && Math.abs(pos.x-.5D)<.3D
                 && Math.abs(pos.z-4.5D)<.3D && Math.abs(Math.abs(camera.yRot())-180F)<8F) {
             var requested=TerrainRegionPlanner.plan(pos.x,pos.z,camera.yRot(),2,2);
@@ -520,6 +531,7 @@ public final class ClientTerrainMeshProbe {
     public static void closeGpu() {
         drawEye=null;debugDraw=false;depthDraw=false;lastDrawPhase=-1;lastDrawDepth=false;
         replacementMode=0;lastReplacementMode=0;clearReplacementFrame();
+        CAMERA_WINDOW.clear();
         FIELD.close();
         for(var tile:tiles) if(tile.pending!=null) tile.pending.cancel(false);
     }
