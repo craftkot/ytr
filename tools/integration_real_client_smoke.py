@@ -426,9 +426,12 @@ def capture_dynamic_pivot(proc) -> None:
             r"OPERATOR_DYNAMIC_GPU_SELECTED frame=(\d+) id=terrain:(-?\d+):(-?\d+) "
             r"revision=(\d+) alternate=(true|false) previousVisible=(\d+) exit=(\d+)",
             delta)
+        # Field selector has its own local clock, independent of Minecraft
+        # extraction frames. Keep those two clocks separate.
+        switch_frames={int(t[0]) for t in selected}
         if not selected_tiles or not all(
                 entry[4]=="true" and int(entry[6])-int(entry[5])==1
-                and int(entry[0])==int(entry[6])
+                and int(entry[0]) in switch_frames
                 for entry in selected_tiles):
             raise RuntimeError("First hidden frame did not select real resident GPU alternatives")
         log(f"First-hidden-frame resident selections: {[(p[1],p[2],p[3]) for p in selected_tiles]}")
