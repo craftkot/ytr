@@ -26,6 +26,7 @@ public abstract class LevelRendererMixin {
             GpuTextureView atlas,boolean wireframe,Operation<Void> vanilla) {
         vanilla.call(sections,group,pass,sampler,atlas,wireframe);
         ClientTerrainMeshProbe.draw(pass);
+        ru.ehtid.operator.reality.ClientDynamicTerrainProbe.draw(pass);
     }
     @WrapOperation(method="extractSectionDrawGroups",at=@At(value="INVOKE",
             target="Lnet/minecraft/client/renderer/chunk/SectionMesh;getSectionDraw(Lnet/minecraft/client/renderer/chunk/ChunkSectionLayer;)Lnet/minecraft/client/renderer/chunk/SectionMesh$SectionDraw;"))
