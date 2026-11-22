@@ -10,6 +10,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.renderpearl.api.commands.RenderPass;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -43,7 +45,9 @@ public final class ClientDynamicTerrainProbe {
     private static ClientLevel level;
     private static DynamicTerrainField<GpuTerrainMeshPair> field;
     private static final Map<TerrainRegionPlanner.Key,Job> jobs=new LinkedHashMap<>();
-    private static boolean requested,allReady;
+    private static boolean requested,allReady,diagnosticDraw;
+    private static Vec3 drawEye;
+    private static long extractionFrame,lastDrawFrame=-1;
     private static int nextJob;
 
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
@@ -70,6 +74,8 @@ public final class ClientDynamicTerrainProbe {
         var server=client.getSingleplayerServer();
         requested=server!=null && Files.isRegularFile(server.getWorldPath(LevelResource.ROOT)
                 .resolve("operator_reality/ci-dynamic-tiles.allow"));
+        diagnosticDraw=requested && Files.isRegularFile(server.getWorldPath(LevelResource.ROOT)
+                .resolve("operator_reality/ci-dynamic-draw.allow"));
         if(!requested || client.level==null || field==null || client.level!=level)return;
         jobs.entrySet().removeIf(entry->{
             if(field.accepts(entry.getValue().request))return false;
@@ -165,6 +171,8 @@ public final class ClientDynamicTerrainProbe {
 
     public static void onFrame(Camera camera) {
         if(!ENABLED || !RenderSystem.isOnRenderThread())return;
+        extractionFrame++;
+        drawEye=null;
         var current=Minecraft.getInstance().level;
         if(current!=level) {
             closeGpu();
@@ -221,11 +229,35 @@ public final class ClientDynamicTerrainProbe {
             }
             break;
         }
+        if(diagnosticDraw && field.residentCount()>0)drawEye=pos;
         if(field.residentCount()==WANTED && !allReady) {
             allReady=true;
             OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_WINDOW_READY resident={} wanted={} bytes={}",
                     field.residentCount(),field.wanted().size(),field.gpuBytes());
         }
+    }
+
+    /** Diagnostic overlay ONLY, depth-tested against vanilla world.
+     * It neither suppresses existing sections nor updates collision.
+     * All geometry is already resident; submission performs no GPU upload.
+     */
+    public static void draw(RenderPass pass) {
+        if(!ENABLED || !diagnosticDraw || drawEye==null || field==null
+                || field.residentCount()==0 || lastDrawFrame==extractionFrame)return;
+        lastDrawFrame=extractionFrame;
+        int submitted=0,vertices=0,alternate=0;
+        for(var request:field.wanted()) {
+            var active=field.active(request.key());
+            if(active==null || active.resource().buffer(active.alternate()).isClosed())continue;
+            TerrainDiagnosticDraw.draw(pass,active.resource(),active.alternate(),
+                    request.key().x(),request.key().z(),drawEye,true);
+            submitted++;
+            vertices+=active.resource().vertexCount(active.alternate());
+            if(active.alternate())alternate++;
+        }
+        if(submitted>0)
+            OperatorMod.LOGGER.info("OPERATOR_DYNAMIC_GPU_DRAW frame={} tiles={} alternate={} vertices={} resident={} bytes={}",
+                    extractionFrame,submitted,alternate,vertices,field.residentCount(),field.gpuBytes());
     }
 
     public static void closeGpu() {
@@ -236,6 +268,6 @@ public final class ClientDynamicTerrainProbe {
             field.close();
             field=null;
         }
-        allReady=false;nextJob=0;
+        allReady=false;nextJob=0;drawEye=null;diagnosticDraw=false;lastDrawFrame=-1;
     }
 }
