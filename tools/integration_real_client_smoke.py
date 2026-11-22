@@ -400,8 +400,10 @@ def capture_dynamic_pivot(proc) -> None:
             raise RuntimeError("No resident terrain region switched after 180-degree camera exit")
         if "OPERATOR_DYNAMIC_GPU_EVICT" in delta or "OPERATOR_DYNAMIC_GPU_TILE_READY" in delta:
             raise RuntimeError("Stationary camera pivot evicted or rebuilt resident GPU terrain")
+        # First require a depth-tested render submission, which may
+        # legitimately hide alternate geometry behind vanilla stone.
         draw_flag = MARKER_DIR / "ci-dynamic-draw.allow"
-        draw_flag.write_text("show selected alternative in actual Minecraft window\\n")
+        draw_flag.write_text("depth-tested resident alternatives\\n")
         try:
             found = False
             for _ in range(20):
@@ -416,15 +418,30 @@ def capture_dynamic_pivot(proc) -> None:
                     break
                 time.sleep(1)
             if not found:
-                raise RuntimeError("Selected dynamic alternatives were not drawn after return")
+                raise RuntimeError("Selected dynamic alternatives were not submitted after return")
             time.sleep(1)
-            img = screenshot("dynamic-camera-pivot-alternate.png")
-            cyan = diagnostic_mask(img, True).histogram()[255]
-            log(f"Camera pivot retained four GPU tiles, switched {len(selected)} exit frames and rendered {cyan} cyan pixels")
-            if cyan < 300:
-                raise RuntimeError("Dynamic selected alternate is not visibly rendered after camera return")
+            screenshot("dynamic-camera-pivot-depth.png")
         finally:
             draw_flag.unlink(missing_ok=True)
+        # A separate X-ray control verifies the GPU-resident alternate
+        # really exists even when its depth-tested pixels are fully hidden.
+        xray_flag = MARKER_DIR / "ci-dynamic-xray-selected.allow"
+        xray_flag.write_text("show switched triangles without depth test\\n")
+        try:
+            xlog = await_marker(proc, "OPERATOR_DYNAMIC_GPU_XRAY frame=", 20)
+            marks = re.findall(
+                r"OPERATOR_DYNAMIC_GPU_XRAY frame=(\d+) selected=(\d+) vertices=(\d+) resident=(\d+) bytes=(\d+)",
+                xlog)
+            if not any(int(m[1])>=1 and int(m[2])>0 and int(m[3])==4 and int(m[4])>0 for m in marks):
+                raise RuntimeError("Resident alternate xray pass did not submit vertex ranges")
+            time.sleep(1)
+            img = screenshot("dynamic-camera-pivot-alternate-xray.png")
+            cyan = diagnostic_mask(img, True).histogram()[255]
+            log(f"Camera pivot retained four tiles, switched {len(selected)} exit frames; X-ray exposed {cyan} alternate pixels")
+            if cyan < 300:
+                raise RuntimeError("Switched alternatives were not visible even with X-ray diagnostics")
+        finally:
+            xray_flag.unlink(missing_ok=True)
     finally:
         away.unlink(missing_ok=True)
         returning.unlink(missing_ok=True)
