@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -43,6 +44,7 @@ public final class ClientDynamicTerrainProbe {
     private static DynamicTerrainField<GpuTerrainMeshPair> field;
     private static final Map<TerrainRegionPlanner.Key,Job> jobs=new LinkedHashMap<>();
     private static boolean requested,allReady;
+    private static int nextJob;
 
     private record Prepared(PreparedTerrainMesh mesh,GpuTerrainMeshPair.Packed packed) {}
     private static final class Job {
@@ -79,7 +81,11 @@ public final class ClientDynamicTerrainProbe {
             if(jobs.size()>=MAX_JOBS)break;
             jobs.put(request.key(),new Job(request,level.getMinY(),level.getMaxY()));
         }
-        for(var job:jobs.values()) {
+        // Round robin: a missing chunk must not monopolize all capture
+        // slices while other camera-desired regions are already loaded.
+        var pending=List.copyOf(jobs.values());
+        for(int n=0;n<pending.size();n++) {
+            var job=pending.get(Math.floorMod(nextJob++,pending.size()));
             if(job.ready!=null && job.validated==CELLS)continue;
             if(job.worker!=null && !job.worker.isDone())continue;
             if(job.worker!=null && job.worker.isCompletedExceptionally()) {
@@ -230,6 +236,6 @@ public final class ClientDynamicTerrainProbe {
             field.close();
             field=null;
         }
-        allReady=false;
+        allReady=false;nextJob=0;
     }
 }
