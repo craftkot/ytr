@@ -12,5 +12,6 @@ public abstract class GameRendererMixin {
     @Inject(method = "close", at = @At("HEAD"))
     private void operator$closeTerrainGpuBuffers(CallbackInfo ci) {
         ClientTerrainMeshProbe.closeGpu();
+        ru.ehtid.operator.reality.ClientDynamicTerrainProbe.closeGpu();
     }
 }
