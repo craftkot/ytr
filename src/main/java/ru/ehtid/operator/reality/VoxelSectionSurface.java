@@ -36,6 +36,20 @@ public final class VoxelSectionSurface {
                 throw new IllegalArgumentException("Outside voxel section");
             Objects.requireNonNull(face);
         }
+        /** Four CCW corners of a real unit cube, in local section coords.
+         * This preserves walls and ceilings for a later material-aware GPU
+         * packer instead of inventing a single top face per X/Z column. */
+        public int[] vertices() {
+            int xx=x+1,yy=y+1,zz=z+1;
+            return switch(face) {
+                case WEST -> new int[]{x,y,z, x,y,zz, x,yy,zz, x,yy,z};
+                case EAST -> new int[]{xx,y,z, xx,yy,z, xx,yy,zz, xx,y,zz};
+                case DOWN -> new int[]{x,y,z, xx,y,z, xx,y,zz, x,y,zz};
+                case UP -> new int[]{x,yy,z, x,yy,zz, xx,yy,zz, xx,yy,z};
+                case NORTH -> new int[]{x,y,z, x,yy,z, xx,yy,z, xx,y,z};
+                case SOUTH -> new int[]{x,y,zz, xx,y,zz, xx,yy,zz, x,yy,zz};
+            };
+        }
     }
     public record Mesh(List<Quad> quads,int stoneCount,int airCount) {
         public Mesh {
