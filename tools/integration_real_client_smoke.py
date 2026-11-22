@@ -509,6 +509,20 @@ def main() -> None:
                        or "joined the game" in line.lower()
                        for line in client_log.splitlines()):
                 raise RuntimeError("No actual player-join event recorded")
+            window_updates = [
+                tuple(map(int, m.groups()[:4]))
+                for m in re.finditer(
+                    r"OPERATOR_DYNAMIC_WINDOW_UPDATE frame=(\\d+) wanted=(\\d+) requested=(\\d+) evicted=(\\d+) yaw=[-\\d.]+",
+                    client_log)
+            ]
+            if (len(window_updates)<2
+                    or not any(wanted==16 and requested>0 and evicted>0
+                               for _,wanted,requested,evicted in window_updates)):
+                raise RuntimeError("Actual Minecraft camera movement did not reprioritize the dynamic terrain window")
+            if any(wanted>16 or requested>16 or evicted>16
+                   for _,wanted,requested,evicted in window_updates):
+                raise RuntimeError("Dynamic camera window exceeded bounded planning budget")
+            log(f"Actual camera-driven region updates verified: {len(window_updates)} changes, bounded to 16 desired tiles")
             # Independently assert the CLIENT'S own chunk states and rotation.
             # The integrated-server's authoritative logs alone cannot prove
             # that the rendered client received the changed blocks.
