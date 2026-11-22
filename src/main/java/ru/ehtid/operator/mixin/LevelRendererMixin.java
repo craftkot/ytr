@@ -34,7 +34,10 @@ public abstract class LevelRendererMixin {
             ChunkSectionLayer layer,Operation<SectionMesh.SectionDraw> vanilla,
             @Local BlockPos origin) {
         var draw=vanilla.call(mesh,layer);
-        return draw!=null && !layer.translucent() && ClientTerrainMeshProbe.maskVanillaSection(origin)?null:draw;
+        return draw!=null && !layer.translucent()
+                && (ClientTerrainMeshProbe.maskVanillaSection(origin)
+                    || ru.ehtid.operator.reality.ClientDynamicTerrainProbe.maskVanillaSection(origin))
+                ?null:draw;
     }
 
     @WrapOperation(method="executeSolid",at=@At(value="INVOKE",
@@ -44,5 +47,6 @@ public abstract class LevelRendererMixin {
             GpuTextureView atlas,boolean wireframe,Operation<Void> vanilla) {
         vanilla.call(sections,group,pass,sampler,atlas,wireframe);
         ClientTerrainMeshProbe.drawMaskedSection(pass);
+        ru.ehtid.operator.reality.ClientDynamicTerrainProbe.drawMaskedSection(pass);
     }
 }
