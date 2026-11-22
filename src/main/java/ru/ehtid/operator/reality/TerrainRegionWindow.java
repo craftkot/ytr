@@ -2,7 +2,6 @@ package ru.ehtid.operator.reality;
 
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.ArrayList;
 import java.util.Objects;
 
@@ -34,7 +33,7 @@ public final class TerrainRegionWindow {
 
     public Update update(double x,double z,double yaw) {
         var desired=TerrainRegionPlanner.plan(x,z,yaw,radius,capacity);
-        var previous=Map.copyOf(wanted);
+        var previous=new LinkedHashMap<>(wanted);
         var retained=new ArrayList<Request>();
         var requested=new ArrayList<Request>();
         var evicted=new ArrayList<Request>();
