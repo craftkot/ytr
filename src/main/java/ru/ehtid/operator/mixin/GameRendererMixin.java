@@ -13,5 +13,6 @@ public abstract class GameRendererMixin {
     private void operator$closeTerrainGpuBuffers(CallbackInfo ci) {
         ClientTerrainMeshProbe.closeGpu();
         ru.ehtid.operator.reality.ClientDynamicTerrainProbe.closeGpu();
+        ru.ehtid.operator.reality.ClientVoxelSectionProbe.closeGpu();
     }
 }
