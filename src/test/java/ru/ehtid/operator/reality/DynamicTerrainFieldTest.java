@@ -69,4 +69,37 @@ class DynamicTerrainFieldTest {
             assertEquals(100,field.gpuBytes());
         }
     }
+    @Test void rapidPivotKeepsResidentPairsAndSelectsPreparedAlternatesBeforeReturn() {
+        try(var field=new DynamicTerrainField<Buffer>(2,4,2000)) {
+            var original=field.onCamera(.5,4.5,180).requested();
+            assertEquals(4,original.size());
+            var buffers=new Buffer[4];
+            for(int i=0;i<4;i++) {
+                var token=original.get(i);
+                buffers[i]=new Buffer();
+                assertTrue(field.publish(token,bounds(token.key()),mesh(token.key(),1),buffers[i],100));
+            }
+            assertEquals(4,field.residentCount());
+            assertTrue(field.sample(b->true).isEmpty());
+            for(int turn=0;turn<16;turn++) {
+                var update=field.onCamera(.5,4.5,turn%2==0?0:180);
+                assertTrue(update.requested().isEmpty());
+                assertTrue(update.evicted().isEmpty());
+                assertEquals(4,field.residentCount());
+                assertEquals(400,field.gpuBytes());
+                for(int i=0;i<4;i++)
+                    assertSame(buffers[i],field.active(original.get(i).key()).resource());
+                // An exit on the first turn must still select all four
+                // already-prepared resident alternatives without upload.
+                var changes=field.sample(b->turn%2!=0);
+                if(turn==0) {
+                    assertEquals(4,changes.size());
+                    assertTrue(changes.stream().allMatch(x->x.exitFrame()-x.previousVisibleFrame()==1));
+                    for(var token:original)assertTrue(field.active(token.key()).alternate());
+                } else assertTrue(changes.isEmpty());
+            }
+            assertEquals(0,field.retiredCount());
+            for(var b:buffers)assertEquals(0,b.closes);
+        }
+    }
 }
