@@ -171,7 +171,8 @@ public final class ClientTunnelSmoke {
                         // journal and restore the real world from disk alone.
                         var result=ru.ehtid.operator.reality.VoxelJournalRecovery.recover(
                                 access,directory.resolve("voxel-wal"),voxelJournalId,
-                                VOXEL_WORLD_KEY,VOXEL_SECTION);
+                                VOXEL_WORLD_KEY,VOXEL_SECTION,
+                                ()->server.saveEverything(true,true,true));
                         if(result.status()!=ru.ehtid.operator.reality.VoxelJournalRecovery.Status.RECOVERED)
                             throw new IllegalStateException("Voxel WAL recovery "+result.status());
                         voxelTransactionPhase=2;
