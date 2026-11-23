@@ -400,7 +400,14 @@ def capture_real_blockstate_palette(proc) -> None:
             raise RuntimeError("Real Minecraft palette omitted a state or neighbor halo")
         if any(value!="true" for value in result.groups()[4:8]) or int(result[9])!=11264:
             raise RuntimeError("Full material/lighting class metadata was lost in block-state snapshot")
-        log(f"Real 16^3 Minecraft material snapshot: {states} exact states, {blocks} cells and {halo} halo cells")
+        faces_log = await_marker(proc, "OPERATOR_BLOCKSTATE_FACES_SUCCESS", 20)
+        faces = re.search(
+            r"OPERATOR_BLOCKSTATE_FACES_SUCCESS faces=(\d+) fullCubes=(\d+) "
+            r"vanillaFallback=(\d+) unresolved=(\d+) authoritative=false",
+            faces_log)
+        if not faces or int(faces[1])<10 or int(faces[2])<4 or int(faces[3])<3:
+            raise RuntimeError("Full-block face topology or vanilla complex-block fallback missing")
+        log(f"Real 16^3 Minecraft material snapshot: {states} exact states, {blocks} cells, {halo} halo cells, {faces[1]} safe diagnostic faces and {faces[3]} vanilla-owned complex blocks")
     finally:
         flag.unlink(missing_ok=True)
 
