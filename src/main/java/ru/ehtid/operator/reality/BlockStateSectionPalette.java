@@ -1,7 +1,6 @@
 package ru.ehtid.operator.reality;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -86,13 +85,9 @@ public final class BlockStateSectionPalette {
             }
             values[i]=(short)(int)index;
         }
-        int unique=0;
-        for(int i=0;i<BLOCKS;i++) {
-            boolean first=true;
-            for(int j=0;j<i;j++)if(values[i]==values[j]){first=false;break;}
-            if(first)unique++;
-        }
-        return new BlockStateSectionPalette(new ArrayList<>(ids.keySet()),values,unique);
+        var coreIds=new java.util.HashSet<Integer>();
+        for(int i=0;i<BLOCKS;i++)coreIds.add(Short.toUnsignedInt(values[i]));
+        return new BlockStateSectionPalette(new ArrayList<>(ids.keySet()),values,coreIds.size());
     }
 
     public int paletteSize(){return palette.size();}
