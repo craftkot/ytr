@@ -43,6 +43,24 @@ public final class OperatorMod implements ModInitializer {
                         failure);
             }
         });
+        // Read-only inventory. A pending or corrupt physical voxel WAL must
+        // never be silently discarded or trigger automatic block writes.
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            var directory=server.getWorldPath(
+                    net.minecraft.world.level.storage.LevelResource.ROOT)
+                    .resolve("operator_reality").resolve("voxel-wal");
+            try {
+                var scan=ru.ehtid.operator.reality.VoxelStartupAudit.scan(
+                        directory,"minecraft:overworld");
+                if(scan.blocksNewWrites())
+                    LOGGER.error("OPERATOR_VOXEL_STARTUP_WAL_BLOCKED {}",scan.summary());
+                else if(scan.total()>0)
+                    LOGGER.info("OPERATOR_VOXEL_STARTUP_WAL_CLEAR {}",scan.summary());
+            } catch(IOException invalid) {
+                LOGGER.error("OPERATOR_VOXEL_STARTUP_WAL_INVALID; manual inspection required, no recovery attempted",
+                        invalid);
+            }
+        });
         ServerLifecycleEvents.SERVER_STOPPING.register(OBSERVER::onServerStopping);
         ServerTickEvents.END_SERVER_TICK.register(OBSERVER::onServerTick);
         // Chunk-load events are only signals. All mutations are deferred
