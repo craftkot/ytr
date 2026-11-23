@@ -7,7 +7,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.phys.AABB;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.storage.LevelResource;
 import ru.ehtid.operator.OperatorMod;
 
@@ -97,7 +97,7 @@ public final class ClientOffscreenBiomeProbe {
         if(!world.hasChunkAt(samplePos))return null;
         // Holder identity is from the actual ClientLevel dynamic biome registry.
         return world.getBiome(samplePos).unwrapKey()
-                .map(key->key.location().toString()).orElse(null);
+                .map(key->key.identifier().toString()).orElse(null);
     }
 
     public static void onFrame(Camera camera) {
