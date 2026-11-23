@@ -53,8 +53,8 @@ public final class ServerVoxelCrashSmoke {
                 return "OPERATOR_VOXEL_CI_FAILED: outside GitHub Actions";
             if(!server.isDedicatedServer())
                 return "OPERATOR_VOXEL_CI_FAILED: integrated server disallowed";
-            if(!WORLD_NAME.equals(world.getFileName().toString()))
-                return "OPERATOR_VOXEL_CI_FAILED: wrong isolated world: "+world.getFileName();
+            if(!WORLD_NAME.equals(world.toRealPath().getFileName().toString()))
+                return "OPERATOR_VOXEL_CI_FAILED: wrong isolated world: "+world.toRealPath().getFileName();
             if(!Files.isRegularFile(world.resolve(
                     "operator_reality/ci-voxel-crash.allow"),LinkOption.NOFOLLOW_LINKS))
                 return "OPERATOR_VOXEL_CI_FAILED: isolated world marker absent";
