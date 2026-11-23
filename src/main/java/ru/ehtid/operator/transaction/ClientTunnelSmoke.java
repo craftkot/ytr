@@ -40,7 +40,8 @@ public final class ClientTunnelSmoke {
     private boolean repeatAway,repeatViewActive;
     private int dynamicPivotPhase;
     private int voxelTransactionPhase;
-    private ru.ehtid.operator.reality.VoxelSectionTransition voxelTransaction;
+    private java.util.UUID voxelJournalId;
+    private static final String VOXEL_WORLD_KEY="minecraft:overworld";
     private static final ru.ehtid.operator.reality.SectionTerrainMesh.Key VOXEL_SECTION=
             new ru.ehtid.operator.reality.SectionTerrainMesh.Key(-2,12,-2);
 
@@ -131,12 +132,23 @@ public final class ClientTunnelSmoke {
                                 throw new IllegalStateException("CI voxel surface changed before test");
                             after[idx]=ru.ehtid.operator.reality.VoxelSectionSurface.AIR;
                         }
-                        voxelTransaction=ru.ehtid.operator.reality.VoxelSectionTransition.prepare(
+                        var plan=ru.ehtid.operator.reality.VoxelSectionTransition.prepare(
                                 1,before,after,access.halo(VOXEL_SECTION));
+                        voxelJournalId=java.util.UUID.randomUUID();
+                        var journalDir=directory.resolve("voxel-wal");
+                        var prepared=ru.ehtid.operator.reality.VoxelWriteAheadLog.prepare(
+                                voxelJournalId,VOXEL_WORLD_KEY,VOXEL_SECTION,plan);
+                        // This fully fsynced intent is required BEFORE setBlock.
+                        ru.ehtid.operator.reality.VoxelWriteAheadLog.create(journalDir,prepared);
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_VOXEL_WAL_PREPARED section=-2,12,-2 changed={} phase=PREPARED",
+                                prepared.changedCount());
                         var result=ru.ehtid.operator.reality.VoxelWorldTransaction.apply(
-                                access,VOXEL_SECTION,voxelTransaction);
+                                access,VOXEL_SECTION,plan);
                         if(result.status()!=ru.ehtid.operator.reality.VoxelWorldTransaction.Status.APPLIED)
                             throw new IllegalStateException("Voxel commit "+result.status());
+                        ru.ehtid.operator.reality.VoxelWriteAheadLog.advance(
+                                journalDir,prepared,ru.ehtid.operator.reality.VoxelWriteAheadLog.Phase.APPLIED);
                         voxelTransactionPhase=1;
                         placeCamera(player,4.5D,180.0F);
                         OperatorMod.LOGGER.info(
@@ -148,15 +160,22 @@ public final class ClientTunnelSmoke {
                             directory.resolve("ci-voxel-world-rollback.allow"))) {
                         placeCamera(player,128.5D,0.0F);
                         var access=newVoxelAccess(level,player);
-                        var result=ru.ehtid.operator.reality.VoxelWorldTransaction.rollback(
-                                access,VOXEL_SECTION,voxelTransaction);
-                        if(result.status()!=ru.ehtid.operator.reality.VoxelWorldTransaction.Status.RESTORED)
-                            throw new IllegalStateException("Voxel rollback "+result.status());
+                        // The exact previous in-memory plan is intentionally
+                        // discarded. Recovery must reopen its checksum-verified
+                        // journal and restore the real world from disk alone.
+                        var result=ru.ehtid.operator.reality.VoxelJournalRecovery.recover(
+                                access,directory.resolve("voxel-wal"),voxelJournalId,
+                                VOXEL_WORLD_KEY,VOXEL_SECTION);
+                        if(result.status()!=ru.ehtid.operator.reality.VoxelJournalRecovery.Status.RECOVERED)
+                            throw new IllegalStateException("Voxel WAL recovery "+result.status());
                         voxelTransactionPhase=2;
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_VOXEL_WAL_RECOVERED section=-2,12,-2 restored={} phase=RESOLVED",
+                                result.restored());
                         placeCamera(player,4.5D,180.0F);
                         OperatorMod.LOGGER.info(
                                 "OPERATOR_VOXEL_WORLD_RESTORED section=-2,12,-2 changed={} revision=1",
-                                result.changed());
+                                result.restored());
                         return;
                     }
                     // The dynamic cache must keep already-uploaded regions
