@@ -85,6 +85,8 @@ public final class ClientBlockStatePaletteProbe {
             for(int face=0;face<halo.length;face++)
                 System.arraycopy(captured,CORE+face*SIDE,halo[face],0,SIDE);
             var snapshot=BlockStateSectionPalette.capture(core,halo);
+            var topology=BlockStateFacePlanner.plan(snapshot,
+                    BlockStateFacePlanner::testFixtureShape);
             var axisX=new BlockStateSectionPalette.StateKey(
                     "minecraft:oak_log",Map.of("axis","x"));
             var slab=snapshot.palette().stream().anyMatch(
@@ -96,7 +98,10 @@ public final class ClientBlockStatePaletteProbe {
             var light=snapshot.palette().stream().anyMatch(
                     key->key.blockId().equals("minecraft:sea_lantern"));
             if(snapshot.corePaletteSize()<8 || !slab || !grass || !glass || !light
-                    || snapshot.countCore(axisX)!=1 || !snapshot.matches(core,halo)) {
+                    || snapshot.countCore(axisX)!=1 || !snapshot.matches(core,halo)
+                    || topology.faces().size()<10 || topology.opaqueCells()<4
+                    || topology.vanillaCells()<3
+                    || topology.entirelyFullCubesOrAir()) {
                 fail("INCOMPLETE_PALETTE");
                 return;
             }
@@ -104,6 +109,10 @@ public final class ClientBlockStatePaletteProbe {
                     "OPERATOR_BLOCKSTATE_PALETTE_SUCCESS section=-3,12,-2 blocks={} faces={} variants={} axisX={} slab={} grass={} glass={} light={} indexedBytes={}",
                     CORE,COUNT-CORE,snapshot.corePaletteSize(),snapshot.countCore(axisX),
                     slab,grass,glass,light,snapshot.bytesForCellIndices());
+            OperatorMod.LOGGER.info(
+                    "OPERATOR_BLOCKSTATE_FACES_SUCCESS faces={} fullCubes={} vanillaFallback={} unresolved={} authoritative=false",
+                    topology.faces().size(),topology.opaqueCells(),
+                    topology.vanillaCells(),topology.unresolvedNeighbors());
             success=true;
         } catch(RuntimeException error) {
             fail("PALETTE_"+error.getClass().getSimpleName());
