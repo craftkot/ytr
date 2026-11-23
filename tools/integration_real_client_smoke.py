@@ -430,10 +430,51 @@ def capture_voxel_physical_transaction(proc) -> None:
     applied_check = MARKER_DIR / "ci-voxel-world-verify-applied.allow"
     rollback_flag = MARKER_DIR / "ci-voxel-world-rollback.allow"
     restored_check = MARKER_DIR / "ci-voxel-world-verify-restored.allow"
+    import hashlib
+    import struct
+
+    def inspect_voxel_wal(phase: int) -> Path:
+        folder = MARKER_DIR / "voxel-wal"
+        files = list(folder.glob("*.vwal"))
+        if len(files) != 1:
+            raise RuntimeError(f"Expected exactly one world-local voxel WAL, got {len(files)}")
+        file = files[0]
+        data = file.read_bytes()
+        if not (8200 < len(data) < 16384):
+            raise RuntimeError("Unexpected durable voxel journal size")
+        payload, checksum = data[:-32], data[-32:]
+        if hashlib.sha256(payload).digest() != checksum:
+            raise RuntimeError("Durable voxel journal checksum invalid")
+        magic, version = struct.unpack_from(">II",payload,0)
+        if (magic,version) != (0x45564854,1):
+            raise RuntimeError("Wrong voxel WAL header")
+        offset = 24  # header plus UUID
+        utf_length = struct.unpack_from(">H",payload,offset)[0]
+        offset += 2
+        dimension = payload[offset:offset+utf_length].decode("utf-8")
+        offset += utf_length
+        x,y,z,revision = struct.unpack_from(">iiiq",payload,offset)
+        offset += 20
+        stored_phase = payload[offset]
+        offset += 1
+        before = payload[offset:offset+4096]
+        after = payload[offset+4096:offset+8192]
+        changed = [i for i,(a,b) in enumerate(zip(before,after)) if a!=b]
+        expected = [(10*16+8)*16+x for x in (7,8,9)]
+        if (dimension,x,y,z,revision,stored_phase)!=("minecraft:overworld",-2,12,-2,1,phase):
+            raise RuntimeError("Voxel WAL ownership, revision or phase mismatch")
+        if changed != expected or not all(before[i]==1 and after[i]==0 for i in changed):
+            raise RuntimeError("Voxel WAL source/target does not match actual stone-air change")
+        if len(payload)!=offset+8192:
+            raise RuntimeError("Voxel WAL has unexpected trailing payload")
+        return file
+
     try:
         apply_flag.write_text("apply isolated real server voxel revision with player remote\\n")
         marker = "OPERATOR_VOXEL_WORLD_COMMITTED section=-2,12,-2 changed=3 revision=1"
         await_marker(proc, marker, 40)
+        await_marker(proc, "OPERATOR_VOXEL_WAL_PREPARED section=-2,12,-2 changed=3 phase=PREPARED", 10)
+        stored = inspect_voxel_wal(1)
         applied_check.write_text("check three actual client AIR blocks and GPU invalidation\\n")
         client_log = await_marker(proc,
             "OPERATOR_VOXEL_CLIENT_APPLIED section=-2,12,-2 changed=3 gpuInvalidated=true", 40)
@@ -441,9 +482,13 @@ def capture_voxel_physical_transaction(proc) -> None:
             raise RuntimeError("Real client voxel surface did not follow server physical transaction")
         rollback_flag.write_text("rollback exact stone snapshot after client synchronization\\n")
         await_marker(proc, "OPERATOR_VOXEL_WORLD_RESTORED section=-2,12,-2 changed=3 revision=1", 40)
+        await_marker(proc, "OPERATOR_VOXEL_WAL_RECOVERED section=-2,12,-2 restored=3 phase=RESOLVED", 10)
+        if inspect_voxel_wal(2) != stored:
+            raise RuntimeError("Voxel recovery changed journal identity")
         restored_check.write_text("verify original STONE blocks propagated back to client\\n")
         await_marker(proc, "OPERATOR_VOXEL_CLIENT_RESTORED section=-2,12,-2 changed=3", 40)
         log("Three real cubic stone blocks: STONE -> AIR -> STONE on server and actual client, stale GPU mesh invalidated")
+        log("OPERATOR_VOXEL_WRITE_AHEAD_RECOVERY_SUCCESS")
         log("OPERATOR_VOXEL_WORLD_TRANSACTION_CI_SUCCESS")
     finally:
         for marker in (apply_flag, applied_check, rollback_flag, restored_check):
