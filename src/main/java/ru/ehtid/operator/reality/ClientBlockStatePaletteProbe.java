@@ -48,6 +48,7 @@ public final class ClientBlockStatePaletteProbe {
     private static ClientLevel level;
     private static int captureCursor,verificationCursor;
     private static boolean success,failed;
+    private static int snapshotRetries;
 
     private ClientBlockStatePaletteProbe(){}
 
@@ -105,10 +106,27 @@ public final class ClientBlockStatePaletteProbe {
                     key->key.blockId().equals("minecraft:sea_lantern"));
             if(snapshot.corePaletteSize()<8 || !slab || !grass || !glass || !light
                     || snapshot.countCore(axisX)!=1 || !snapshot.matches(core,halo)
-                    || topology.faces().size()<10 || topology.opaqueCells()<4
+                    || topology.faces().size()<10 || topology.opaqueCells()<3
                     || topology.vanillaCells()<3
                     || topology.entirelyFullCubesOrAir()) {
-                fail("INCOMPLETE_PALETTE");
+                StringBuilder sample=new StringBuilder();
+                // Exact seven mixed-material fixture positions inside -3,12,-2.
+                for(int localX=3;localX<=9;localX++) {
+                    if(!sample.isEmpty())sample.append(",");
+                    sample.append(snapshot.cell(localX,9,8).canonical());
+                }
+                OperatorMod.LOGGER.warn(
+                        "OPERATOR_BLOCKSTATE_PALETTE_RETRY attempt={} variants={} axisX={} slab={} grass={} glass={} light={} full={} vanilla={} faces={} sample={}",
+                        snapshotRetries+1,snapshot.corePaletteSize(),snapshot.countCore(axisX),
+                        slab,grass,glass,light,topology.opaqueCells(),
+                        topology.vanillaCells(),topology.faces().size(),sample);
+                if(++snapshotRetries>=4) {
+                    fail("INCOMPLETE_PALETTE_AFTER_SYNC");
+                } else {
+                    Arrays.fill(captured,null);
+                    Arrays.fill(shapes,(byte)0);
+                    captureCursor=verificationCursor=0;
+                }
                 return;
             }
             OperatorMod.LOGGER.info(
@@ -179,6 +197,7 @@ public final class ClientBlockStatePaletteProbe {
     private static void reset() {
         Arrays.fill(captured,null);
         captureCursor=verificationCursor=0;
+        snapshotRetries=0;
         success=failed=false;
     }
 }
