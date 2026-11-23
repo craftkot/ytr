@@ -162,4 +162,27 @@ class VoxelJournalRecoveryTest {
                 entry.id(),entry.dimension(),entry.section(),entry.revision(),
                 entry.phase(),entry.before(),wrong));
     }
+    @Test void unresolvedUntilRestoredWorldIsDurablyFlushed() throws IOException {
+        var entry=create();
+        var world=new InMemoryWorld();
+        var change=transition().changes().getFirst().at(SECTION);
+        world.write(change.x(),change.y(),change.z(),change.after());
+        int[] flushes={0};
+        var first=VoxelJournalRecovery.recover(world,temporary,entry.id(),DIMENSION,SECTION,
+                ()->{flushes[0]++;return false;});
+        assertEquals(VoxelJournalRecovery.Status.FLUSH_FAILED,first.status());
+        assertEquals(1,first.restored());
+        assertEquals(VoxelWriteAheadLog.Phase.PREPARED,
+                VoxelWriteAheadLog.load(temporary,entry.id(),DIMENSION,SECTION).phase());
+        assertArrayEquals(original(),world.blocks);
+        var second=VoxelJournalRecovery.recover(world,temporary,entry.id(),DIMENSION,SECTION,
+                ()->{flushes[0]++;return true;});
+        assertEquals(VoxelJournalRecovery.Status.RECOVERED,second.status());
+        assertEquals(0,second.restored());
+        assertEquals(2,flushes[0]);
+        assertEquals(VoxelWriteAheadLog.Phase.RESOLVED,
+                VoxelWriteAheadLog.load(temporary,entry.id(),DIMENSION,SECTION).phase());
+    }
+
+
 }
