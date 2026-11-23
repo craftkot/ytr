@@ -422,6 +422,34 @@ def capture_real_voxel_surface(proc) -> None:
         marker.unlink(missing_ok=True)
 
 
+def capture_voxel_physical_transaction(proc) -> None:
+    # Dedicated disposable integrated-world test: an actually remote player
+    # permits a 3-block cubic revision; the real client must receive AIR
+    # before any rollback and then STONE again through vanilla chunk sync.
+    apply_flag = MARKER_DIR / "ci-voxel-world-apply.allow"
+    applied_check = MARKER_DIR / "ci-voxel-world-verify-applied.allow"
+    rollback_flag = MARKER_DIR / "ci-voxel-world-rollback.allow"
+    restored_check = MARKER_DIR / "ci-voxel-world-verify-restored.allow"
+    try:
+        apply_flag.write_text("apply isolated real server voxel revision with player remote\\n")
+        marker = "OPERATOR_VOXEL_WORLD_COMMITTED section=-2,12,-2 changed=3 revision=1"
+        await_marker(proc, marker, 40)
+        applied_check.write_text("check three actual client AIR blocks and GPU invalidation\\n")
+        client_log = await_marker(proc,
+            "OPERATOR_VOXEL_CLIENT_APPLIED section=-2,12,-2 changed=3 gpuInvalidated=true", 40)
+        if "OPERATOR_VOXEL_CLIENT_APPLIED" not in client_log:
+            raise RuntimeError("Real client voxel surface did not follow server physical transaction")
+        rollback_flag.write_text("rollback exact stone snapshot after client synchronization\\n")
+        await_marker(proc, "OPERATOR_VOXEL_WORLD_RESTORED section=-2,12,-2 changed=3 revision=1", 40)
+        restored_check.write_text("verify original STONE blocks propagated back to client\\n")
+        await_marker(proc, "OPERATOR_VOXEL_CLIENT_RESTORED section=-2,12,-2 changed=3", 40)
+        log("Three real cubic stone blocks: STONE -> AIR -> STONE on server and actual client, stale GPU mesh invalidated")
+        log("OPERATOR_VOXEL_WORLD_TRANSACTION_CI_SUCCESS")
+    finally:
+        for marker in (apply_flag, applied_check, rollback_flag, restored_check):
+            marker.unlink(missing_ok=True)
+
+
 def capture_dynamic_pivot(proc) -> None:
     # Verify the moving camera cache does NOT discard preloaded terrain
     # merely because the player turns 180 degrees in place.
@@ -695,6 +723,7 @@ def main() -> None:
             capture_real_voxel_surface(proc)
             capture_dynamic_pivot(proc)
             capture_dynamic_section_substitution(proc)
+            capture_voxel_physical_transaction(proc)
             time.sleep(3)
             after = screenshot("02-after-fold.png")
             acknowledge("ci-after-captured.allow")
