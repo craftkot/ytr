@@ -39,6 +39,10 @@ public final class ClientTunnelSmoke {
     private int repeatRevision=2;
     private boolean repeatAway,repeatViewActive;
     private int dynamicPivotPhase;
+    private int voxelTransactionPhase;
+    private ru.ehtid.operator.reality.VoxelSectionTransition voxelTransaction;
+    private static final ru.ehtid.operator.reality.SectionTerrainMesh.Key VOXEL_SECTION=
+            new ru.ehtid.operator.reality.SectionTerrainMesh.Key(-2,12,-2);
 
     public void tick(MinecraftServer server, ObservationEngine observer) {
         if (!Boolean.getBoolean("operator.reality.ciClientSmoke")
@@ -111,6 +115,50 @@ public final class ClientTunnelSmoke {
                             + "sourceAir=true targetStone=true wal=COMMITTED", ownerId);
                 }
                 case 3 -> {
+                    // Explicit CI-only stone/air physical transaction.
+                    // The player is teleported 100+ blocks away BEFORE the
+                    // server touches the candidate section. This is never
+                    // an automatic player-world gameplay mutation.
+                    if(voxelTransactionPhase==0 && Files.isRegularFile(
+                            directory.resolve("ci-voxel-world-apply.allow"))) {
+                        placeCamera(player,128.5D,0.0F);
+                        var access=newVoxelAccess(level,player);
+                        var before=access.snapshot(VOXEL_SECTION);
+                        var after=before.clone();
+                        for(int localX=7;localX<=9;localX++) {
+                            int idx=ru.ehtid.operator.reality.VoxelSectionSurface.index(localX,10,8);
+                            if(before[idx]!=ru.ehtid.operator.reality.VoxelSectionSurface.STONE)
+                                throw new IllegalStateException("CI voxel surface changed before test");
+                            after[idx]=ru.ehtid.operator.reality.VoxelSectionSurface.AIR;
+                        }
+                        voxelTransaction=ru.ehtid.operator.reality.VoxelSectionTransition.prepare(
+                                1,before,after,access.halo(VOXEL_SECTION));
+                        var result=ru.ehtid.operator.reality.VoxelWorldTransaction.apply(
+                                access,VOXEL_SECTION,voxelTransaction);
+                        if(result.status()!=ru.ehtid.operator.reality.VoxelWorldTransaction.Status.APPLIED)
+                            throw new IllegalStateException("Voxel commit "+result.status());
+                        voxelTransactionPhase=1;
+                        placeCamera(player,4.5D,180.0F);
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_VOXEL_WORLD_COMMITTED section=-2,12,-2 changed={} revision=1",
+                                result.changed());
+                        return;
+                    }
+                    if(voxelTransactionPhase==1 && Files.isRegularFile(
+                            directory.resolve("ci-voxel-world-rollback.allow"))) {
+                        placeCamera(player,128.5D,0.0F);
+                        var access=newVoxelAccess(level,player);
+                        var result=ru.ehtid.operator.reality.VoxelWorldTransaction.rollback(
+                                access,VOXEL_SECTION,voxelTransaction);
+                        if(result.status()!=ru.ehtid.operator.reality.VoxelWorldTransaction.Status.RESTORED)
+                            throw new IllegalStateException("Voxel rollback "+result.status());
+                        voxelTransactionPhase=2;
+                        placeCamera(player,4.5D,180.0F);
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_VOXEL_WORLD_RESTORED section=-2,12,-2 changed={} revision=1",
+                                result.changed());
+                        return;
+                    }
                     // The dynamic cache must keep already-uploaded regions
                     // resident through an instantaneous 180-degree pivot.
                     // Fixture opt-in only; no world mutation.
@@ -222,6 +270,13 @@ public final class ClientTunnelSmoke {
                 && level.getBlockState(SOURCE2).isAir()
                 && level.getBlockState(TARGET).is(Blocks.STONE)
                 && level.getBlockState(TARGET2).is(Blocks.STONE);
+    }
+
+    private static ru.ehtid.operator.reality.ServerVoxelWorldAccess newVoxelAccess(
+            ServerLevel level,ServerPlayer player) {
+        return new ru.ehtid.operator.reality.ServerVoxelWorldAccess(level,
+                ()->!new net.minecraft.world.phys.AABB(-40,184,-40,-8,216,-8)
+                        .contains(player.position()) && player.level()==level);
     }
 
     private static void placeRepeatCamera(ServerPlayer player,float yaw) {
