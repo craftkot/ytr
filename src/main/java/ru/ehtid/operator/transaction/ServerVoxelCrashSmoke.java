@@ -141,7 +141,8 @@ public final class ServerVoxelCrashSmoke {
                 || access.read(8,200,8)!=VoxelSectionSurface.AIR
                 || access.read(9,200,8)!=VoxelSectionSurface.STONE)
             return "OPERATOR_VOXEL_CI_FAILED: Anvil did not persist exactly two partial mutations";
-        var result=VoxelJournalRecovery.recover(access,directory,JOURNAL_ID,DIMENSION,SECTION);
+        var result=VoxelJournalRecovery.recover(access,directory,JOURNAL_ID,DIMENSION,SECTION,
+                ()->server.saveEverything(true,true,true));
         if(result.status()!=VoxelJournalRecovery.Status.RECOVERED || result.restored()!=2)
             return "OPERATOR_VOXEL_CI_FAILED: expected to recover exactly two cells, got "
                     +result.status()+" restored="+result.restored();
