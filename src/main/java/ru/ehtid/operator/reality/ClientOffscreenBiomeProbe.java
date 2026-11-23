@@ -95,8 +95,11 @@ public final class ClientOffscreenBiomeProbe {
         samplePos.set(ORIGIN.x()+x*4+2,ORIGIN.y()+y*4+2,
                 ORIGIN.z()+z*4+2);
         if(!world.hasChunkAt(samplePos))return null;
-        // Holder identity is from the actual ClientLevel dynamic biome registry.
-        return world.getBiome(samplePos).unwrapKey()
+        // Read the actual stored quart-cell biome, NOT getBiome(BlockPos):
+        // vanilla getBiome uses a climate jitter sampler near cell borders.
+        // An offscreen rewrite must match the raw 4x4x4 chunk biome grid.
+        return world.getNoiseBiome(ORIGIN.x()/4+x,ORIGIN.y()/4+y,
+                ORIGIN.z()/4+z).unwrapKey()
                 .map(key->key.identifier().toString()).orElse(null);
     }
 
