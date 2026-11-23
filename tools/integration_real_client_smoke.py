@@ -48,13 +48,15 @@ def await_marker(proc: subprocess.Popen[bytes], marker: str,
                 or "OPERATOR_WORLD_FIELD_TEST FAILED" in data
                 or "OPERATOR_DEFERRED_TEST FAILED" in data
                 or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in data
-                or "OPERATOR_BLOCKSTATE_PALETTE_FAILED" in data):
+                or "OPERATOR_BLOCKSTATE_PALETTE_FAILED" in data
+                or "OPERATOR_BIOME_REGION_FAILED" in data):
             bad = [x for x in data.splitlines()
                    if "OPERATOR_CLIENT_TEST FAILED" in x
                    or "OPERATOR_WORLD_FIELD_TEST FAILED" in x
                    or "OPERATOR_DEFERRED_TEST FAILED" in x
                    or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in x
-                   or "OPERATOR_BLOCKSTATE_PALETTE_FAILED" in x]
+                   or "OPERATOR_BLOCKSTATE_PALETTE_FAILED" in x
+                   or "OPERATOR_BIOME_REGION_FAILED" in x]
             raise RuntimeError("Test controller reported failure: " + " | ".join(bad[-3:]))
         if marker in data:
             log("Verified integrated-world marker " + marker)
@@ -530,6 +532,40 @@ def capture_voxel_physical_transaction(proc) -> None:
             marker.unlink(missing_ok=True)
 
 
+def capture_offscreen_biome_transition(proc) -> None:
+    # Real client biome IDs are sampled from 1024 actual quart cells.
+    # No world mutation: verifies a safe, preview-only offscreen transition
+    # selected on the first hidden extraction following a visible frame.
+    marker = MARKER_DIR / "ci-biome-offscreen.allow"
+    marker.write_text("opt in to read-only biome transition preview\\n")
+    try:
+        data = await_marker(proc, "OPERATOR_BIOME_REGION_READY", 80)
+        prepared = re.search(
+            r"OPERATOR_BIOME_REGION_READY origin=-32,192,-64 "
+            r"sourceQuartCells=(\d+) changedQuartCells=(\d+) "
+            r"target=(minecraft:snowy_taiga) seams=true", data)
+        if not prepared or int(prepared[1]) != 1024 or int(prepared[2]) < 200:
+            raise RuntimeError("Real biome snapshot lacked full quart coverage or protected transitions")
+        await_marker(proc, "OPERATOR_BIOME_REGION_VISIBLE", 35)
+        # Reuse the existing real Minecraft stationary 180-degree pivot.
+        # This must never discard already prepared GPU terrain.
+        capture_dynamic_pivot(proc)
+        selected_log = await_marker(proc, "OPERATOR_BIOME_OFFSCREEN_SELECTED", 25)
+        selected = re.search(
+            r"OPERATOR_BIOME_OFFSCREEN_SELECTED frame=(\d+) previous=(\d+) "
+            r"origin=-32,192,-64 changedQuartCells=(\d+) "
+            r"target=minecraft:snowy_taiga previewOnly=true",
+            selected_log)
+        if not selected or int(selected[1])-int(selected[2]) != 1:
+            raise RuntimeError("Biome preview failed instant first-hidden-frame camera selection")
+        if int(selected[3]) != int(prepared[2]):
+            raise RuntimeError("Published alternate biome does not match prepared quart snapshot")
+        log(f"Actual biome region preview: {prepared[2]} quart cells -> snowy taiga, first hidden frame {selected[1]}, no block or biome writes")
+        log("OPERATOR_BIOME_OFFSCREEN_PREVIEW_CI_SUCCESS")
+    finally:
+        marker.unlink(missing_ok=True)
+
+
 def capture_dynamic_pivot(proc) -> None:
     # Verify the moving camera cache does NOT discard preloaded terrain
     # merely because the player turns 180 degrees in place.
@@ -802,7 +838,7 @@ def main() -> None:
             capture_dynamic_gpu_diagnostic(proc)
             capture_real_voxel_surface(proc)
             capture_real_blockstate_palette(proc)
-            capture_dynamic_pivot(proc)
+            capture_offscreen_biome_transition(proc)
             capture_dynamic_section_substitution(proc)
             capture_voxel_physical_transaction(proc)
             time.sleep(3)
