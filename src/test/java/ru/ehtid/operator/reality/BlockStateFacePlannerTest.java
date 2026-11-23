@@ -88,4 +88,49 @@ class BlockStateFacePlannerTest {
                 snapshot,key->key.blockId().endsWith("sea_lantern")
                         ?null:BlockStateFacePlanner.testFixtureShape(key)));
     }
+    @Test void identicalBlockStateCanHavePositionDependentShapeAndMustNotBeMisclassified() {
+        var core=cells(material("air"));
+        int first=VoxelSectionSurface.index(8,8,8);
+        int second=VoxelSectionSurface.index(9,8,8);
+        core[first]=material("stone");
+        core[second]=material("stone");
+        var palette=BlockStateSectionPalette.capture(core,halo(material("air")));
+        byte[] shape=new byte[BlockStateSectionPalette.TOTAL];
+        shape[first]=(byte)BlockStateFacePlanner.Shape.FULL_OPAQUE.ordinal();
+        shape[second]=(byte)BlockStateFacePlanner.Shape.VANILLA_REQUIRED.ordinal();
+        var selected=BlockStateFacePlanner.plan(palette,shape);
+        assertEquals(1,selected.opaqueCells());
+        assertEquals(1,selected.vanillaCells());
+        assertEquals(4094,selected.airCells());
+        assertEquals(1,selected.unresolvedNeighbors());
+        assertEquals(5,selected.faces().size());
+        assertFalse(selected.entirelyFullCubesOrAir());
+        assertTrue(selected.faces().stream().allMatch(face->
+                face.state().equals(material("stone"))));
+        var invalid=shape.clone();
+        invalid[0]=7;
+        assertThrows(IllegalArgumentException.class,
+                ()->BlockStateFacePlanner.plan(palette,invalid));
+        assertThrows(IllegalArgumentException.class,
+                ()->BlockStateFacePlanner.plan(palette,new byte[4096]));
+    }
+
+    @Test void runtimeHaloClassificationSuppressesBoundaryFacesWithoutLosingMaterial() {
+        var core=cells(material("air"));
+        var all=halo(material("air"));
+        int position=VoxelSectionSurface.index(0,7,7);
+        core[position]=new BlockStateSectionPalette.StateKey("minecraft:oak_log",Map.of("axis","x"));
+        all[VoxelSectionSurface.Face.WEST.ordinal()][7*16+7]=material("glass");
+        var palette=BlockStateSectionPalette.capture(core,all);
+        byte[] masks=new byte[BlockStateSectionPalette.TOTAL];
+        masks[position]=(byte)BlockStateFacePlanner.Shape.FULL_OPAQUE.ordinal();
+        int west=BlockStateSectionPalette.BLOCKS+7*16+7;
+        masks[west]=(byte)BlockStateFacePlanner.Shape.VANILLA_REQUIRED.ordinal();
+        var result=BlockStateFacePlanner.plan(palette,masks);
+        assertEquals(5,result.faces().size());
+        assertEquals(1,result.unresolvedNeighbors());
+        assertTrue(result.faces().stream().allMatch(face->
+                face.state().properties().get("axis").equals("x")));
+    }
+
 }
