@@ -136,6 +136,12 @@ public final class ClientTunnelSmoke {
                                 1,before,after,access.halo(VOXEL_SECTION));
                         voxelJournalId=java.util.UUID.randomUUID();
                         var journalDir=directory.resolve("voxel-wal");
+                        // Refuse to begin a second physical transaction if
+                        // ANY previous voxel intent remains unresolved.
+                        var audit=ru.ehtid.operator.reality.VoxelStartupAudit.scan(
+                                journalDir,VOXEL_WORLD_KEY);
+                        if(audit.blocksNewWrites())
+                            throw new IllegalStateException("Unfinished voxel WAL: "+audit.summary());
                         var prepared=ru.ehtid.operator.reality.VoxelWriteAheadLog.prepare(
                                 voxelJournalId,VOXEL_WORLD_KEY,VOXEL_SECTION,plan);
                         // This fully fsynced intent is required BEFORE setBlock.
