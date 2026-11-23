@@ -44,7 +44,7 @@ public final class ClientVoxelSectionProbe {
     private static Vec3 drawEye;
     private static boolean drawRequested;
     private static long frame,lastDrawFrame=-1;
-    private static boolean appliedAcknowledged,restoredAcknowledged;
+    private static boolean appliedAcknowledged,restoredAcknowledged,physicalInvalidated;
     private static final int VOXEL_CHANGE_Y=202,VOXEL_CHANGE_Z=-24;
     private static final BlockPos.MutableBlockPos pos=new BlockPos.MutableBlockPos();
 
@@ -130,8 +130,11 @@ public final class ClientVoxelSectionProbe {
             if(restored && !state.is(Blocks.STONE))return;
         }
         if(applied && !appliedAcknowledged) {
-            boolean invalidated=resident!=null;
-            if(resident!=null)closeGpu();
+            if(resident!=null) {
+                closeGpu();
+                physicalInvalidated=true;
+            }
+            boolean invalidated=physicalInvalidated;
             ready=null;
             appliedAcknowledged=true;
             OperatorMod.LOGGER.info("OPERATOR_VOXEL_CLIENT_APPLIED section=-2,12,-2 changed=3 gpuInvalidated={}",
@@ -149,6 +152,22 @@ public final class ClientVoxelSectionProbe {
         if(!ENABLED || !RenderSystem.isOnRenderThread())return;
         frame++;drawEye=null;
         if(Minecraft.getInstance().level!=world)return;
+        // CI fixture watches the same three exact cells written by the
+        // integrated server. Invalidate on the FIRST extraction that sees
+        // their physical change, before submitting any stale GPU geometry.
+        if(resident!=null)for(int x=-25;x<=-23;x++) {
+            var check=new BlockPos(x,VOXEL_CHANGE_Y,VOXEL_CHANGE_Z);
+            if(!world.hasChunkAt(check))continue;
+            if(!world.getBlockState(check).is(Blocks.STONE)) {
+                closeGpu();
+                ready=null;
+                physicalInvalidated=true;
+                OperatorMod.LOGGER.info(
+                        "OPERATOR_VOXEL_GPU_INVALIDATED frame={} cause=PHYSICAL_BLOCK_CHANGE",
+                        frame);
+                break;
+            }
+        }
         if(resident==null && ready!=null) {
             resident=GpuVoxelSectionMesh.upload(ready.packed());
             OperatorMod.LOGGER.info("OPERATOR_VOXEL_GPU_UPLOADED section={},{},{} vertices={} bytes={}",
@@ -209,7 +228,7 @@ public final class ClientVoxelSectionProbe {
     private static void clear() {
         if(worker!=null)worker.cancel(false);
         worker=null;cursor=0;verified=0;success=false;failed=false;
-        appliedAcknowledged=false;restoredAcknowledged=false;
+        appliedAcknowledged=false;restoredAcknowledged=false;physicalInvalidated=false;
         if(RenderSystem.isOnRenderThread())closeGpu();
     }
 }
