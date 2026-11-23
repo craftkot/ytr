@@ -333,6 +333,18 @@ public final class ClientTunnelSmoke {
                 level.setBlock(new BlockPos(x,top-1,z),Blocks.STONE.defaultBlockState(),2);
                 level.setBlock(new BlockPos(x,top,z),Blocks.STONE.defaultBlockState(),2);
             }
+        // Dedicated mixed-material test section: outside the stone-only
+        // GPU fixture and its one-block halo, so earlier snapshots remain
+        // unchanged. Preserve material names AND orientation properties.
+        level.setBlock(new BlockPos(-45,Y+1,-24),Blocks.STONE.defaultBlockState(),2);
+        level.setBlock(new BlockPos(-44,Y+1,-24),Blocks.DIRT.defaultBlockState(),2);
+        level.setBlock(new BlockPos(-43,Y+1,-24),Blocks.GRASS_BLOCK.defaultBlockState(),2);
+        level.setBlock(new BlockPos(-42,Y+1,-24),Blocks.OAK_LOG.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.RotatedPillarBlock.AXIS,
+                        net.minecraft.core.Direction.Axis.X),2);
+        level.setBlock(new BlockPos(-41,Y+1,-24),Blocks.OAK_SLAB.defaultBlockState(),2);
+        level.setBlock(new BlockPos(-40,Y+1,-24),Blocks.GLASS.defaultBlockState(),2);
+        level.setBlock(new BlockPos(-39,Y+1,-24),Blocks.SEA_LANTERN.defaultBlockState(),2);
         // Build a real cave corridor in a disposable integrated world, with a
         // camera vantage at z=8.5 and mutation at z=0.
         for (int x = -4; x <= 4; x++)
