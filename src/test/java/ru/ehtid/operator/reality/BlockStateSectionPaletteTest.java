@@ -79,8 +79,8 @@ class BlockStateSectionPaletteTest {
                 ()->new BlockStateSectionPalette.StateKey("malformed",Map.of()));
         assertThrows(IllegalArgumentException.class,
                 ()->new BlockStateSectionPalette.StateKey("minecraft:stone",Map.of("?", "no")));
-        neighbors=halo(air());
-        var snapshot=BlockStateSectionPalette.capture(original,neighbors);
+        var complete=halo(air());
+        var snapshot=BlockStateSectionPalette.capture(original,complete);
         assertThrows(IndexOutOfBoundsException.class,()->snapshot.at(-1));
         assertThrows(IndexOutOfBoundsException.class,()->snapshot.at(5632));
         assertThrows(IndexOutOfBoundsException.class,()->snapshot.face(6,0));
