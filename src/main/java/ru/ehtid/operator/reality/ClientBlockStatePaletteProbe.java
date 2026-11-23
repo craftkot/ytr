@@ -110,15 +110,15 @@ public final class ClientBlockStatePaletteProbe {
         }
     }
 
-    @SuppressWarnings({"rawtypes","unchecked"})
-    private static String valueName(Property property,Comparable value){
-        return property.getName(value);
+    private static <T extends Comparable<T>> String valueName(
+            BlockState state,Property<T> property) {
+        return property.getName(state.getValue(property));
     }
     private static BlockStateSectionPalette.StateKey key(BlockState state) {
         var name=BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
         var values=new TreeMap<String,String>();
-        state.getValues().forEach((property,value)->
-                values.put(property.getName(),valueName(property,value)));
+        state.getProperties().forEach(property->
+                values.put(property.getName(),valueName(state,property)));
         return new BlockStateSectionPalette.StateKey(name,values);
     }
 
