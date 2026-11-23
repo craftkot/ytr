@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' , feature/frame-reality, feature/prepared-terrain-field, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement, feature/repeated-terrain-revisions, feature/dynamic-terrain-grid, feature/dynamic-section-substitution, feature/voxel-section-foundation, feature/voxel-transition-safety, feature/voxel-world-transaction, feature/voxel-write-ahead-recovery, feature/voxel-startup-audit ]
+    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' , feature/frame-reality, feature/prepared-terrain-field, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement, feature/repeated-terrain-revisions, feature/dynamic-terrain-grid, feature/dynamic-section-substitution, feature/voxel-section-foundation, feature/voxel-transition-safety, feature/voxel-world-transaction, feature/voxel-write-ahead-recovery, feature/voxel-startup-audit, feature/voxel-hard-crash-smoke ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -127,6 +127,8 @@ jobs:
         run: python3 tools/integration_relocation_smoke.py
       - name: Test crash recovery
         run: python3 tools/integration_unclean_crash_smoke.py
+      - name: Real voxel WAL cold-restart crash recovery
+        run: python3 tools/integration_voxel_crash_smoke.py
       - name: Real autonomous tunnel fold world integration
         run: python3 tools/integration_autonomous_tunnel_smoke.py
       - name: Upload autonomous world-test logs
@@ -135,7 +137,9 @@ jobs:
         with:
           name: operator-tunnel-fold-live-world-logs
           if-no-files-found: ignore
-          path: integration-tunnel-phase-*.log
+          path: |
+            integration-tunnel-phase-*.log
+            voxel-crash-phase-*.log
       - name: Upload mod JARs
         uses: actions/upload-artifact@v4
         with:
