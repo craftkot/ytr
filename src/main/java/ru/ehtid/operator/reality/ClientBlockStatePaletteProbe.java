@@ -11,6 +11,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.storage.LevelResource;
@@ -39,6 +40,9 @@ public final class ClientBlockStatePaletteProbe {
 
     private static final BlockStateSectionPalette.StateKey[] captured=
             new BlockStateSectionPalette.StateKey[COUNT];
+    private static final byte[] shapes=new byte[COUNT];
+    private record Sample(BlockStateSectionPalette.StateKey key,
+                          BlockStateFacePlanner.Shape shape) {}
     private static final BlockPos.MutableBlockPos cursorPos=
             new BlockPos.MutableBlockPos();
     private static ClientLevel level;
@@ -61,9 +65,11 @@ public final class ClientBlockStatePaletteProbe {
         if(captureCursor<COUNT) {
             int end=Math.min(COUNT,captureCursor+PER_TICK);
             while(captureCursor<end) {
-                BlockStateSectionPalette.StateKey entry=read(captureCursor);
+                Sample entry=read(captureCursor);
                 if(entry==null)return; // Chunk is not yet available.
-                captured[captureCursor++]=entry;
+                captured[captureCursor]=entry.key();
+                shapes[captureCursor]=(byte)entry.shape().ordinal();
+                captureCursor++;
             }
             return;
         }
@@ -71,7 +77,8 @@ public final class ClientBlockStatePaletteProbe {
         while(verificationCursor<end) {
             var entry=read(verificationCursor);
             if(entry==null)return;
-            if(!captured[verificationCursor].equals(entry)){
+            if(!captured[verificationCursor].equals(entry.key())
+                    || shapes[verificationCursor]!=(byte)entry.shape().ordinal()){
                 fail("CHANGED_DURING_CAPTURE_"+verificationCursor);
                 return;
             }
@@ -85,8 +92,7 @@ public final class ClientBlockStatePaletteProbe {
             for(int face=0;face<halo.length;face++)
                 System.arraycopy(captured,CORE+face*SIDE,halo[face],0,SIDE);
             var snapshot=BlockStateSectionPalette.capture(core,halo);
-            var topology=BlockStateFacePlanner.plan(snapshot,
-                    BlockStateFacePlanner::testFixtureShape);
+            var topology=BlockStateFacePlanner.plan(snapshot,shapes);
             var axisX=new BlockStateSectionPalette.StateKey(
                     "minecraft:oak_log",Map.of("axis","x"));
             var slab=snapshot.palette().stream().anyMatch(
@@ -131,7 +137,20 @@ public final class ClientBlockStatePaletteProbe {
         return new BlockStateSectionPalette.StateKey(name,values);
     }
 
-    private static BlockStateSectionPalette.StateKey read(int index) {
+    /** Exact per-position shape classification; fluid, light-emitting,
+     * translucent, neighbor-dependent and non-cubic blocks stay vanilla. */
+    private static BlockStateFacePlanner.Shape shape(BlockState state) {
+        if(state.isAir())return BlockStateFacePlanner.Shape.AIR;
+        if(state.hasBlockEntity() || !state.getFluidState().isEmpty()
+                || state.getRenderShape()!=RenderShape.MODEL
+                || !state.isSolidRender() || !state.canOcclude()
+                || state.getLightEmission()!=0
+                || !state.isCollisionShapeFullBlock(level,cursorPos))
+            return BlockStateFacePlanner.Shape.VANILLA_REQUIRED;
+        return BlockStateFacePlanner.Shape.FULL_OPAQUE;
+    }
+
+    private static Sample read(int index) {
         int x,y,z;
         if(index<CORE) {
             x=index%N;y=index/(N*N);z=index/N%N;
@@ -149,7 +168,8 @@ public final class ClientBlockStatePaletteProbe {
         }
         cursorPos.set(SECTION.x()*N+x,SECTION.y()*N+y,SECTION.z()*N+z);
         if(!level.hasChunkAt(cursorPos))return null;
-        return key(level.getBlockState(cursorPos));
+        BlockState state=level.getBlockState(cursorPos);
+        return new Sample(key(state),shape(state));
     }
 
     private static void fail(String cause) {
