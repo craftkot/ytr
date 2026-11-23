@@ -111,9 +111,18 @@ public final class VoxelWriteAheadLog {
         write(path(directory,intent.id()),intent,false);
     }
 
+    /** Read-only entry inspection for an audit of the exact world-local
+     * journal directory. This does not authorize mutation. */
+    public static Entry inspect(Path directory,UUID id) throws IOException {
+        Entry entry=read(path(directory,id));
+        if(!entry.id().equals(id))
+            throw new IOException("Voxel WAL filename does not match persisted UUID");
+        return entry;
+    }
+
     public static Entry load(Path directory,UUID id,String expectedDimension,
                              SectionTerrainMesh.Key expectedSection) throws IOException {
-        Entry entry=read(path(directory,id));
+        Entry entry=inspect(directory,id);
         if(!entry.id().equals(id) || !entry.dimension().equals(expectedDimension)
                 || !entry.section().equals(expectedSection))
             throw new IOException("Voxel journal does not belong to this world and section");
