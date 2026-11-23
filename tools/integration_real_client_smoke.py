@@ -47,12 +47,14 @@ def await_marker(proc: subprocess.Popen[bytes], marker: str,
         if ("OPERATOR_CLIENT_TEST FAILED" in data
                 or "OPERATOR_WORLD_FIELD_TEST FAILED" in data
                 or "OPERATOR_DEFERRED_TEST FAILED" in data
-                or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in data):
+                or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in data
+                or "OPERATOR_BLOCKSTATE_PALETTE_FAILED" in data):
             bad = [x for x in data.splitlines()
                    if "OPERATOR_CLIENT_TEST FAILED" in x
                    or "OPERATOR_WORLD_FIELD_TEST FAILED" in x
                    or "OPERATOR_DEFERRED_TEST FAILED" in x
-                   or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in x]
+                   or "OPERATOR_VOXEL_SECTION_REAL_FAILED" in x
+                   or "OPERATOR_BLOCKSTATE_PALETTE_FAILED" in x]
             raise RuntimeError("Test controller reported failure: " + " | ".join(bad[-3:]))
         if marker in data:
             log("Verified integrated-world marker " + marker)
@@ -375,6 +377,32 @@ def capture_dynamic_section_substitution(proc) -> None:
         log(f"Dynamic resident section substitution: removed={missing}, replacement={added}, restored-drift={restored_drift}")
         if missing<200 or added<200 or restored_drift>max(200,missing//4):
             raise RuntimeError("Dynamic resident geometry did not replace and restore actual vanilla sections")
+
+
+def capture_real_blockstate_palette(proc) -> None:
+    # Actual Minecraft ClientLevel 16^3 snapshot, not a synthetic palette.
+    # Preserve full registry IDs and properties of rotated logs, slabs,
+    # translucent glass, dirt and emitting sea lantern materials.
+    flag = MARKER_DIR / "ci-blockstate-palette.allow"
+    flag.write_text("read-only exact BlockState palette fixture\\n")
+    try:
+        logs = await_marker(proc, "OPERATOR_BLOCKSTATE_PALETTE_SUCCESS", 75)
+        result = re.search(
+            r"OPERATOR_BLOCKSTATE_PALETTE_SUCCESS section=-3,12,-2 "
+            r"blocks=(\d+) faces=(\d+) variants=(\d+) axisX=(\d+) "
+            r"slab=(true|false) grass=(true|false) glass=(true|false) "
+            r"light=(true|false) indexedBytes=(\d+)",
+            logs)
+        if not result:
+            raise RuntimeError("Real block-state capture did not report exact material palette")
+        blocks,halo,states,axis = map(int,result.groups()[:4])
+        if blocks!=4096 or halo!=1536 or states<8 or axis!=1:
+            raise RuntimeError("Real Minecraft palette omitted a state or neighbor halo")
+        if any(value!="true" for value in result.groups()[4:8]) or int(result[9])!=11264:
+            raise RuntimeError("Full material/lighting class metadata was lost in block-state snapshot")
+        log(f"Real 16^3 Minecraft material snapshot: {states} exact states, {blocks} cells and {halo} halo cells")
+    finally:
+        flag.unlink(missing_ok=True)
 
 
 def capture_real_voxel_surface(proc) -> None:
@@ -766,6 +794,7 @@ def main() -> None:
             log(f"Camera-relative GPU preload: {len(initial_tiles)} real terrain uploads before moving the player")
             capture_dynamic_gpu_diagnostic(proc)
             capture_real_voxel_surface(proc)
+            capture_real_blockstate_palette(proc)
             capture_dynamic_pivot(proc)
             capture_dynamic_section_substitution(proc)
             capture_voxel_physical_transaction(proc)
