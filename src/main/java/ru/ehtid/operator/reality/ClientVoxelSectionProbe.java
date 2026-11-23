@@ -40,7 +40,7 @@ public final class ClientVoxelSectionProbe {
     private record Prepared(VoxelSectionSurface.Mesh mesh,VoxelSectionGpuPacking.Packed packed) {}
     private static CompletableFuture<Prepared> worker;
     private static Prepared ready;
-    private static GpuVoxelSectionMesh resident;
+    private static GpuVoxelSectionMesh resident,retired;
     private static Vec3 drawEye;
     private static boolean drawRequested;
     private static long frame,lastDrawFrame=-1;
@@ -131,7 +131,7 @@ public final class ClientVoxelSectionProbe {
         }
         if(applied && !appliedAcknowledged) {
             if(resident!=null) {
-                closeGpu();
+                retireResident();
                 physicalInvalidated=true;
             }
             boolean invalidated=physicalInvalidated;
@@ -159,7 +159,7 @@ public final class ClientVoxelSectionProbe {
             var check=new BlockPos(x,VOXEL_CHANGE_Y,VOXEL_CHANGE_Z);
             if(!world.hasChunkAt(check))continue;
             if(!world.getBlockState(check).is(Blocks.STONE)) {
-                closeGpu();
+                retireResident();
                 ready=null;
                 physicalInvalidated=true;
                 OperatorMod.LOGGER.info(
@@ -189,10 +189,22 @@ public final class ClientVoxelSectionProbe {
                 frame,KEY.x(),KEY.y(),KEY.z(),resident.vertexCount());
     }
 
+    /** Detach without immediately closing an in-flight GPU buffer.
+     * The former voxel mesh remains owned until renderer teardown. */
+    private static void retireResident() {
+        if(resident==null)return;
+        if(retired!=null)
+            throw new IllegalStateException("Voxel diagnostic retirement budget exhausted");
+        retired=resident;
+        resident=null;
+        drawEye=null;drawRequested=false;lastDrawFrame=-1;
+    }
+
     public static void closeGpu() {
         if(!ENABLED || !RenderSystem.isOnRenderThread())return;
         if(resident!=null)resident.close();
-        resident=null;drawEye=null;drawRequested=false;ready=null;lastDrawFrame=-1;
+        if(retired!=null)retired.close();
+        resident=null;retired=null;drawEye=null;drawRequested=false;ready=null;lastDrawFrame=-1;
     }
 
     private static int sample(int index) {
