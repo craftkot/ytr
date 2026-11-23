@@ -47,14 +47,19 @@ public final class ServerVoxelCrashSmoke {
     public static String phase(MinecraftServer server,int stage) {
         try {
             Path world=server.getWorldPath(LevelResource.ROOT);
-            if(!Boolean.getBoolean("operator.reality.ciVoxelCrash")
-                    || !"true".equals(System.getenv("GITHUB_ACTIONS"))
-                    || !server.isDedicatedServer()
-                    || !WORLD_NAME.equals(world.getFileName().toString())
-                    || !Files.isRegularFile(world.resolve(
-                            "operator_reality/ci-voxel-crash.allow"),LinkOption.NOFOLLOW_LINKS)
-                    || !server.getPlayerList().getPlayers().isEmpty())
-                return "OPERATOR_VOXEL_CI_FAILED: fixture not authorized";
+            if(!Boolean.getBoolean("operator.reality.ciVoxelCrash"))
+                return "OPERATOR_VOXEL_CI_FAILED: separate JVM opt-in absent";
+            if(!"true".equals(System.getenv("GITHUB_ACTIONS")))
+                return "OPERATOR_VOXEL_CI_FAILED: outside GitHub Actions";
+            if(!server.isDedicatedServer())
+                return "OPERATOR_VOXEL_CI_FAILED: integrated server disallowed";
+            if(!WORLD_NAME.equals(world.getFileName().toString()))
+                return "OPERATOR_VOXEL_CI_FAILED: wrong isolated world: "+world.getFileName();
+            if(!Files.isRegularFile(world.resolve(
+                    "operator_reality/ci-voxel-crash.allow"),LinkOption.NOFOLLOW_LINKS))
+                return "OPERATOR_VOXEL_CI_FAILED: isolated world marker absent";
+            if(!server.getPlayerList().getPlayers().isEmpty())
+                return "OPERATOR_VOXEL_CI_FAILED: players connected";
             ServerLevel level=server.overworld();
             if(level==null)return "OPERATOR_VOXEL_CI_FAILED: overworld unavailable";
             var directory=world.resolve("operator_reality/voxel-wal");
