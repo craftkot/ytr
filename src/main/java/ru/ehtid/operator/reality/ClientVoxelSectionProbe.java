@@ -1,6 +1,7 @@
 package ru.ehtid.operator.reality;
 
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -43,6 +44,8 @@ public final class ClientVoxelSectionProbe {
     private static Vec3 drawEye;
     private static boolean drawRequested;
     private static long frame,lastDrawFrame=-1;
+    private static boolean appliedAcknowledged,restoredAcknowledged;
+    private static final int VOXEL_CHANGE_Y=202,VOXEL_CHANGE_Z=-24;
     private static final BlockPos.MutableBlockPos pos=new BlockPos.MutableBlockPos();
 
     private ClientVoxelSectionProbe(){}
@@ -57,6 +60,7 @@ public final class ClientVoxelSectionProbe {
         if(client.level!=world) {
             clear();world=client.level;
         }
+        observePhysicalChanges(root);
         if(!enabled || world==null || success || failed)return;
         if(worker!=null) {
             if(!worker.isDone())return;
@@ -104,6 +108,39 @@ public final class ClientVoxelSectionProbe {
                             Arrays.copyOfRange(frozen,CORE+5*HALO,COUNT))).compile();
             return new Prepared(mesh,VoxelSectionGpuPacking.pack(mesh));
         });
+    }
+
+    /**
+     * A separate CI-only assertion that server stone/air writes were sent
+     * through vanilla chunk updates and reached the REAL client level.
+     * Invalidate the now-stale preloaded cubic GPU mesh immediately; do not
+     * keep rendering old surface/collision geometry after a physical update.
+     */
+    private static void observePhysicalChanges(Path root) {
+        if(root==null || world==null)return;
+        boolean applied=Files.isRegularFile(root.resolve("ci-voxel-world-verify-applied.allow"));
+        boolean restored=Files.isRegularFile(root.resolve("ci-voxel-world-verify-restored.allow"));
+        if(!applied && !restored)return;
+        if(applied && appliedAcknowledged && !restored)return;
+        if(restored && restoredAcknowledged)return;
+        for(int x=-25;x<=-23;x++) {
+            if(!world.hasChunkAt(new BlockPos(x,VOXEL_CHANGE_Y,VOXEL_CHANGE_Z)))return;
+            var state=world.getBlockState(new BlockPos(x,VOXEL_CHANGE_Y,VOXEL_CHANGE_Z));
+            if(applied && !appliedAcknowledged && !state.isAir())return;
+            if(restored && !state.is(Blocks.STONE))return;
+        }
+        if(applied && !appliedAcknowledged) {
+            boolean invalidated=resident!=null;
+            if(resident!=null)closeGpu();
+            ready=null;
+            appliedAcknowledged=true;
+            OperatorMod.LOGGER.info("OPERATOR_VOXEL_CLIENT_APPLIED section=-2,12,-2 changed=3 gpuInvalidated={}",
+                    invalidated);
+        }
+        if(restored && !restoredAcknowledged) {
+            restoredAcknowledged=true;
+            OperatorMod.LOGGER.info("OPERATOR_VOXEL_CLIENT_RESTORED section=-2,12,-2 changed=3");
+        }
     }
 
     /** Upload once on a real extraction frame. Never read a live block,
@@ -172,6 +209,7 @@ public final class ClientVoxelSectionProbe {
     private static void clear() {
         if(worker!=null)worker.cancel(false);
         worker=null;cursor=0;verified=0;success=false;failed=false;
+        appliedAcknowledged=false;restoredAcknowledged=false;
         if(RenderSystem.isOnRenderThread())closeGpu();
     }
 }
