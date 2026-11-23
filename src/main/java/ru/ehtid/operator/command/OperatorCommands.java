@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import ru.ehtid.operator.observe.ObservationEngine;
 import ru.ehtid.operator.transaction.ServerRelocationSmoke;
 import ru.ehtid.operator.transaction.ServerTunnelFoldSmoke;
+import ru.ehtid.operator.transaction.ServerVoxelCrashSmoke;
 import ru.ehtid.operator.storage.RelocationWatchdogStorage;
 import java.io.IOException;
 
@@ -215,6 +216,22 @@ public final class OperatorCommands {
                             return 1;
                         }))
                 )
+                // Never usable outside a marked, dedicated GitHub CI world.
+                // Phase 1 deliberately HALTS the JVM after flushing two
+                // physical block writes; phases 2/3 prove cold recovery.
+                .then(Commands.literal("ci-voxel-crash")
+                        .requires(source -> Boolean.getBoolean("operator.reality.ciVoxelCrash")
+                                && "true".equals(System.getenv("GITHUB_ACTIONS"))
+                                && source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                        .then(Commands.argument("phase", IntegerArgumentType.integer(1,3))
+                                .executes(context -> {
+                                    var source=context.getSource();
+                                    String output=ServerVoxelCrashSmoke.phase(
+                                            source.getServer(),
+                                            IntegerArgumentType.getInteger(context,"phase"));
+                                    source.sendSuccess(()->Component.literal(output),false);
+                                    return output.contains("_OK:")?1:0;
+                                })))
                 // This command is not registered unless the JVM was explicitly
                 // started in CI smoke mode. A separate world marker is also
                 // checked before running any test-only world mutation.
