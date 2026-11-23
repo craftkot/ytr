@@ -122,13 +122,13 @@ jobs:
             exit 1
           fi
           echo "Dedicated server started, Operator loaded, status command passed, and world memory persisted."
+      - name: Real voxel WAL cold-restart crash recovery
+        run: python3 tools/integration_voxel_crash_smoke.py
       - name: Integration-test real block apply and rollback across restarts
         shell: bash
         run: python3 tools/integration_relocation_smoke.py
       - name: Test crash recovery
         run: python3 tools/integration_unclean_crash_smoke.py
-      - name: Real voxel WAL cold-restart crash recovery
-        run: python3 tools/integration_voxel_crash_smoke.py
       - name: Real autonomous tunnel fold world integration
         run: python3 tools/integration_autonomous_tunnel_smoke.py
       - name: Upload autonomous world-test logs
