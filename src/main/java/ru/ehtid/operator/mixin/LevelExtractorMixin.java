@@ -18,5 +18,6 @@ public abstract class LevelExtractorMixin {
         ru.ehtid.operator.reality.ClientTerrainMeshProbe.onFrame(camera);
         ru.ehtid.operator.reality.ClientDynamicTerrainProbe.onFrame(camera);
         ru.ehtid.operator.reality.ClientVoxelSectionProbe.onFrame(camera);
+        ru.ehtid.operator.reality.ClientOffscreenBiomeProbe.onFrame(camera);
     }
 }
