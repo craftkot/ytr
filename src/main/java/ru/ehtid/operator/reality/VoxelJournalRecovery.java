@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 
 /**
  * Idempotent fail-closed repair of a PREPARED or APPLIED voxel WAL.
@@ -20,7 +21,7 @@ import java.util.UUID;
  */
 public final class VoxelJournalRecovery {
     public enum Status {
-        RECOVERED, ALREADY_RESOLVED, UNSAFE, DIVERGED, WRITE_FAILED
+        RECOVERED, ALREADY_RESOLVED, UNSAFE, DIVERGED, WRITE_FAILED, FLUSH_FAILED
     }
     public record Outcome(Status status,int restored,int changedCount) {
         public Outcome {
@@ -39,9 +40,21 @@ public final class VoxelJournalRecovery {
      * loaded and protected-volume checks enabled. An IOException means the
      * WAL is corrupt/unavailable or its atomic RESOLVED update failed.
      */
+    /** Unit-test and in-memory adapter only. Real Minecraft callers MUST use
+     * the overload supplying a server/world durability flush callback. */
     public static Outcome recover(VoxelWorldTransaction.World world,Path directory,UUID id,
                                   String dimension,SectionTerrainMesh.Key section)
             throws IOException {
+        return recover(world,directory,id,dimension,section,()->true);
+    }
+
+    /** The physical chunk changes must be flushed before the WAL can be
+     * marked RESOLVED. A failure leaves it pending for a cold-start retry. */
+    public static Outcome recover(VoxelWorldTransaction.World world,Path directory,UUID id,
+                                  String dimension,SectionTerrainMesh.Key section,
+                                  BooleanSupplier flushRestoredWorld)
+            throws IOException {
+        Objects.requireNonNull(flushRestoredWorld);
         Objects.requireNonNull(world);
         var journal=VoxelWriteAheadLog.load(directory,id,dimension,section);
         int count=journal.changedCount();
@@ -98,6 +111,15 @@ public final class VoxelJournalRecovery {
                 return new Outcome(Status.UNSAFE,restored,count);
         } catch(RuntimeException changed) {
             return new Outcome(Status.DIVERGED,restored,count);
+        }
+        // Crash consistency: NEVER resolve the durable WAL before the
+        // restored Minecraft chunks have been flushed to their Anvil files.
+        // A crash during/after a failed flush must leave PREPARED/APPLIED.
+        try {
+            if(!flushRestoredWorld.getAsBoolean())
+                return new Outcome(Status.FLUSH_FAILED,restored,count);
+        } catch(RuntimeException failed) {
+            return new Outcome(Status.FLUSH_FAILED,restored,count);
         }
         VoxelWriteAheadLog.advance(directory,journal,VoxelWriteAheadLog.Phase.RESOLVED);
         return new Outcome(Status.RECOVERED,restored,count);
