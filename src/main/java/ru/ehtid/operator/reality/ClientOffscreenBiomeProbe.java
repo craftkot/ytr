@@ -37,7 +37,7 @@ public final class ClientOffscreenBiomeProbe {
     private static ClientLevel world;
     private static boolean enabled,ready,visibleLogged,selectedLogged,failed;
     private static boolean appliedObserved,restoredObserved;
-    private static int cursor,verified,appliedCursor,restoredCursor;
+    private static int cursor,verified,appliedCursor,restoredCursor,cameraAckPhase;
     private static BiomeRegionBlueprint preview;
     private static String[] originalBiomes,alternateBiomes;
 
@@ -151,7 +151,15 @@ public final class ClientOffscreenBiomeProbe {
 
     public static void onFrame(Camera camera) {
         if(!ENABLED || !RenderSystem.isOnRenderThread())return;
-        if(!enabled || !ready || world!=Minecraft.getInstance().level
+        var integrated=Minecraft.getInstance().getSingleplayerServer();
+        var root=integrated==null?null:integrated.getWorldPath(LevelResource.ROOT)
+                .resolve("operator_reality");
+        boolean viewCheck=root!=null && (
+                Files.isRegularFile(root.resolve("ci-biome-camera-hide-first.allow"))
+                || Files.isRegularFile(root.resolve("ci-biome-camera-show-first.allow"))
+                || Files.isRegularFile(root.resolve("ci-biome-camera-hide-second.allow"))
+                || Files.isRegularFile(root.resolve("ci-biome-camera-show-second.allow")));
+        if((!enabled && !viewCheck) || !ready || world!=Minecraft.getInstance().level
                 || camera==null || camera.isPanoramicMode()
                 || camera.getCapturedFrustum()!=null || camera.getCullFrustum()==null) {
             selection.sample(null,0,0,0,false);
@@ -162,6 +170,24 @@ public final class ClientOffscreenBiomeProbe {
         AABB volume=new AABB(bounds.minX(),bounds.minY(),bounds.minZ(),
                 bounds.maxX(),bounds.maxY(),bounds.maxZ()).inflate(1D);
         boolean possiblyVisible=camera.getCullFrustum().isVisible(volume);
+        if(viewCheck) {
+            int requested=0;
+            if(Files.isRegularFile(root.resolve("ci-biome-camera-hide-first.allow")))
+                requested=1;
+            else if(Files.isRegularFile(root.resolve("ci-biome-camera-show-first.allow")))
+                requested=2;
+            else if(Files.isRegularFile(root.resolve("ci-biome-camera-hide-second.allow")))
+                requested=3;
+            else if(Files.isRegularFile(root.resolve("ci-biome-camera-show-second.allow")))
+                requested=4;
+            boolean expectedVisible=requested==2 || requested==4;
+            if(requested>cameraAckPhase && expectedVisible==possiblyVisible) {
+                cameraAckPhase=requested;
+                OperatorMod.LOGGER.info(
+                        "OPERATOR_BIOME_CLIENT_CAMERA phase={} visible={} safeFrustum=true",
+                        requested,possiblyVisible);
+            }
+        }
         if(possiblyVisible&&!visibleLogged) {
             visibleLogged=true;
             OperatorMod.LOGGER.info(
@@ -189,7 +215,7 @@ public final class ClientOffscreenBiomeProbe {
         cursor=verified=0;
         enabled=ready=visibleLogged=selectedLogged=failed=false;
         appliedObserved=restoredObserved=false;
-        appliedCursor=restoredCursor=0;
+        appliedCursor=restoredCursor=cameraAckPhase=0;
         preview=null;
         originalBiomes=alternateBiomes=null;
         selection.clear();
