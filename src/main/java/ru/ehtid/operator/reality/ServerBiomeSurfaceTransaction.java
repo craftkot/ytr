@@ -11,6 +11,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import ru.ehtid.operator.OperatorMod;
 
 /**
  * Real vanilla block updates for a CI-only physical biome appearance change.
@@ -104,6 +105,19 @@ public final class ServerBiomeSurfaceTransaction {
      * real vanilla blocks so visual verification can see the difference. */
     public static void seedFixture(ServerLevel level) {
         requireDisposable();
+        // Run this only inside a BOOTSTRAPPED real Minecraft server. Plain
+        // JUnit cannot reliably initialize the 26.3 dynamic block registries.
+        var oak=Blocks.OAK_LEAVES.defaultBlockState()
+                .setValue(LeavesBlock.PERSISTENT,true)
+                .setValue(LeavesBlock.DISTANCE,1);
+        var vanillaRecomputed=oak.setValue(LeavesBlock.DISTANCE,7);
+        if(!matchesGuard(vanillaRecomputed,oak)
+                || matchesGuard(vanillaRecomputed.setValue(
+                        LeavesBlock.PERSISTENT,false),oak)
+                || matchesGuard(Blocks.SPRUCE_LEAVES.defaultBlockState(),oak)
+                || matchesGuard(Blocks.STONE.defaultBlockState(),oak))
+            throw new IllegalStateException("Unsafe leaf-distance-only equality guard");
+        OperatorMod.LOGGER.info("OPERATOR_BIOME_LEAF_GUARD_SUCCESS");
         if(!level.getServer().isSameThread())
             throw new IllegalStateException("Biome fixture seed requires server thread");
         for(int z=BiomeSurfacePattern.MIN_Z;z<=BiomeSurfacePattern.MAX_Z;z++)
