@@ -74,7 +74,7 @@ public final class ClientBiomeSurfaceProbe {
         return switch(kind){
             case AIR->Blocks.AIR;
             case GRASS->Blocks.GRASS_BLOCK;
-            case DIRT->Blocks.DIRT;
+            case PODZOL->Blocks.PODZOL;
             case SNOW_BLOCK->Blocks.SNOW_BLOCK;
             case OAK_LOG->Blocks.OAK_LOG;
             case OAK_LEAVES->Blocks.OAK_LEAVES;
