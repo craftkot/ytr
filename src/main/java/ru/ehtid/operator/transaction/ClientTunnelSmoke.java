@@ -43,6 +43,7 @@ public final class ClientTunnelSmoke {
     private int biomeTransactionPhase;
     private int biomeCameraPhase;
     private ru.ehtid.operator.reality.ServerBiomeRegionTransaction biomeTransaction;
+    private ru.ehtid.operator.reality.ServerBiomeSurfaceTransaction biomeSurface;
     private static final ru.ehtid.operator.reality.BiomeRegionBlueprint.Origin BIOME_REGION=
             new ru.ehtid.operator.reality.BiomeRegionBlueprint.Origin(-32,192,-64);
     private java.util.UUID voxelJournalId;
@@ -159,26 +160,56 @@ public final class ClientTunnelSmoke {
                             directory.resolve("ci-biome-server-apply.allow"))) {
                         if(biomeCameraPhase!=1)
                             throw new IllegalStateException("Cannot apply biome while camera is not hidden");
-                        biomeTransaction=new ru.ehtid.operator.reality.ServerBiomeRegionTransaction(
-                                level,BIOME_REGION,()->level.players().stream().allMatch(p->
+                        java.util.function.BooleanSupplier biomeSafety=()->
+                                level.players().stream().allMatch(p->
                                         !new net.minecraft.world.phys.AABB(
-                                                -44,180,-76,12,268,-20).contains(p.position())));
+                                                -44,180,-76,12,268,-20).contains(p.position()));
+                        biomeTransaction=new ru.ehtid.operator.reality.ServerBiomeRegionTransaction(
+                                level,BIOME_REGION,biomeSafety);
+                        biomeSurface=new ru.ehtid.operator.reality.ServerBiomeSurfaceTransaction(
+                                level,biomeSafety);
                         int changed=biomeTransaction.apply();
+                        int surfaceCount;
+                        try {
+                            surfaceCount=biomeSurface.apply();
+                        } catch(RuntimeException surfaceFailure) {
+                            try { biomeTransaction.rollback(); }
+                            catch(RuntimeException rollbackFailure) {
+                                surfaceFailure.addSuppressed(rollbackFailure);
+                            }
+                            throw surfaceFailure;
+                        }
                         biomeTransactionPhase=1;
                         OperatorMod.LOGGER.info(
                                 "OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64 changed={} target=minecraft:snowy_taiga",
                                 changed);
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_BIOME_SURFACE_APPLIED changed={} snowyGround=true spruceTrees=true",
+                                surfaceCount);
                         return;
                     }
                     if(biomeTransactionPhase==1 && Files.isRegularFile(
                             directory.resolve("ci-biome-server-rollback.allow"))) {
                         if(biomeCameraPhase!=3)
                             throw new IllegalStateException("Cannot restore biome while camera is not hidden");
-                        int restored=biomeTransaction.rollback();
+                        int restoredBlocks=biomeSurface.rollback();
+                        int restored;
+                        try {
+                            restored=biomeTransaction.rollback();
+                        } catch(RuntimeException biomeFailure) {
+                            try { biomeSurface.apply(); }
+                            catch(RuntimeException restoreFailure) {
+                                biomeFailure.addSuppressed(restoreFailure);
+                            }
+                            throw biomeFailure;
+                        }
                         biomeTransactionPhase=2;
                         OperatorMod.LOGGER.info(
                                 "OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64 changed={}",
                                 restored);
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_BIOME_SURFACE_RESTORED changed={} grass=true oakTrees=true",
+                                restoredBlocks);
                         return;
                     }
                     // Explicit CI-only stone/air physical transaction.
@@ -387,6 +418,9 @@ public final class ClientTunnelSmoke {
     }
 
     private static void buildCameraScene(ServerLevel level) {
+        // A separate 16x18 grass/oak clearing within the biome-region
+        // interior, kept away from all older stone/air GPU test fixtures.
+        ru.ehtid.operator.reality.ServerBiomeSurfaceTransaction.seedFixture(level);
         // CI-only surface fixture: seed terrain alone can lie well below
         // this elevated camera, preventing both GPU tiles from ever entering
         // the frustum. Build two real stone surfaces north of the tunnel,
