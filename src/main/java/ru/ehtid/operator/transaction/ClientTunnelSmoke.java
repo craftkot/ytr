@@ -41,6 +41,7 @@ public final class ClientTunnelSmoke {
     private int dynamicPivotPhase;
     private int voxelTransactionPhase;
     private int biomeTransactionPhase;
+    private int biomeCameraPhase;
     private ru.ehtid.operator.reality.ServerBiomeRegionTransaction biomeTransaction;
     private static final ru.ehtid.operator.reality.BiomeRegionBlueprint.Origin BIOME_REGION=
             new ru.ehtid.operator.reality.BiomeRegionBlueprint.Origin(-32,192,-64);
@@ -120,36 +121,64 @@ public final class ClientTunnelSmoke {
                             + "sourceAir=true targetStone=true wal=COMMITTED", ownerId);
                 }
                 case 3 -> {
+                    // Two explicit camera-out / camera-back cycles: physically
+                    // commit and rollback ONLY while the region is offscreen.
+                    if(biomeCameraPhase==0 && Files.isRegularFile(
+                            directory.resolve("ci-biome-camera-hide-first.allow"))) {
+                        placeCamera(player,4.5D,0.0F);
+                        biomeCameraPhase=1;
+                        OperatorMod.LOGGER.info("OPERATOR_BIOME_CAMERA_HIDE phase=1");
+                        return;
+                    }
+                    if(biomeCameraPhase==1 && Files.isRegularFile(
+                            directory.resolve("ci-biome-camera-show-first.allow"))) {
+                        placeCamera(player,4.5D,180.0F);
+                        biomeCameraPhase=2;
+                        OperatorMod.LOGGER.info("OPERATOR_BIOME_CAMERA_SHOW phase=2");
+                        return;
+                    }
+                    if(biomeCameraPhase==2 && Files.isRegularFile(
+                            directory.resolve("ci-biome-camera-hide-second.allow"))) {
+                        placeCamera(player,4.5D,0.0F);
+                        biomeCameraPhase=3;
+                        OperatorMod.LOGGER.info("OPERATOR_BIOME_CAMERA_HIDE phase=3");
+                        return;
+                    }
+                    if(biomeCameraPhase==3 && Files.isRegularFile(
+                            directory.resolve("ci-biome-camera-show-second.allow"))) {
+                        placeCamera(player,4.5D,180.0F);
+                        biomeCameraPhase=4;
+                        OperatorMod.LOGGER.info("OPERATOR_BIOME_CAMERA_SHOW phase=4");
+                        return;
+                    }
                     // Strict disposable-world biome mutation. This is initiated
                     // only AFTER the CI runner verified the complete 3D
                     // offscreen preview selection. Move the player away before
                     // the physical commit, then return to inspect the client.
                     if(biomeTransactionPhase==0 && Files.isRegularFile(
                             directory.resolve("ci-biome-server-apply.allow"))) {
-                        placeCamera(player,128.5D,0.0F);
+                        if(biomeCameraPhase!=1)
+                            throw new IllegalStateException("Cannot apply biome while camera is not hidden");
                         biomeTransaction=new ru.ehtid.operator.reality.ServerBiomeRegionTransaction(
-                                level,BIOME_REGION,()->!new net.minecraft.world.phys.AABB(
-                                        -48,176,-80,16,272,16).contains(player.position())
-                                        && level.players().stream().allMatch(p->
+                                level,BIOME_REGION,()->level.players().stream().allMatch(p->
                                         !new net.minecraft.world.phys.AABB(
-                                                -48,176,-80,16,272,16).contains(p.position())));
+                                                -44,180,-76,12,268,-20).contains(p.position())));
                         int changed=biomeTransaction.apply();
                         biomeTransactionPhase=1;
                         OperatorMod.LOGGER.info(
                                 "OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64 changed={} target=minecraft:snowy_taiga",
                                 changed);
-                        placeCamera(player,4.5D,180.0F);
                         return;
                     }
                     if(biomeTransactionPhase==1 && Files.isRegularFile(
                             directory.resolve("ci-biome-server-rollback.allow"))) {
-                        placeCamera(player,128.5D,0.0F);
+                        if(biomeCameraPhase!=3)
+                            throw new IllegalStateException("Cannot restore biome while camera is not hidden");
                         int restored=biomeTransaction.rollback();
                         biomeTransactionPhase=2;
                         OperatorMod.LOGGER.info(
                                 "OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64 changed={}",
                                 restored);
-                        placeCamera(player,4.5D,180.0F);
                         return;
                     }
                     // Explicit CI-only stone/air physical transaction.
