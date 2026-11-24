@@ -30,6 +30,7 @@ public final class OperatorClientMod implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(ru.ehtid.operator.reality.ClientVoxelSectionProbe::tick);
         ClientTickEvents.END_CLIENT_TICK.register(ru.ehtid.operator.reality.ClientBlockStatePaletteProbe::tick);
         ClientTickEvents.END_CLIENT_TICK.register(ru.ehtid.operator.reality.ClientOffscreenBiomeProbe::tick);
+        ClientTickEvents.END_CLIENT_TICK.register(ru.ehtid.operator.reality.ClientBiomeSurfaceProbe::tick);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.level == null || client.player == null) return;
             long tick = client.level.getGameTime();
