@@ -84,7 +84,7 @@ public final class ServerBiomeRegionTransaction {
 
     private Holder<Biome> readQuart(int x,int y,int z) {
         int chunkX=Math.floorDiv(x,4),chunkZ=Math.floorDiv(z,4);
-        for(var chunk:chunks)if(chunk.getPos().x==chunkX && chunk.getPos().z==chunkZ)
+        for(var chunk:chunks)if(chunk.getPos().x()==chunkX && chunk.getPos().z()==chunkZ)
             return chunk.getNoiseBiome(x,y,z);
         throw new IllegalStateException("Outside the owned four biome chunks");
     }
