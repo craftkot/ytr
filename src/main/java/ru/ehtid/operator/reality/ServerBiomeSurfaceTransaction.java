@@ -156,27 +156,33 @@ public final class ServerBiomeSurfaceTransaction {
     /** All-or-restore on a synchronous write failure, with separate
      * validation before the first mutation. No mesh or frustum calls here. */
     private int write(boolean forward) {
-        int completed=0;
+        int touched=0;
         try {
-            for(var change:changes) {
-                if(completed%32==0 && !safe.getAsBoolean())
+            for(int i=0;i<changes.size();i++) {
+                var change=changes.get(i);
+                if(i%32==0 && !safe.getAsBoolean())
                     throw new IllegalStateException("Player entered biome safety halo");
                 var expected=forward?change.original():change.replacement();
                 var target=forward?change.replacement():change.original();
-                if(!matchesGuard(level.getBlockState(change.pos()),expected)
-                        || !level.setBlock(change.pos(),target,FLAGS)
+                if(!matchesGuard(level.getBlockState(change.pos()),expected))
+                    throw new IllegalStateException("Stale changed forest cell "+change.pos());
+                // Include the CURRENT block in compensation, even if vanilla
+                // reports write failure or the post-write verification fails.
+                // This avoids leaving an acknowledged-but-unrolled partial edit.
+                touched=i+1;
+                if(!level.setBlock(change.pos(),target,FLAGS)
                         || !matchesGuard(level.getBlockState(change.pos()),target))
                     throw new IllegalStateException("Physical snow/tree update failed at "+change.pos());
-                completed++;
             }
-            return completed;
+            return changes.size();
         } catch(RuntimeException failure) {
-            for(int i=completed-1;i>=0;i--) {
+            for(int i=touched-1;i>=0;i--) {
                 var cell=changes.get(i);
                 var restore=forward?cell.original():cell.replacement();
                 try {
-                    if(!level.setBlock(cell.pos(),restore,FLAGS)
-                            || !matchesGuard(level.getBlockState(cell.pos()),restore))
+                    if(!matchesGuard(level.getBlockState(cell.pos()),restore)
+                            && (!level.setBlock(cell.pos(),restore,FLAGS)
+                                || !matchesGuard(level.getBlockState(cell.pos()),restore)))
                         failure.addSuppressed(new IllegalStateException(
                                 "Biome compensation failed at "+cell.pos()));
                 } catch(RuntimeException compensation) {
