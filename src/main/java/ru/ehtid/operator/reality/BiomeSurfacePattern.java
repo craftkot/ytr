@@ -17,7 +17,7 @@ public final class BiomeSurfacePattern {
     public static final int GROUND_Y=199,MAX_Y=208;
     public static final int MAX_CHANGED=1024;
     public enum Material {
-        AIR,GRASS,DIRT,SNOW_BLOCK,OAK_LOG,OAK_LEAVES,SPRUCE_LOG,SPRUCE_LEAVES
+        AIR,GRASS,PODZOL,SNOW_BLOCK,OAK_LOG,OAK_LEAVES,SPRUCE_LOG,SPRUCE_LEAVES
     }
     public record Cell(int x,int y,int z,Material before,Material after) {
         public Cell {
@@ -34,12 +34,12 @@ public final class BiomeSurfacePattern {
                 || y<GROUND_Y||y>MAX_Y)
             throw new IndexOutOfBoundsException("Outside physical biome fixture");
         if(y==GROUND_Y) {
-            // Grass randomly converts to dirt beneath a solid tree canopy.
-            // Use a stable dirt bed beneath both trees in BOTH variants so
-            // the server cannot silently invalidate the fixture over time.
+            // Grass can turn to dirt under logs AND spread back on lit canopy edges.
+            // Use a stable podzol bed beneath both trees in BOTH variants so
+            // ordinary grass random ticks cannot invalidate the fixture.
             for(int[] tree:TREES)
                 if(Math.abs(x-tree[0])<=2 && Math.abs(z-tree[1])<=2)
-                    return Material.DIRT;
+                    return Material.PODZOL;
             return snowy && snowfall(x,z)?Material.SNOW_BLOCK:Material.GRASS;
         }
         for(int[] tree:TREES) {
