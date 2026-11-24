@@ -41,7 +41,7 @@ public final class BiomeSurfacePattern {
                 return snowy?Material.SPRUCE_LOG:Material.OAK_LOG;
             int radius=snowy?spruceRadius(y):oakRadius(y);
             if(radius>=0 && dx<=radius && dz<=radius
-                    && Math.max(dx,dz)>0)
+                    && (Math.max(dx,dz)>0 || y>(snowy?207:203)))
                 return snowy?Material.SPRUCE_LEAVES:Material.OAK_LEAVES;
         }
         return Material.AIR;
