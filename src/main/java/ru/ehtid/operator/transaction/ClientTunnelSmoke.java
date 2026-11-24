@@ -40,6 +40,10 @@ public final class ClientTunnelSmoke {
     private boolean repeatAway,repeatViewActive;
     private int dynamicPivotPhase;
     private int voxelTransactionPhase;
+    private int biomeTransactionPhase;
+    private ru.ehtid.operator.reality.ServerBiomeRegionTransaction biomeTransaction;
+    private static final ru.ehtid.operator.reality.BiomeRegionBlueprint.Origin BIOME_REGION=
+            new ru.ehtid.operator.reality.BiomeRegionBlueprint.Origin(-32,192,-64);
     private java.util.UUID voxelJournalId;
     private static final String VOXEL_WORLD_KEY="minecraft:overworld";
     private static final ru.ehtid.operator.reality.SectionTerrainMesh.Key VOXEL_SECTION=
@@ -116,6 +120,38 @@ public final class ClientTunnelSmoke {
                             + "sourceAir=true targetStone=true wal=COMMITTED", ownerId);
                 }
                 case 3 -> {
+                    // Strict disposable-world biome mutation. This is initiated
+                    // only AFTER the CI runner verified the complete 3D
+                    // offscreen preview selection. Move the player away before
+                    // the physical commit, then return to inspect the client.
+                    if(biomeTransactionPhase==0 && Files.isRegularFile(
+                            directory.resolve("ci-biome-server-apply.allow"))) {
+                        placeCamera(player,128.5D,0.0F);
+                        biomeTransaction=new ru.ehtid.operator.reality.ServerBiomeRegionTransaction(
+                                level,BIOME_REGION,()->!new net.minecraft.world.phys.AABB(
+                                        -48,176,-80,16,272,16).contains(player.position())
+                                        && level.players().stream().allMatch(p->
+                                        !new net.minecraft.world.phys.AABB(
+                                                -48,176,-80,16,272,16).contains(p.position())));
+                        int changed=biomeTransaction.apply();
+                        biomeTransactionPhase=1;
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64 changed={} target=minecraft:snowy_taiga",
+                                changed);
+                        placeCamera(player,4.5D,180.0F);
+                        return;
+                    }
+                    if(biomeTransactionPhase==1 && Files.isRegularFile(
+                            directory.resolve("ci-biome-server-rollback.allow"))) {
+                        placeCamera(player,128.5D,0.0F);
+                        int restored=biomeTransaction.rollback();
+                        biomeTransactionPhase=2;
+                        OperatorMod.LOGGER.info(
+                                "OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64 changed={}",
+                                restored);
+                        placeCamera(player,4.5D,180.0F);
+                        return;
+                    }
                     // Explicit CI-only stone/air physical transaction.
                     // The player is teleported 100+ blocks away BEFORE the
                     // server touches the candidate section. This is never
