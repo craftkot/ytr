@@ -107,8 +107,9 @@ public final class ServerBiomeSurfaceTransaction {
             throw new IllegalStateException("Biome fixture seed requires server thread");
         for(int z=BiomeSurfacePattern.MIN_Z;z<=BiomeSurfacePattern.MAX_Z;z++)
             for(int x=BiomeSurfacePattern.MIN_X;x<=BiomeSurfacePattern.MAX_X;x++) {
-                if(!level.setBlock(new BlockPos(x,BiomeSurfacePattern.GROUND_Y-1,z),
-                        Blocks.STONE.defaultBlockState(),FLAGS))
+                var ground=new BlockPos(x,BiomeSurfacePattern.GROUND_Y-1,z);
+                if(!level.getBlockState(ground).is(Blocks.STONE)
+                        && !level.setBlock(ground,Blocks.STONE.defaultBlockState(),FLAGS))
                     throw new IllegalStateException("Failed to seed forest subsoil");
                 for(int y=BiomeSurfacePattern.GROUND_Y;y<=BiomeSurfacePattern.MAX_Y;y++) {
                     var pos=new BlockPos(x,y,z);
