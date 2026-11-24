@@ -566,6 +566,50 @@ def capture_offscreen_biome_transition(proc) -> None:
         marker.unlink(missing_ok=True)
 
 
+def capture_real_biome_server_sync(proc) -> None:
+    # The disposable integrated server actually changes the 4x4x4 chunk
+    # biome storage; the real Minecraft client must see all 1024 quart cells
+    # and their original restoration through vanilla biome update packets.
+    apply_flag=MARKER_DIR / "ci-biome-server-apply.allow"
+    client_applied=MARKER_DIR / "ci-biome-client-apply.allow"
+    rollback_flag=MARKER_DIR / "ci-biome-server-rollback.allow"
+    client_restored=MARKER_DIR / "ci-biome-client-restore.allow"
+    try:
+        apply_flag.write_text("CI-only: commit a prepared region with player away\\n")
+        applied=await_marker(proc,"OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64",45)
+        match=re.search(
+            r"OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64 changed=(\d+) "
+            r"target=minecraft:snowy_taiga",applied)
+        if not match or int(match[1])<200:
+            raise RuntimeError("Server did not apply complete quart-biome transition")
+        client_applied.write_text("verify actual ClientLevel quart grid after vanilla biome packet\\n")
+        observed=await_marker(proc,"OPERATOR_BIOME_CLIENT_APPLIED origin=-32,192,-64",45)
+        found=re.search(
+            r"OPERATOR_BIOME_CLIENT_APPLIED origin=-32,192,-64 "
+            r"checkedQuartCells=(\d+) changedQuartCells=(\d+) "
+            r"target=minecraft:snowy_taiga",observed)
+        if not found or int(found[1])!=1024 or int(found[2])!=int(match[1]):
+            raise RuntimeError("Real client did not receive all changed biome quart cells")
+        apply_flag.unlink(missing_ok=True)
+        rollback_flag.write_text("CI-only: restore the original quart biome cells\\n")
+        restored=await_marker(proc,"OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64",45)
+        revert=re.search(r"OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64 changed=(\d+)",restored)
+        if not revert or int(revert[1])!=int(match[1]):
+            raise RuntimeError("Server failed exact biome rollback")
+        client_restored.write_text("verify original biome in real Minecraft client chunk storage\\n")
+        checked=await_marker(proc,"OPERATOR_BIOME_CLIENT_RESTORED origin=-32,192,-64",45)
+        original=re.search(
+            r"OPERATOR_BIOME_CLIENT_RESTORED origin=-32,192,-64 "
+            r"checkedQuartCells=(\d+) restoredQuartCells=(\d+)",checked)
+        if not original or int(original[1])!=1024 or int(original[2])!=int(match[1]):
+            raise RuntimeError("Real Minecraft client still has a stale biome after rollback")
+        log(f"Real biome material switch: {match[1]} quart cells server and client, exact restoration confirmed")
+        log("OPERATOR_BIOME_REAL_SERVER_CLIENT_ROLLBACK_SUCCESS")
+    finally:
+        for flag in (apply_flag,client_applied,rollback_flag,client_restored):
+            flag.unlink(missing_ok=True)
+
+
 def capture_dynamic_pivot(proc) -> None:
     # Verify the moving camera cache does NOT discard preloaded terrain
     # merely because the player turns 180 degrees in place.
@@ -839,6 +883,7 @@ def main() -> None:
             capture_real_voxel_surface(proc)
             capture_real_blockstate_palette(proc)
             capture_offscreen_biome_transition(proc)
+            capture_real_biome_server_sync(proc)
             capture_dynamic_section_substitution(proc)
             capture_voxel_physical_transaction(proc)
             time.sleep(3)
