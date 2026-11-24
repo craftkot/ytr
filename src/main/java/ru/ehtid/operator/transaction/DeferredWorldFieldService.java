@@ -136,6 +136,34 @@ public final class DeferredWorldFieldService {
         return null;
     }
 
+    /**
+     * Allow one expensive deferred-WAL/terrain audit per evaluation cycle,
+     * regardless of player count. Sort owner UUIDs for deterministic fairness:
+     * each pending owner receives a turn, and losing the current owner to a
+     * disconnect never authorizes extra work. Scheduling and the actual world
+     * mutation still pass every independent safety check.
+     *
+     * This is a PERFORMANCE gate only; it grants no permission to write.
+     */
+    public static boolean assignedProbe(Map<String, DeferredChunkPlan> pending,
+                                        UUID owner, long now) {
+        if (pending == null || pending.isEmpty()
+                || pending.size() > DeferredChunkPlan.MAX_PENDING
+                || owner == null || now < 0L
+                || now % 200L != 0L) return false;
+        var owners = new java.util.TreeSet<String>();
+        for (var entry : pending.entrySet()) {
+            DeferredChunkPlan plan = entry.getValue();
+            if (plan == null || !plan.valid() || !entry.getKey().equals(plan.sector))
+                return false;
+            owners.add(plan.ownerUuid);
+        }
+        if (owners.isEmpty()) return false;
+        int slot = (int) ((now / 200L) % owners.size());
+        return owners.stream().skip(slot).findFirst().orElse("")
+                .equals(owner.toString());
+    }
+
     public static boolean pendingValid(Map<String, DeferredChunkPlan> pending,
                                        Map<String, String> history, long now) {
         if (pending == null || history == null

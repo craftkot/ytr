@@ -72,6 +72,7 @@ public final class ServerRelocationSmoke {
                 case 9 -> crashDuringRollbackRestore(server, level);
                 case 10 -> recoverInterruptedRollback(server, level);
                 case 11 -> verifyInterruptedRollbackAfterRestart(server, level);
+                case 12, 13, 14, 15 -> ServerDeferredCrashSmoke.phase(server, level, number);
                 default -> "OPERATOR_CI_FAILED: unknown test phase";
             };
         } catch (RuntimeException | IOException error) {
