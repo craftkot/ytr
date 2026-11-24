@@ -125,6 +125,22 @@ public final class ServerBiomeSurfaceTransaction {
     public int expectedChanges(){return changes.size();}
     public boolean applied(){return applied;}
 
+    /**
+     * Vanilla continuously recalculates leaf DISTANCE as nearby logs and
+     * leaves change. This derived value is not a user edit or a new block.
+     * Compare every other BlockState property exactly: block identity,
+     * persistent flag and waterlogged state must still match the journal.
+     */
+    static boolean matchesGuard(BlockState actual,BlockState expected) {
+        if(actual.equals(expected))return true;
+        if(actual.getBlock()!=expected.getBlock()
+                || !actual.hasProperty(LeavesBlock.DISTANCE)
+                || !expected.hasProperty(LeavesBlock.DISTANCE))
+            return false;
+        return actual.setValue(LeavesBlock.DISTANCE,
+                expected.getValue(LeavesBlock.DISTANCE)).equals(expected);
+    }
+
     private void validate(boolean alternate) {
         if(!safe.getAsBoolean())
             throw new IllegalStateException("A player has entered the biome safety halo");
@@ -132,7 +148,7 @@ public final class ServerBiomeSurfaceTransaction {
             if(!level.hasChunkAt(g.pos()))
                 throw new IllegalStateException("Biome chunk unloaded during transition");
             var expected=alternate?g.replacement():g.original();
-            if(!level.getBlockState(g.pos()).equals(expected))
+            if(!matchesGuard(level.getBlockState(g.pos()),expected))
                 throw new IllegalStateException("Stale biome structure or outside block edit: "+g.pos());
         }
     }
@@ -147,9 +163,9 @@ public final class ServerBiomeSurfaceTransaction {
                     throw new IllegalStateException("Player entered biome safety halo");
                 var expected=forward?change.original():change.replacement();
                 var target=forward?change.replacement():change.original();
-                if(!level.getBlockState(change.pos()).equals(expected)
+                if(!matchesGuard(level.getBlockState(change.pos()),expected)
                         || !level.setBlock(change.pos(),target,FLAGS)
-                        || !level.getBlockState(change.pos()).equals(target))
+                        || !matchesGuard(level.getBlockState(change.pos()),target))
                     throw new IllegalStateException("Physical snow/tree update failed at "+change.pos());
                 completed++;
             }
@@ -160,7 +176,7 @@ public final class ServerBiomeSurfaceTransaction {
                 var restore=forward?cell.original():cell.replacement();
                 try {
                     if(!level.setBlock(cell.pos(),restore,FLAGS)
-                            || !level.getBlockState(cell.pos()).equals(restore))
+                            || !matchesGuard(level.getBlockState(cell.pos()),restore))
                         failure.addSuppressed(new IllegalStateException(
                                 "Biome compensation failed at "+cell.pos()));
                 } catch(RuntimeException compensation) {
