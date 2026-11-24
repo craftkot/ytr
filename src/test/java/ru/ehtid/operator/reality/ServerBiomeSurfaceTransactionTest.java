@@ -7,6 +7,12 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ServerBiomeSurfaceTransactionTest {
+    @org.junit.jupiter.api.BeforeAll
+    static void bootstrapMinecraftRegistries() {
+        // The JUnit process does not run vanilla's server registry bootstrap.
+        net.minecraft.server.Bootstrap.bootStrap();
+    }
+
     @Test void leafDistanceIsDerivedButAllOtherVanillaBlockStatePropertiesMustMatch() {
         var source=Blocks.SPRUCE_LEAVES.defaultBlockState()
                 .setValue(LeavesBlock.PERSISTENT,true)
