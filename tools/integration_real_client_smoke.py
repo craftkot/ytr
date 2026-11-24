@@ -578,9 +578,13 @@ def capture_real_biome_server_sync(proc) -> None:
     client_applied=MARKER_DIR / "ci-biome-client-apply.allow"
     rollback_flag=MARKER_DIR / "ci-biome-server-rollback.allow"
     client_restored=MARKER_DIR / "ci-biome-client-restore.allow"
+    surface_applied=MARKER_DIR / "ci-biome-surface-client-apply.allow"
+    surface_restored=MARKER_DIR / "ci-biome-surface-client-restore.allow"
     all_flags=(hide1,show2,hide3,show4,
-               apply_flag,client_applied,rollback_flag,client_restored)
+               apply_flag,client_applied,rollback_flag,client_restored,
+               surface_applied,surface_restored)
     try:
+        forest=screenshot("biome-forest-before.png")
         hide1.write_text("turn away from candidate biome before physical change\\n")
         await_marker(proc,"OPERATOR_BIOME_CAMERA_HIDE phase=1",25)
         await_marker(proc,
@@ -592,6 +596,12 @@ def capture_real_biome_server_sync(proc) -> None:
             r"target=minecraft:snowy_taiga",applied)
         if not match or int(match[1])<200:
             raise RuntimeError("Server did not apply complete offscreen quart-biome transition")
+        snow_server=await_marker(proc,"OPERATOR_BIOME_SURFACE_APPLIED changed=",25)
+        snow=re.search(
+            r"OPERATOR_BIOME_SURFACE_APPLIED changed=(\d+) snowyGround=true spruceTrees=true",
+            snow_server)
+        if not snow or not 200<int(snow[1])<=1024:
+            raise RuntimeError("Server did not replace real grass and oak with snow and spruce")
         client_applied.write_text("check real ClientLevel biomes while still hidden\\n")
         observed=await_marker(proc,"OPERATOR_BIOME_CLIENT_APPLIED origin=-32,192,-64",45)
         found=re.search(
@@ -600,11 +610,28 @@ def capture_real_biome_server_sync(proc) -> None:
             r"target=minecraft:snowy_taiga",observed)
         if not found or int(found[1])!=1024 or int(found[2])!=int(match[1]):
             raise RuntimeError("Client did not receive all offscreen biome cells")
+        surface_applied.write_text("check actual client snow surface and spruce leaf/trunk blocks\\n")
+        snow_client=await_marker(proc,"OPERATOR_BIOME_SURFACE_CLIENT_APPLIED changed=",35)
+        match_snow=re.search(
+            r"OPERATOR_BIOME_SURFACE_CLIENT_APPLIED changed=(\d+) "
+            r"snowyGround=true spruceTrees=true",snow_client)
+        if not match_snow or int(match_snow[1])!=int(snow[1]):
+            raise RuntimeError("Client lost or failed to synchronize physical snow/tree blocks")
         hide1.unlink(missing_ok=True)
         show2.write_text("return camera to the now-changed biome\\n")
         await_marker(proc,"OPERATOR_BIOME_CAMERA_SHOW phase=2",25)
         await_marker(proc,
             "OPERATOR_BIOME_CLIENT_CAMERA phase=2 visible=true safeFrustum=true",25)
+        time.sleep(1)
+        taiga=screenshot("biome-snowy-taiga-after-turn.png")
+        with Image.open(forest) as before, Image.open(taiga) as after:
+            visual=ImageChops.difference(before.convert("RGB"),after.convert("RGB"))
+            pixels=sum(1 for shade in visual.convert("L").crop((80,80,1200,670)).getdata()
+                       if shade>=25)
+            visual.save(SCREENSHOTS / "biome-forest-snowy-taiga-difference.png")
+        if pixels<180:
+            raise RuntimeError("Actual changed biome ground and foliage are not visible after camera turn")
+        log(f"Real Minecraft snowy terrain visually changed {pixels} pixels after returning camera")
         show2.unlink(missing_ok=True)
         apply_flag.unlink(missing_ok=True)
         hide3.write_text("hide changed biome again before server rollback\\n")
@@ -618,6 +645,12 @@ def capture_real_biome_server_sync(proc) -> None:
             restored)
         if not revert or int(revert[1])!=int(match[1]):
             raise RuntimeError("Server failed exact invisible biome rollback")
+        snow_revert=await_marker(proc,"OPERATOR_BIOME_SURFACE_RESTORED changed=",25)
+        return_cells=re.search(
+            r"OPERATOR_BIOME_SURFACE_RESTORED changed=(\d+) grass=true oakTrees=true",
+            snow_revert)
+        if not return_cells or int(return_cells[1])!=int(snow[1]):
+            raise RuntimeError("Server did not restore original grass and oak trees")
         client_restored.write_text("verify all original quart cells on actual client\\n")
         checked=await_marker(proc,"OPERATOR_BIOME_CLIENT_RESTORED origin=-32,192,-64",45)
         original=re.search(
@@ -625,12 +658,21 @@ def capture_real_biome_server_sync(proc) -> None:
             r"checkedQuartCells=(\d+) restoredQuartCells=(\d+)",checked)
         if not original or int(original[1])!=1024 or int(original[2])!=int(match[1]):
             raise RuntimeError("Client has stale quart biomes after server rollback")
+        surface_restored.write_text("check original grass and oak BlockStates on client\\n")
+        checked_surface=await_marker(proc,"OPERATOR_BIOME_SURFACE_CLIENT_RESTORED changed=",35)
+        original_forest=re.search(
+            r"OPERATOR_BIOME_SURFACE_CLIENT_RESTORED changed=(\d+) "
+            r"grass=true oakTrees=true",checked_surface)
+        if not original_forest or int(original_forest[1])!=int(snow[1]):
+            raise RuntimeError("Actual client forest blocks differ after hidden rollback")
         hide3.unlink(missing_ok=True)
         show4.write_text("return to restored original biome after invisible rollback\\n")
         await_marker(proc,"OPERATOR_BIOME_CAMERA_SHOW phase=4",25)
         await_marker(proc,
             "OPERATOR_BIOME_CLIENT_CAMERA phase=4 visible=true safeFrustum=true",25)
-        log(f"Real offscreen biome switch: {match[1]} quart cells, invisible commit, visible return, invisible rollback and complete client synchronization")
+        time.sleep(1)
+        screenshot("biome-forest-restored-after-turn.png")
+        log(f"Real offscreen biome switch: {match[1]} quart cells and {snow[1]} actual terrain/tree blocks; hidden apply, visual return, hidden rollback")
         log("OPERATOR_BIOME_REAL_SERVER_CLIENT_ROLLBACK_SUCCESS")
     finally:
         for flag in all_flags:flag.unlink(missing_ok=True)
