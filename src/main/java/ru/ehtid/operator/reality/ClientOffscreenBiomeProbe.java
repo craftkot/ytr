@@ -36,7 +36,9 @@ public final class ClientOffscreenBiomeProbe {
 
     private static ClientLevel world;
     private static boolean enabled,ready,visibleLogged,selectedLogged,failed;
-    private static int cursor,verified;
+    private static boolean appliedObserved,restoredObserved;
+    private static int cursor,verified,appliedCursor,restoredCursor;
+    private static BiomeRegionBlueprint preview;
 
     private ClientOffscreenBiomeProbe(){}
 
@@ -47,8 +49,11 @@ public final class ClientOffscreenBiomeProbe {
             reset();
         }
         var server=client.getSingleplayerServer();
-        enabled=server!=null && Files.isRegularFile(server.getWorldPath(LevelResource.ROOT)
-                .resolve("operator_reality/ci-biome-offscreen.allow"));
+        var directory=server==null?null:server.getWorldPath(LevelResource.ROOT)
+                .resolve("operator_reality");
+        enabled=directory!=null && Files.isRegularFile(
+                directory.resolve("ci-biome-offscreen.allow"));
+        verifyServerChange(directory);
         if(!enabled||world==null||ready||failed)return;
 
         if(cursor<COUNT) {
@@ -77,6 +82,7 @@ public final class ClientOffscreenBiomeProbe {
             if(!plan.boundaryUnchanged() || !selection.watch(ORIGIN)
                     || !selection.prepare(plan))
                 throw new IllegalStateException("Biome blueprint not adopted");
+            preview=plan;
             ready=true;
             OperatorMod.LOGGER.info(
                     "OPERATOR_BIOME_REGION_READY origin={},{},{} sourceQuartCells={} changedQuartCells={} target={} seams=true",
@@ -101,6 +107,43 @@ public final class ClientOffscreenBiomeProbe {
         return world.getNoiseBiome(ORIGIN.x()/4+x,ORIGIN.y()/4+y,
                 ORIGIN.z()/4+z).unwrapKey()
                 .map(key->key.identifier().toString()).orElse(null);
+    }
+
+    /** Read the real client quart biome storage after a vanilla server biome
+     * packet, then after its rollback. No server result is accepted as proof
+     * that the CLIENT actually received the full update. */
+    private static void verifyServerChange(java.nio.file.Path directory) {
+        if(directory==null || world==null || preview==null)return;
+        boolean apply=Files.isRegularFile(directory.resolve("ci-biome-client-apply.allow"));
+        boolean restore=Files.isRegularFile(directory.resolve("ci-biome-client-restore.allow"));
+        if(apply && !appliedObserved) {
+            int stop=Math.min(appliedCursor+PER_TICK,COUNT);
+            for(;appliedCursor<stop;) {
+                String state=read(appliedCursor);
+                if(state==null || !preview.alternateSnapshot()[appliedCursor].equals(state))return;
+                appliedCursor++;
+            }
+            if(appliedCursor==COUNT) {
+                appliedObserved=true;
+                OperatorMod.LOGGER.info(
+                        "OPERATOR_BIOME_CLIENT_APPLIED origin=-32,192,-64 checkedQuartCells={} changedQuartCells={} target=minecraft:snowy_taiga",
+                        COUNT,preview.changedQuartCells());
+            }
+        }
+        if(restore && appliedObserved && !restoredObserved) {
+            int stop=Math.min(restoredCursor+PER_TICK,COUNT);
+            for(;restoredCursor<stop;) {
+                String state=read(restoredCursor);
+                if(state==null || !preview.originalSnapshot()[restoredCursor].equals(state))return;
+                restoredCursor++;
+            }
+            if(restoredCursor==COUNT) {
+                restoredObserved=true;
+                OperatorMod.LOGGER.info(
+                        "OPERATOR_BIOME_CLIENT_RESTORED origin=-32,192,-64 checkedQuartCells={} restoredQuartCells={}",
+                        COUNT,preview.changedQuartCells());
+            }
+        }
     }
 
     public static void onFrame(Camera camera) {
@@ -142,6 +185,9 @@ public final class ClientOffscreenBiomeProbe {
         Arrays.fill(frozen,null);
         cursor=verified=0;
         enabled=ready=visibleLogged=selectedLogged=failed=false;
+        appliedObserved=restoredObserved=false;
+        appliedCursor=restoredCursor=0;
+        preview=null;
         selection.clear();
     }
 }
