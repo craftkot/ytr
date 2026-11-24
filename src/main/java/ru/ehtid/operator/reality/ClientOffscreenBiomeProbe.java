@@ -39,6 +39,7 @@ public final class ClientOffscreenBiomeProbe {
     private static boolean appliedObserved,restoredObserved;
     private static int cursor,verified,appliedCursor,restoredCursor;
     private static BiomeRegionBlueprint preview;
+    private static String[] originalBiomes,alternateBiomes;
 
     private ClientOffscreenBiomeProbe(){}
 
@@ -83,6 +84,8 @@ public final class ClientOffscreenBiomeProbe {
                     || !selection.prepare(plan))
                 throw new IllegalStateException("Biome blueprint not adopted");
             preview=plan;
+            originalBiomes=plan.originalSnapshot();
+            alternateBiomes=plan.alternateSnapshot();
             ready=true;
             OperatorMod.LOGGER.info(
                     "OPERATOR_BIOME_REGION_READY origin={},{},{} sourceQuartCells={} changedQuartCells={} target={} seams=true",
@@ -120,7 +123,7 @@ public final class ClientOffscreenBiomeProbe {
             int stop=Math.min(appliedCursor+PER_TICK,COUNT);
             for(;appliedCursor<stop;) {
                 String state=read(appliedCursor);
-                if(state==null || !preview.alternateSnapshot()[appliedCursor].equals(state))return;
+                if(state==null || !alternateBiomes[appliedCursor].equals(state))return;
                 appliedCursor++;
             }
             if(appliedCursor==COUNT) {
@@ -134,7 +137,7 @@ public final class ClientOffscreenBiomeProbe {
             int stop=Math.min(restoredCursor+PER_TICK,COUNT);
             for(;restoredCursor<stop;) {
                 String state=read(restoredCursor);
-                if(state==null || !preview.originalSnapshot()[restoredCursor].equals(state))return;
+                if(state==null || !originalBiomes[restoredCursor].equals(state))return;
                 restoredCursor++;
             }
             if(restoredCursor==COUNT) {
@@ -188,6 +191,7 @@ public final class ClientOffscreenBiomeProbe {
         appliedObserved=restoredObserved=false;
         appliedCursor=restoredCursor=0;
         preview=null;
+        originalBiomes=alternateBiomes=null;
         selection.clear();
     }
 }
