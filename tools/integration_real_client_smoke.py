@@ -567,47 +567,73 @@ def capture_offscreen_biome_transition(proc) -> None:
 
 
 def capture_real_biome_server_sync(proc) -> None:
-    # The disposable integrated server actually changes the 4x4x4 chunk
-    # biome storage; the real Minecraft client must see all 1024 quart cells
-    # and their original restoration through vanilla biome update packets.
+    # Verify actual 4x4x4 biome mutation and client packets WHILE HIDDEN.
+    # Two separate camera reversals: original -> hidden/changed -> visible
+    # -> hidden/restored -> visible. No world writes are enabled outside CI.
+    hide1=MARKER_DIR / "ci-biome-camera-hide-first.allow"
+    show2=MARKER_DIR / "ci-biome-camera-show-first.allow"
+    hide3=MARKER_DIR / "ci-biome-camera-hide-second.allow"
+    show4=MARKER_DIR / "ci-biome-camera-show-second.allow"
     apply_flag=MARKER_DIR / "ci-biome-server-apply.allow"
     client_applied=MARKER_DIR / "ci-biome-client-apply.allow"
     rollback_flag=MARKER_DIR / "ci-biome-server-rollback.allow"
     client_restored=MARKER_DIR / "ci-biome-client-restore.allow"
+    all_flags=(hide1,show2,hide3,show4,
+               apply_flag,client_applied,rollback_flag,client_restored)
     try:
-        apply_flag.write_text("CI-only: commit a prepared region with player away\\n")
+        hide1.write_text("turn away from candidate biome before physical change\\n")
+        await_marker(proc,"OPERATOR_BIOME_CAMERA_HIDE phase=1",25)
+        await_marker(proc,
+            "OPERATOR_BIOME_CLIENT_CAMERA phase=1 visible=false safeFrustum=true",25)
+        apply_flag.write_text("CI-only: physically apply biome while entire region hidden\\n")
         applied=await_marker(proc,"OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64",45)
         match=re.search(
             r"OPERATOR_BIOME_SERVER_APPLIED origin=-32,192,-64 changed=(\d+) "
             r"target=minecraft:snowy_taiga",applied)
         if not match or int(match[1])<200:
-            raise RuntimeError("Server did not apply complete quart-biome transition")
-        client_applied.write_text("verify actual ClientLevel quart grid after vanilla biome packet\\n")
+            raise RuntimeError("Server did not apply complete offscreen quart-biome transition")
+        client_applied.write_text("check real ClientLevel biomes while still hidden\\n")
         observed=await_marker(proc,"OPERATOR_BIOME_CLIENT_APPLIED origin=-32,192,-64",45)
         found=re.search(
             r"OPERATOR_BIOME_CLIENT_APPLIED origin=-32,192,-64 "
             r"checkedQuartCells=(\d+) changedQuartCells=(\d+) "
             r"target=minecraft:snowy_taiga",observed)
         if not found or int(found[1])!=1024 or int(found[2])!=int(match[1]):
-            raise RuntimeError("Real client did not receive all changed biome quart cells")
+            raise RuntimeError("Client did not receive all offscreen biome cells")
+        hide1.unlink(missing_ok=True)
+        show2.write_text("return camera to the now-changed biome\\n")
+        await_marker(proc,"OPERATOR_BIOME_CAMERA_SHOW phase=2",25)
+        await_marker(proc,
+            "OPERATOR_BIOME_CLIENT_CAMERA phase=2 visible=true safeFrustum=true",25)
+        show2.unlink(missing_ok=True)
         apply_flag.unlink(missing_ok=True)
-        rollback_flag.write_text("CI-only: restore the original quart biome cells\\n")
+        hide3.write_text("hide changed biome again before server rollback\\n")
+        await_marker(proc,"OPERATOR_BIOME_CAMERA_HIDE phase=3",25)
+        await_marker(proc,
+            "OPERATOR_BIOME_CLIENT_CAMERA phase=3 visible=false safeFrustum=true",25)
+        rollback_flag.write_text("CI-only: restore original quart biome while hidden\\n")
         restored=await_marker(proc,"OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64",45)
-        revert=re.search(r"OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64 changed=(\d+)",restored)
+        revert=re.search(
+            r"OPERATOR_BIOME_SERVER_RESTORED origin=-32,192,-64 changed=(\d+)",
+            restored)
         if not revert or int(revert[1])!=int(match[1]):
-            raise RuntimeError("Server failed exact biome rollback")
-        client_restored.write_text("verify original biome in real Minecraft client chunk storage\\n")
+            raise RuntimeError("Server failed exact invisible biome rollback")
+        client_restored.write_text("verify all original quart cells on actual client\\n")
         checked=await_marker(proc,"OPERATOR_BIOME_CLIENT_RESTORED origin=-32,192,-64",45)
         original=re.search(
             r"OPERATOR_BIOME_CLIENT_RESTORED origin=-32,192,-64 "
             r"checkedQuartCells=(\d+) restoredQuartCells=(\d+)",checked)
         if not original or int(original[1])!=1024 or int(original[2])!=int(match[1]):
-            raise RuntimeError("Real Minecraft client still has a stale biome after rollback")
-        log(f"Real biome material switch: {match[1]} quart cells server and client, exact restoration confirmed")
+            raise RuntimeError("Client has stale quart biomes after server rollback")
+        hide3.unlink(missing_ok=True)
+        show4.write_text("return to restored original biome after invisible rollback\\n")
+        await_marker(proc,"OPERATOR_BIOME_CAMERA_SHOW phase=4",25)
+        await_marker(proc,
+            "OPERATOR_BIOME_CLIENT_CAMERA phase=4 visible=true safeFrustum=true",25)
+        log(f"Real offscreen biome switch: {match[1]} quart cells, invisible commit, visible return, invisible rollback and complete client synchronization")
         log("OPERATOR_BIOME_REAL_SERVER_CLIENT_ROLLBACK_SUCCESS")
     finally:
-        for flag in (apply_flag,client_applied,rollback_flag,client_restored):
-            flag.unlink(missing_ok=True)
+        for flag in all_flags:flag.unlink(missing_ok=True)
 
 
 def capture_dynamic_pivot(proc) -> None:
