@@ -41,6 +41,9 @@ public final class ServerBiomeRegionTransaction {
     public ServerBiomeRegionTransaction(ServerLevel level,
                                         BiomeRegionBlueprint.Origin origin,
                                         BooleanSupplier safety) {
+        if(!Boolean.getBoolean("operator.reality.ciClientSmoke")
+                || !"true".equals(System.getenv("GITHUB_ACTIONS")))
+            throw new SecurityException("Real biome writes are disabled outside disposable Minecraft CI");
         this.level=Objects.requireNonNull(level);
         this.safety=Objects.requireNonNull(safety);
         this.chunks=loadedChunks(level,Objects.requireNonNull(origin));
@@ -128,6 +131,8 @@ public final class ServerBiomeRegionTransaction {
     private int write(boolean alternate) {
         var origin=plan.origin();
         int bx=origin.x()/4,by=origin.y()/4,bz=origin.z()/4;
+        final String[] originalIds=plan.originalSnapshot();
+        final String[] alternateIds=plan.alternateSnapshot();
         int[] edits={0};
         for(var chunk:chunks) {
             int[] localChanges={0};
@@ -137,7 +142,7 @@ public final class ServerBiomeRegionTransaction {
                         && qz>=bz && qz<bz+W) {
                     int i=BiomeRegionBlueprint.index(qx-bx,qy-by,qz-bz);
                     Holder<Biome> desired=alternate
-                            ?(plan.alternateSnapshot()[i].equals(plan.originalSnapshot()[i])
+                            ?(alternateIds[i].equals(originalIds[i])
                                 ?source[i]:target)
                             :source[i];
                     if(!identity(desired).equals(identity(chunk.getNoiseBiome(qx,qy,qz)))) {
