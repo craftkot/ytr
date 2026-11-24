@@ -33,20 +33,20 @@ class BiomeSurfacePatternTest {
     }
 
     @Test void innerSnowPatchIsIrregularButStableAndLeavesTreesSupported() {
-        int snow=0,grass=0,dirt=0;
+        int snow=0,grass=0,podzol=0;
         for(int x=BiomeSurfacePattern.MIN_X;x<=BiomeSurfacePattern.MAX_X;x++)
             for(int z=BiomeSurfacePattern.MIN_Z;z<=BiomeSurfacePattern.MAX_Z;z++) {
                 var after=BiomeSurfacePattern.at(x,199,z,true);
                 if(after==BiomeSurfacePattern.Material.SNOW_BLOCK)snow++;
                 else if(after==BiomeSurfacePattern.Material.GRASS)grass++;
-                else if(after==BiomeSurfacePattern.Material.DIRT)dirt++;
+                else if(after==BiomeSurfacePattern.Material.PODZOL)podzol++;
                 else fail("Unexpected surface material");
                 assertEquals(after,BiomeSurfacePattern.at(x,199,z,true));
             }
-        assertTrue(snow>100 && grass>0 && dirt>=40);
-        assertEquals(BiomeSurfacePattern.Material.DIRT,
+        assertTrue(snow>100 && grass>0 && podzol>=40);
+        assertEquals(BiomeSurfacePattern.Material.PODZOL,
                 BiomeSurfacePattern.at(-19,199,-49,false));
-        assertEquals(BiomeSurfacePattern.Material.DIRT,
+        assertEquals(BiomeSurfacePattern.Material.PODZOL,
                 BiomeSurfacePattern.at(-19,199,-49,true));
         assertEquals(BiomeSurfacePattern.Material.OAK_LOG,
                 BiomeSurfacePattern.at(-19,201,-49,false));
