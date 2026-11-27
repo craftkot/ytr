@@ -2,7 +2,7 @@ name: Build and test
 
 on:
   push:
-    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' , feature/frame-reality, feature/prepared-terrain-field, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement, feature/repeated-terrain-revisions, feature/dynamic-terrain-grid, feature/dynamic-section-substitution, feature/voxel-section-foundation, feature/voxel-transition-safety, feature/voxel-world-transaction, feature/voxel-write-ahead-recovery, feature/voxel-startup-audit, feature/voxel-hard-crash-smoke, feature/blockstate-runtime-shapes, feature/offscreen-biome-transitions, feature/biome-server-sync ]
+    branches: [ operator-dev, 'feature/deferred-chunk-boundaries' , feature/frame-reality, feature/prepared-terrain-field, feature/prebuilt-terrain-mesh, feature/gpu-terrain-preload, feature/gpu-terrain-draw, feature/gpu-terrain-depth, feature/gpu-terrain-replacement, feature/repeated-terrain-revisions, feature/dynamic-terrain-grid, feature/dynamic-section-substitution, feature/voxel-section-foundation, feature/voxel-transition-safety, feature/voxel-world-transaction, feature/voxel-write-ahead-recovery, feature/voxel-startup-audit, feature/voxel-hard-crash-smoke, feature/blockstate-runtime-shapes, feature/offscreen-biome-transitions, feature/biome-server-sync, feature/seeded-regeneration-research ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
