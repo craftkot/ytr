@@ -188,6 +188,8 @@ public final class ServerBiomeSurfaceTransaction {
                         || !matchesGuard(level.getBlockState(change.pos()),target))
                     throw new IllegalStateException("Physical snow/tree update failed at "+change.pos());
             }
+            // Final validation belongs inside the compensation boundary.
+            validate(forward);
             return changes.size();
         } catch(RuntimeException failure) {
             for(int i=touched-1;i>=0;i--) {
@@ -211,7 +213,6 @@ public final class ServerBiomeSurfaceTransaction {
         if(applied)throw new IllegalStateException("Forest already changed to snowy taiga");
         validate(false);
         int changed=write(true);
-        validate(true);
         applied=true;
         return changed;
     }
@@ -219,7 +220,6 @@ public final class ServerBiomeSurfaceTransaction {
         if(!applied)throw new IllegalStateException("Snowy biome surface not applied");
         validate(true);
         int changed=write(false);
-        validate(false);
         applied=false;
         return changed;
     }
