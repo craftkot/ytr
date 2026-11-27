@@ -210,6 +210,8 @@ public final class ServerBiomeSurfaceTransaction {
     }
 
     public int apply() {
+        if(!level.getServer().isSameThread())
+            throw new IllegalStateException("Biome surface mutation requires server thread");
         if(applied)throw new IllegalStateException("Forest already changed to snowy taiga");
         validate(false);
         int changed=write(true);
@@ -217,6 +219,8 @@ public final class ServerBiomeSurfaceTransaction {
         return changed;
     }
     public int rollback() {
+        if(!level.getServer().isSameThread())
+            throw new IllegalStateException("Biome surface mutation requires server thread");
         if(!applied)throw new IllegalStateException("Snowy biome surface not applied");
         validate(true);
         int changed=write(false);
