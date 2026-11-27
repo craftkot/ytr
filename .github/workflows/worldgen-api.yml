@@ -2,6 +2,8 @@ name: Worldgen API inspection
 on:
   push:
     branches: [feature/seeded-regeneration-research]
+  pull_request:
+    branches: [integration/chaos-world]
   workflow_dispatch:
 permissions:
   contents: read
