@@ -73,3 +73,26 @@ tasks.register('dumpTerrainRendererApi') {
         logger.lifecycle('Exact renderer bytecode inventory: ' + target)
     }
 }
+
+// Inspect target-version worldgen bytecode before binding seed-specific adapters.
+tasks.register('dumpWorldgenApi') {
+    def output = layout.buildDirectory.file('worldgen-api.txt')
+    outputs.file(output)
+    inputs.files(sourceSets.main.compileClasspath)
+    doLast {
+        def target = output.get().asFile
+        target.parentFile.mkdirs()
+        def process = new ProcessBuilder(
+                new File(System.getProperty('java.home'), 'bin/javap').absolutePath,
+                '-p', '-c', '-classpath', sourceSets.main.compileClasspath.asPath,
+                'net.minecraft.world.level.levelgen.RandomState',
+                'net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator',
+                'net.minecraft.world.level.chunk.ChunkGenerator',
+                'net.minecraft.server.level.ServerLevel',
+                'net.minecraft.server.level.ServerChunkCache',
+                'net.minecraft.server.level.ChunkMap')
+                .redirectErrorStream(true).redirectOutput(target).start()
+        if (process.waitFor() != 0)
+            throw new GradleException('Worldgen API inspection failed: ' + target.text)
+    }
+}
